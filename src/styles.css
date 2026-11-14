@@ -127,6 +127,16 @@ body,
   box-shadow: inset 0 6px 10px -6px #000000, 0 4px 14px rgba(0, 0, 0, 0.45);
 }
 
+.notch-morph-shell.state-idle.has-live-activity {
+  width: 200px;
+  height: 22px;
+  border-radius: 0 0 11px 11px;
+}
+
+.notch-morph-shell.state-idle.has-live-activity .layer-idle {
+  padding: 0;
+}
+
 .notch-morph-shell.state-mini-progress {
   width: 268px;
   height: 12px;
@@ -7216,6 +7226,146 @@ body .robo-eyes-wrap.is-charging .robo-heart-eye {
   transform: scale(1.08);
 }
 
+/* Unified Inline Glassmorphic Liquid + Orbit Download Orb (inside Music Bar) */
+.notch-morph-shell.state-music-bar.has-live-activity {
+  background:
+    radial-gradient(ellipse 36% 95% at 92% 108%,
+      rgba(56, 189, 248, 0.28) 0%,
+      rgba(14, 165, 233, 0.08) 55%,
+      transparent 88%),
+    radial-gradient(ellipse 90% 88% at 50% 114%,
+      rgba(var(--music-accent-rgb, 110, 142, 185), 0.34) 0%,
+      rgba(var(--music-accent-rgb, 110, 142, 185), 0.11) 52%,
+      transparent 84%),
+    linear-gradient(180deg, #13161f 0%, #0b0d13 100%);
+}
+
+.inline-download-wrap {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.compact-dl-divider {
+  display: inline-block;
+  width: 1px;
+  height: 12px;
+  margin: 0 7px 0 8px;
+  border-radius: 99px;
+  background: linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+}
+
+.download-droplet-orb {
+  position: relative;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.04) 65%);
+  box-shadow:
+    inset 0 0 4px rgba(255, 255, 255, 0.14),
+    0 0 8px rgba(56, 189, 248, 0.22);
+  transition: transform 0.18s ease, box-shadow 0.25s ease;
+}
+
+.inline-download-wrap.is-done .download-droplet-orb {
+  box-shadow:
+    inset 0 0 4px rgba(134, 239, 172, 0.2),
+    0 0 8px rgba(74, 222, 128, 0.28);
+}
+
+.notch-morph-shell.state-music-bar:hover .download-droplet-orb {
+  transform: scale(1.06);
+}
+
+.download-droplet-liquid {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(180deg, rgba(56, 189, 248, 0.52) 0%, rgba(14, 165, 233, 0.72) 100%);
+  transition: height 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.download-droplet-liquid.is-indeterminate {
+  animation: dlLiquidIndeterminate 1.6s ease-in-out infinite;
+}
+
+.inline-download-wrap.is-done .download-droplet-liquid {
+  background: linear-gradient(180deg, rgba(74, 222, 128, 0.55) 0%, rgba(34, 197, 94, 0.72) 100%);
+}
+
+.download-droplet-wave {
+  position: absolute;
+  top: -4px;
+  left: 0;
+  width: 200%;
+  height: 5px;
+  fill: rgba(125, 211, 252, 0.72);
+  animation: dlWaveShift 2.2s linear infinite;
+}
+
+.inline-download-wrap.is-done .download-droplet-wave {
+  fill: rgba(134, 239, 172, 0.75);
+}
+
+.download-droplet-orbit {
+  position: absolute;
+  inset: 0;
+  width: 20px;
+  height: 20px;
+  z-index: 1;
+  pointer-events: none;
+  animation: dlOrbitSpin 1.45s linear infinite;
+}
+
+.inline-download-wrap.is-done .download-droplet-orbit {
+  animation: none;
+}
+
+.download-droplet-icon {
+  position: relative;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #f0f9ff;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.55));
+}
+
+.inline-download-wrap.is-done .download-droplet-icon {
+  color: #dcfce7;
+}
+
+@keyframes dlOrbitSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes dlWaveShift {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes dlLiquidIndeterminate {
+  0%, 100% {
+    height: 28%;
+  }
+  50% {
+    height: 62%;
+  }
+}
+
 /* 3. Karaoke Lyric Fill & Compact Album Placeholder */
 .compact-album-placeholder {
   width: 26px;
@@ -10658,17 +10808,43 @@ body .robo-eyes-wrap.is-charging .robo-heart-eye {
   gap: 6px;
   width: 100%;
   height: 100%;
-  padding: 0 10px;
+  padding: 0 16px;
   color: #e8f5ff;
   font-size: 10.5px;
   font-weight: 600;
   overflow: hidden;
+  border-radius: inherit;
+}
+
+.idle-live-liquid-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: linear-gradient(90deg, rgba(14, 165, 233, 0.18), rgba(56, 189, 248, 0.34));
+  border-right: 1.5px solid rgba(125, 211, 252, 0.75);
+  box-shadow: inset -4px 0 10px rgba(56, 189, 248, 0.18);
+  transition: width 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.idle-live-liquid-fill.is-indeterminate {
+  width: 45% !important;
+  border-left: 1px solid rgba(125, 211, 252, 0.35);
+  animation: liveIndeterminate 1.4s ease-in-out infinite;
+}
+
+.idle-live-activity.is-done .idle-live-liquid-fill {
+  background: linear-gradient(90deg, rgba(34, 197, 94, 0.18), rgba(74, 222, 128, 0.32));
+  border-right-color: transparent;
+  box-shadow: none;
 }
 
 .idle-live-icon {
+  position: relative;
+  z-index: 1;
   display: inline-flex;
   align-items: center;
-  color: #38bdf8;
+  color: #7dd3fc;
   flex-shrink: 0;
   animation: livePulse 1.6s ease-in-out infinite;
 }
@@ -10679,44 +10855,28 @@ body .robo-eyes-wrap.is-charging .robo-heart-eye {
 }
 
 .idle-live-title {
+  position: relative;
+  z-index: 1;
   flex: 1;
   min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-size: 10px;
-  color: rgba(255, 255, 255, 0.88);
+  font-size: 10.5px;
+  color: rgba(255, 255, 255, 0.94);
 }
 
 .idle-live-pct {
+  position: relative;
+  z-index: 1;
   flex-shrink: 0;
   font-size: 10px;
-  color: #7dd3fc;
+  font-weight: 600;
+  color: #bae6fd;
 }
 
-.idle-live-bar-track {
-  position: absolute;
-  left: 8px;
-  right: 8px;
-  bottom: 2px;
-  height: 2px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.12);
-  overflow: hidden;
-}
-
-.idle-live-bar-fill {
-  height: 100%;
-  border-radius: 999px;
-  background: linear-gradient(90deg, #0ea5e9, #38bdf8, #818cf8);
-  background-size: 200% 100%;
-  transition: width 0.35s ease;
-  animation: liveShimmer 1.8s linear infinite;
-}
-
-.idle-live-bar-fill.is-indeterminate {
-  width: 45% !important;
-  animation: liveIndeterminate 1.4s ease-in-out infinite;
+.idle-live-activity.is-done .idle-live-pct {
+  color: #86efac;
 }
 
 .mirror-overlay-view.has-ring-light {

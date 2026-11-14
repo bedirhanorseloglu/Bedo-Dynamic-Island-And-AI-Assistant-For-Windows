@@ -63,7 +63,7 @@ function lookupChromiumTotalBytes(partialName, cleanName, callback) {
       '    tmp = os.path.join(tempfile.gettempdir(), f"tc_hist_{os.getpid()}.db")',
       '    try:',
       '        shutil.copy2(src, tmp)',
-      '        for ext in ("-wal", "-shm"):',
+      '        for ext in ("-wal", "-shm", "-journal"):',
       '            if os.path.exists(src + ext):',
       '                try: shutil.copy2(src + ext, tmp + ext)',
       '                except Exception: pass',
@@ -217,7 +217,7 @@ function createLiveActivityWatcher({ downloadsDir, onUpdate }) {
   const start = () => {
     try {
       if (downloadsDir && fs.existsSync(downloadsDir)) {
-        let cachedDownloadMeta = { file: null, totalBytes: null, lastHistoryMtime: 0, lookingUp: false };
+        let cachedDownloadMeta = { file: null, totalBytes: null, lastLookupTime: 0, lookingUp: false };
         const checkDownloads = () => {
           try {
             const files = fs.readdirSync(downloadsDir);
@@ -253,17 +253,12 @@ function createLiveActivityWatcher({ downloadsDir, onUpdate }) {
               };
 
               if (cachedDownloadMeta.file !== partial) {
-                cachedDownloadMeta = { file: partial, totalBytes: null, lastHistoryMtime: 0, lookingUp: false };
+                cachedDownloadMeta = { file: partial, totalBytes: null, lastLookupTime: 0, lookingUp: false };
               }
               if (!cachedDownloadMeta.totalBytes && !cachedDownloadMeta.lookingUp) {
-                let latestHistoryMtime = 0;
-                for (const p of CHROMIUM_HISTORY_PATHS()) {
-                  const m = getLatestMtime(p);
-                  if (m > latestHistoryMtime) latestHistoryMtime = m;
-                }
-                if (latestHistoryMtime > cachedDownloadMeta.lastHistoryMtime) {
+                if (now - cachedDownloadMeta.lastLookupTime >= 2000) {
                   cachedDownloadMeta.lookingUp = true;
-                  cachedDownloadMeta.lastHistoryMtime = latestHistoryMtime;
+                  cachedDownloadMeta.lastLookupTime = now;
                   const targetFile = partial;
                   const latestSize = stat.size;
                   lookupChromiumTotalBytes(partial, cleanName, (tb) => {

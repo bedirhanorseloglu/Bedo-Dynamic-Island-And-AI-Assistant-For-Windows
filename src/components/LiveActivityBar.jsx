@@ -8,50 +8,26 @@ export function IdleLiveActivityPill({ liveActivity }) {
   const isIndeterminate = pct == null && !liveActivity.done;
   const pctWidth = liveActivity.done ? 100 : (pct ?? 42);
 
-  // 16px SVG ring: r=6 -> circumference = 2 * pi * 6 ≈ 37.7
-  const radius = 6;
-  const circumference = 2 * Math.PI * radius;
-  const dashOffset = isIndeterminate
-    ? circumference * 0.68
-    : circumference * (1 - pctWidth / 100);
-
   return (
     <div
       className={`idle-live-activity ${liveActivity.done ? 'is-done' : ''} ${isIndeterminate ? 'is-indeterminate' : ''}`}
       title={liveActivity.title}
     >
-      <div className="idle-live-ring-wrap" aria-hidden="true">
-        <svg className="idle-live-ring-svg" width="16" height="16" viewBox="0 0 16 16">
-          <circle
-            className="idle-live-ring-bg"
-            cx="8"
-            cy="8"
-            r={radius}
-            fill="none"
-            strokeWidth="1.75"
-          />
-          <circle
-            className={`idle-live-ring-fg ${isIndeterminate ? 'is-spinning' : ''}`}
-            cx="8"
-            cy="8"
-            r={radius}
-            fill="none"
-            strokeWidth="1.75"
-            strokeLinecap="round"
-            strokeDasharray={circumference}
-            strokeDashoffset={dashOffset}
-          />
-        </svg>
-        <span className="idle-live-ring-icon">
-          {liveActivity.done ? (
-            <Check size={8} strokeWidth={3} />
-          ) : liveActivity.kind === 'steam' ? (
-            <Gamepad2 size={8} strokeWidth={2.4} />
-          ) : (
-            <ArrowDown size={8} strokeWidth={2.8} />
-          )}
-        </span>
-      </div>
+      <div
+        className={`idle-live-liquid-fill ${isIndeterminate ? 'is-indeterminate' : ''}`}
+        style={{ width: `${pctWidth}%` }}
+        aria-hidden="true"
+      />
+
+      <span className="idle-live-icon" aria-hidden="true">
+        {liveActivity.done ? (
+          <Check size={11} strokeWidth={2.8} />
+        ) : liveActivity.kind === 'steam' ? (
+          <Gamepad2 size={11} strokeWidth={2.3} />
+        ) : (
+          <ArrowDown size={11} strokeWidth={2.6} />
+        )}
+      </span>
 
       <span className="idle-live-title">{liveActivity.title}</span>
 
@@ -62,12 +38,82 @@ export function IdleLiveActivityPill({ liveActivity }) {
           ? `%${pct}`
           : `${liveActivity.downloadedMB ?? 0} MB`}
       </span>
+    </div>
+  );
+}
 
-      <div className="idle-live-bar-track" aria-hidden="true">
+export function InlineDownloadOrb({ liveActivity }) {
+  if (!liveActivity?.active) return null;
+  const hasPercent = typeof liveActivity.percent === 'number' && Number.isFinite(liveActivity.percent);
+  const pct = liveActivity.done
+    ? 100
+    : hasPercent
+    ? Math.max(0, Math.min(100, Math.round(liveActivity.percent)))
+    : null;
+  const isIndeterminate = pct == null && !liveActivity.done;
+  const fillPct = liveActivity.done ? 100 : (pct ?? 44);
+  const tooltipText = `${liveActivity.title || 'İndirme'} • ${
+    liveActivity.done ? '%100' : pct != null ? `%${pct}` : `${liveActivity.downloadedMB ?? 0} MB`
+  }`;
+
+  return (
+    <div
+      className={`inline-download-wrap ${liveActivity.done ? 'is-done' : ''}`}
+      title={tooltipText}
+    >
+      <span className="compact-dl-divider" aria-hidden="true" />
+      <div className="download-droplet-orb">
         <div
-          className={`idle-live-bar-fill ${isIndeterminate ? 'is-indeterminate' : ''}`}
-          style={{ width: `${pctWidth}%` }}
-        />
+          className={`download-droplet-liquid ${isIndeterminate ? 'is-indeterminate' : ''}`}
+          style={{ height: `${fillPct}%` }}
+          aria-hidden="true"
+        >
+          <svg
+            className="download-droplet-wave"
+            viewBox="0 0 100 12"
+            preserveAspectRatio="none"
+          >
+            <path d="M0 6 Q 12.5 1, 25 6 T 50 6 T 75 6 T 100 6 L 100 12 L 0 12 Z" />
+          </svg>
+        </div>
+
+        <svg className="download-droplet-orbit" viewBox="0 0 24 24" aria-hidden="true">
+          <defs>
+            <linearGradient id="dlDropletOrbitGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.15" />
+              <stop offset="100%" stopColor="#e0f2fe" stopOpacity="0.98" />
+            </linearGradient>
+          </defs>
+          <circle
+            cx="12"
+            cy="12"
+            r="10"
+            fill="none"
+            stroke="rgba(255, 255, 255, 0.14)"
+            strokeWidth="1.6"
+          />
+          <circle
+            className="download-droplet-orbit-arc"
+            cx="12"
+            cy="12"
+            r="10"
+            fill="none"
+            stroke={liveActivity.done ? '#4ade80' : 'url(#dlDropletOrbitGrad)'}
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeDasharray={liveActivity.done ? '62.83 0' : '22 41'}
+          />
+        </svg>
+
+        <span className="download-droplet-icon" aria-hidden="true">
+          {liveActivity.done ? (
+            <Check size={10} strokeWidth={2.9} />
+          ) : liveActivity.kind === 'steam' ? (
+            <Gamepad2 size={10} strokeWidth={2.3} />
+          ) : (
+            <ArrowDown size={10} strokeWidth={2.7} />
+          )}
+        </span>
       </div>
     </div>
   );

@@ -74,6 +74,7 @@ import NotifToastContent from './components/NotifToastContent';
 import {
   IdleLiveActivityPill,
   HomeLiveAndContextStrip,
+  InlineDownloadOrb,
 } from './components/LiveActivityBar';
 import HeroClock, { CLOCK_FONT_FAMILIES } from './HeroClock';
 import { applyTypographyTokens, readTypographyPreferences, TYPOGRAPHY_STORAGE_KEY } from './typography';
@@ -1659,13 +1660,14 @@ export default function App() {
     };
   }, [currentMedia, islandSettings.lyricsEnabled]);
 
-  // Dynamic width for the compact music/karaoke notch taking into account cover art + lyric + soundwave
+  // Dynamic width for the compact music/karaoke notch taking into account cover art + lyric + soundwave + inline download orb
   const dynamicMusicBarWidth = useMemo(() => {
     const text = primaryLine || currentMedia.title || '';
     const charLen = Math.min(38, Math.max(8, text.length));
     // A compact cap keeps the media notch from covering neighboring dock tabs.
-    return Math.round(Math.min(322, Math.max(222, charLen * 5.2 + 170)));
-  }, [primaryLine, currentMedia.title]);
+    const baseWidth = Math.round(Math.min(322, Math.max(222, charLen * 5.2 + 170)));
+    return liveActivity?.active ? baseWidth + 32 : baseWidth;
+  }, [primaryLine, currentMedia.title, liveActivity?.active]);
 
   // Determine which collapsed state to use when mouse leaves
   // IMPORTANT: Only show music-bar when media is actively playing (`currentMedia.isPlaying`).
@@ -1698,10 +1700,12 @@ export default function App() {
       window.twocode?.setIslandMode('music-bar', dynamicMusicBarWidth);
     } else if (islandMode === 'notif-toast') {
       window.twocode?.setIslandMode('notif-toast', dynamicNotifToastWidth);
+    } else if (islandMode === 'idle' && liveActivity?.active) {
+      window.twocode?.setIslandMode('idle-live');
     } else {
       window.twocode?.setIslandMode(islandMode);
     }
-  }, [islandMode, dynamicMusicBarWidth, dynamicNotifToastWidth]);
+  }, [islandMode, dynamicMusicBarWidth, dynamicNotifToastWidth, liveActivity?.active]);
 
   // Keep collapsed notch updated if media starts/pauses/stops while collapsed
   useEffect(() => {
@@ -2588,7 +2592,7 @@ export default function App() {
     >
       <div
         ref={morphShellRef}
-        className={`notch-morph-shell state-${islandMode} mode-${activeTab} ${batteryAlertKind === 'charging' ? 'is-charging' : ''} ${activeTab === 'home' && isCustomizingClock ? 'customizing-clock' : ''
+        className={`notch-morph-shell state-${islandMode} mode-${activeTab} ${liveActivity?.active ? 'has-live-activity' : ''} ${batteryAlertKind === 'charging' ? 'is-charging' : ''} ${activeTab === 'home' && isCustomizingClock ? 'customizing-clock' : ''
           } ${musicAccent.hasColor ? 'has-cover-color' : ''} ${islandMode === 'hud' && hudOverlay.ghelper?.category === 'aura'
             ? `has-aura-hud effect-${hudOverlay.ghelper.effectType || 'static'}`
             : ''
@@ -2968,6 +2972,7 @@ export default function App() {
               <span />
               <span />
             </div>
+            <InlineDownloadOrb liveActivity={liveActivity} />
           </div>
         </div>
 

@@ -82,6 +82,7 @@ const CANVAS_HEIGHT = 320;
 
 const MODE_DIMENSIONS = {
   idle: { bodyWidth: 130, height: 20, earRadius: 8, bottomRadius: 10, droplet: 0 },
+  'idle-live': { bodyWidth: 184, height: 22, earRadius: 8, bottomRadius: 11, droplet: 0 },
   'mini-progress': { bodyWidth: 268, height: 12, earRadius: 7, bottomRadius: 6, droplet: 0 },
   hud: { bodyWidth: 312, height: 36, earRadius: 0, bottomRadius: 18, droplet: 0 },
   battery: { bodyWidth: 366, height: 60, earRadius: 0, bottomRadius: 24, droplet: 0 },
@@ -1449,7 +1450,7 @@ function animateWindowShapeToMode(modeOrExpanded, customBodyWidth) {
     ...baseTarget,
     bodyWidth:
       modeKey === 'music-bar' && typeof customBodyWidth === 'number' && customBodyWidth >= 200
-        ? Math.min(322, Math.max(222, Math.round(customBodyWidth)))
+        ? Math.min(360, Math.max(222, Math.round(customBodyWidth)))
         : modeKey === 'notif-toast' && typeof customBodyWidth === 'number' && customBodyWidth >= 180
         ? Math.min(460, Math.max(210, Math.round(customBodyWidth)))
         : baseTarget.bodyWidth,
