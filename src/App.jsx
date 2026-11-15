@@ -4689,12 +4689,7 @@ export default function App() {
                                         style={currentMedia.hasSession ? { cursor: 'pointer' } : undefined}
                                       />
                                     )}
-                                    <div
-                                      className="home-card-meta truncate"
-                                      onClick={currentMedia.hasSession ? handleOpenMediaSource : undefined}
-                                      title={currentMedia.hasSession ? 'Çaldığı sekmeyi / uygulamayı aç' : undefined}
-                                      style={currentMedia.hasSession ? { cursor: 'pointer' } : undefined}
-                                    >
+                                    <div className="home-card-meta truncate">
                                       <strong className="home-card-title">
                                         {currentMedia.title}
                                       </strong>
