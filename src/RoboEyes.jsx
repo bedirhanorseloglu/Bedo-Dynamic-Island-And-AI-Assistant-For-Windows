@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { playRoboSound } from './sounds';
 
-export default function RoboEyes({ mood = 'normal', reaction = null, active = true, trackCursor = true, onPoke, size = 'normal', batteryPercent, batteryCharging = false }) {
+export default function RoboEyes({ mood = 'normal', reaction = null, active = true, trackCursor = true, onPoke, size = 'normal', batteryPercent, batteryCharging = false, unreadNotificationCount = 0, pendingAgendaCount = 0 }) {
   const [blink, setBlink] = useState(false);
   const [wakePhase, setWakePhase] = useState('closed'); // 'closed' | 'flutter' | 'look-left' | 'look-right' | 'happy' | 'done'
   const [lookOffset, setLookOffset] = useState({ x: 0, y: 0 });
@@ -117,31 +117,25 @@ export default function RoboEyes({ mood = 'normal', reaction = null, active = tr
   const isTurbo = activeMood === 'turbo';
   const isThinking = activeMood === 'thinking' || activeReaction === 'thinking';
   const isBellAlert = activeReaction === 'notification';
+  const hasUnread = unreadNotificationCount > 0;
+  const hasPendingAgenda = pendingAgendaCount > 0;
+
+  const statusHints = [];
+  if (hasUnread) statusHints.push(`${unreadNotificationCount} açılmamış bildirim`);
+  if (hasPendingAgenda) statusHints.push(`${pendingAgendaCount} bekleyen ajanda`);
+  const roboTitle = statusHints.length ? `Robo · ${statusHints.join(' · ')}` : 'Robo';
 
   return (
     <div
       ref={containerRef}
-      className={`robo-eyes-wrap ${activeMood} ${activeReaction ? `reaction-${activeReaction}` : ''} ${!active ? 'is-inactive' : ''} ${batteryCharging ? 'is-charging' : ''} ${isLowBattery ? 'is-low-battery' : ''}`}
+      className={`robo-eyes-wrap ${activeMood} ${activeReaction ? `reaction-${activeReaction}` : ''} ${!active ? 'is-inactive' : ''} ${batteryCharging ? 'is-charging' : ''} ${isLowBattery ? 'is-low-battery' : ''} ${hasUnread ? 'has-unread' : ''} ${hasPendingAgenda ? 'has-pending-agenda' : ''}`}
       onClick={handleClick}
-      title="Robo"
+      title={roboTitle}
       style={{
         transform: `scale(${scale}) translate(${wakeShiftX}px, ${wakeShiftY}px)`,
       }}
     >
       <span className="robo-mood-spark" aria-hidden="true" />
-      {batteryCharging && (
-        <span className="robo-charge-battery" aria-hidden="true" title={`Şarj oluyor · ${batteryPercent}%`}>
-          <span
-            className="robo-charge-battery-fill"
-            style={{ width: `${Math.min(100, Math.max(0, Number(batteryPercent) || 0))}%` }}
-          />
-        </span>
-      )}
-      {isLowBattery && (
-        <span className="robo-low-battery" aria-hidden="true" title={`Düşük pil · ${batteryPercent}%`}>
-          <span className="robo-low-battery-bar" />
-        </span>
-      )}
       {isFocus && (
         <svg className="robo-prop-glasses" viewBox="0 0 38 14" aria-hidden="true">
           <rect x="1.5" y="2" width="14" height="10" rx="3.5" fill="none" stroke="currentColor" strokeWidth="1.6" />
@@ -156,11 +150,6 @@ export default function RoboEyes({ mood = 'normal', reaction = null, active = tr
         <span className="robo-prop-thinking" aria-hidden="true">
           <i /><i /><i />
         </span>
-      )}
-      {isBellAlert && (
-        <svg className="robo-prop-bell" viewBox="0 0 16 16" aria-hidden="true">
-          <path d="M8 2a4 4 0 0 0-4 4v2.6L2.8 10.4a.6.6 0 0 0 .5.9h9.4a.6.6 0 0 0 .5-.9L12 8.6V6a4 4 0 0 0-4-4zm-1.4 10.5a1.5 1.5 0 0 0 2.8 0" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
       )}
       {isHeartEyes ? (
         <>

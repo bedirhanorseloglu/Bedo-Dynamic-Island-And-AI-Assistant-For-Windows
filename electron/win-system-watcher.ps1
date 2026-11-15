@@ -438,6 +438,9 @@ $initialized = $false
 $lastVolumePoll = [DateTimeOffset]::MinValue
 $lastBrightnessPoll = [DateTimeOffset]::MinValue
 $lastGameModePoll = [DateTimeOffset]::MinValue
+$lastParentCheck = [DateTimeOffset]::MinValue
+$lastBrightnessJobPoll = [DateTimeOffset]::MinValue
+$lastNotifPoll = [DateTimeOffset]::MinValue
 $gameModeActive = $false
 $lastGcPoll = [DateTimeOffset]::MinValue
 $notificationTask = $null
@@ -488,8 +491,10 @@ while ($true) {
             $stdinReadTask = $null
         }
     }
-    # Parent Electron lifecycle guard: immediately terminate if Electron exited
-    if ($ElectronPid -gt 0) {
+    $now = [DateTimeOffset]::Now
+    # Parent Electron lifecycle guard: check every 2.5s instead of 120ms to avoid Get-Process allocation churn
+    if ($ElectronPid -gt 0 -and ($now - $lastParentCheck).TotalMilliseconds -ge 2500) {
+        $lastParentCheck = $now
         $parentProc = Get-Process -Id $ElectronPid -ErrorAction SilentlyContinue
         if ($null -eq $parentProc -or $parentProc.HasExited) {
             break
@@ -497,7 +502,6 @@ while ($true) {
     }
 
     try {
-        $now = [DateTimeOffset]::Now
 
         # Check the foreground window at a low rate and report only state transitions.
         if (($now - $lastGameModePoll).TotalMilliseconds -ge 500) {
@@ -578,7 +582,8 @@ while ($true) {
                 $lastBrightness = $bri
             }
         }
-        if ($null -ne $brightnessEventSubscription) {
+        if ($null -ne $brightnessEventSubscription -and ($now - $lastBrightnessJobPoll).TotalMilliseconds -ge 500) {
+            $lastBrightnessJobPoll = $now
             $bEvent = Receive-Job -Job $brightnessEventSubscription -ErrorAction SilentlyContinue | Select-Object -Last 1
             if ($null -ne $bEvent) {
                 $bri = -1
@@ -591,16 +596,24 @@ while ($true) {
             }
         }
 
-        # Keep the toast query asynchronous so its wait cannot delay brightness events.
+        # Keep the toast query asynchronous and throttled (~350ms) so its wait cannot delay brightness events or churn WinRT allocations.
         if ($notifSupported -and $null -ne $listener) {
             $notifs = $null
             if ($null -eq $notificationTask) {
-                $notificationTask = Start-AsyncOp ($listener.GetNotificationsAsync([Windows.UI.Notifications.NotificationKinds]::Toast)) $notificationListType
+                if (($now - $lastNotifPoll).TotalMilliseconds -ge 350) {
+                    $lastNotifPoll = $now
+                    $notificationTask = Start-AsyncOp ($listener.GetNotificationsAsync([Windows.UI.Notifications.NotificationKinds]::Toast)) $notificationListType
+                }
             } elseif ($notificationTask.IsCompleted) {
                 try { $notifs = $notificationTask.Result } catch {}
-                $notificationTask = Start-AsyncOp ($listener.GetNotificationsAsync([Windows.UI.Notifications.NotificationKinds]::Toast)) $notificationListType
+                $notificationTask = $null
             }
             if ($null -ne $notifs) {
+                if ($seenNotifIds.Count -gt 500) {
+                    $activeIds = @{}
+                    foreach ($item in $notifs) { $activeIds[[string]$item.Id] = $true }
+                    $seenNotifIds = $activeIds
+                }
                 foreach ($n in $notifs) {
                     $nid = [string]$n.Id
                     if (-not $seenNotifIds.ContainsKey($nid)) {
@@ -684,5 +697,5 @@ while ($true) {
     }
 
     if ($ghelperBridgeLoaded) { Invoke-GHelperNotificationMessagePump }
-    Start-Sleep -Milliseconds 95
+    Start-Sleep -Milliseconds 120
 }

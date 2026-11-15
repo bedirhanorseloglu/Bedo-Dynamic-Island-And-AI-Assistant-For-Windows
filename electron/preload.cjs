@@ -60,6 +60,7 @@ contextBridge.exposeInMainWorld('twocode', {
   openGHelper: () => ipcRenderer.invoke('open-ghelper'),
   launchMusicService: (service) => ipcRenderer.invoke('launch-music-service', service),
   getMediaStatus: () => ipcRenderer.invoke('get-media-status'),
+  focusMediaSource: (media) => ipcRenderer.invoke('focus-media-source', media),
   onMediaUpdate: (cb) => {
     const listener = (_event, data) => cb(data);
     ipcRenderer.on('media-update', listener);
@@ -118,6 +119,7 @@ contextBridge.exposeInMainWorld('twocode', {
   addAgendaEvent: (evt) => ipcRenderer.invoke('add-agenda-event', evt),
   getAgendaEvents: () => ipcRenderer.invoke('get-agenda-events'),
   deleteAgendaEvent: (eventId) => ipcRenderer.invoke('delete-agenda-event', eventId),
+  toggleAgendaEvent: (eventId) => ipcRenderer.invoke('toggle-agenda-event', eventId),
   onAgendaEventsUpdate: (cb) => {
     const listener = (_event, agenda) => cb(agenda);
     ipcRenderer.on('local-agenda-update', listener);

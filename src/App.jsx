@@ -273,20 +273,20 @@ function resolveNotifBrand(banner, logoAccent) {
   ) {
     return { rgb: customAccentRgb, hex: customAccentHex, secondaryRgb: customAccentSecondaryRgb, secondaryHex: customAccentSecondaryHex, brand: 'ghelper' };
   }
-  if (logoAccent?.isLiveCover) {
-    return {
-      rgb: logoAccent.rgb,
-      hex: logoAccent.hex,
-      secondaryRgb: knownBrand?.secondaryRgb || logoAccent.rgb,
-      secondaryHex: knownBrand?.secondaryHex || logoAccent.hex,
-      brand: knownBrand?.brand || 'native-logo',
-    };
-  }
   if (knownBrand) {
     return {
       ...knownBrand,
       secondaryRgb: knownBrand.secondaryRgb || knownBrand.rgb,
       secondaryHex: knownBrand.secondaryHex || knownBrand.hex,
+    };
+  }
+  if (logoAccent?.isLiveCover) {
+    return {
+      rgb: logoAccent.rgb,
+      hex: logoAccent.hex,
+      secondaryRgb: logoAccent.rgb,
+      secondaryHex: logoAccent.hex,
+      brand: 'native-logo',
     };
   }
 
@@ -943,9 +943,168 @@ function renderTooltipContent(text) {
   return <span className="modern-tooltip-main">{text}</span>;
 }
 
+function formatMMSS(sec) {
+  const s = Math.max(0, Math.floor(sec || 0));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m}:${String(r).padStart(2, '0')}`;
+}
+
+function useIsolatedMediaPosition(liveMedia, active, isScrubbing = false, intervalMs = 500) {
+  const [pos, setPos] = useState(() => (typeof liveMedia?.position === 'number' ? liveMedia.position : 0));
+  const lastTickRef = useRef(Date.now());
+  const mediaRef = useRef(liveMedia);
+  mediaRef.current = liveMedia;
+
+  useEffect(() => {
+    if (!isScrubbing && liveMedia && typeof liveMedia.position === 'number') {
+      setPos(liveMedia.position);
+      lastTickRef.current = Date.now();
+    }
+  }, [liveMedia?.position, liveMedia?.title, isScrubbing]);
+
+  useEffect(() => {
+    if (!active || !liveMedia?.isPlaying || isScrubbing) return undefined;
+    lastTickRef.current = Date.now();
+    const timer = setInterval(() => {
+      const now = Date.now();
+      const elapsed = Math.min(1.5, Math.max(0, (now - lastTickRef.current) / 1000));
+      lastTickRef.current = now;
+      const m = mediaRef.current;
+      if (!m || !m.hasSession || !m.isPlaying) return;
+      setPos((prev) => {
+        const next = prev + elapsed;
+        return m.duration > 0 ? Math.min(m.duration, next) : next;
+      });
+    }, intervalMs);
+    return () => clearInterval(timer);
+  }, [active, liveMedia?.isPlaying, isScrubbing, intervalMs]);
+
+  return [pos, setPos];
+}
+
+const MiniProgressBar = React.memo(function MiniProgressBar({ liveMedia, active }) {
+  const [pos] = useIsolatedMediaPosition(liveMedia, active, false, 600);
+  const pct =
+    liveMedia?.duration > 0
+      ? Math.min(100, Math.max(0, (pos / liveMedia.duration) * 100))
+      : liveMedia?.hasSession
+        ? 35
+        : 0;
+  return (
+    <div className="mini-progress-track">
+      <div
+        className="mini-progress-fill"
+        style={{ width: `${Math.max(6, pct)}%` }}
+      />
+    </div>
+  );
+});
+
+const MusicProgressRow = React.memo(function MusicProgressRow({ currentMedia, active }) {
+  const trackRef = useRef(null);
+  const [isScrubbing, setIsScrubbing] = useState(false);
+  const [scrubPosition, setScrubPosition] = useState(null);
+  const [pos, setPos] = useIsolatedMediaPosition(currentMedia, active, isScrubbing, 450);
+
+  const calculateScrubSeconds = (clientX) => {
+    if (!trackRef.current || !currentMedia.duration || currentMedia.duration <= 0) return null;
+    const rect = trackRef.current.getBoundingClientRect();
+    if (rect.width <= 0) return null;
+    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    return ratio * currentMedia.duration;
+  };
+
+  const handleMouseDown = (e) => {
+    if (!currentMedia.hasSession || !currentMedia.duration || currentMedia.duration <= 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setIsScrubbing(true);
+    const sec = calculateScrubSeconds(e.clientX);
+    if (sec !== null) {
+      setScrubPosition(sec);
+      setPos(sec);
+    }
+
+    const handleMouseMove = (moveEvent) => {
+      const moveSec = calculateScrubSeconds(moveEvent.clientX);
+      if (moveSec !== null) {
+        setScrubPosition(moveSec);
+        setPos(moveSec);
+      }
+    };
+
+    const handleMouseUp = (upEvent) => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      setIsScrubbing(false);
+      const finalSec = calculateScrubSeconds(upEvent.clientX);
+      if (finalSec !== null) {
+        setScrubPosition(null);
+        setPos(finalSec);
+        window.twocode?.mediaControl?.('seek', finalSec);
+      } else {
+        setScrubPosition(null);
+      }
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  };
+
+  const handleClick = (e) => {
+    if (!currentMedia.hasSession || !currentMedia.duration || currentMedia.duration <= 0) return;
+    e.stopPropagation();
+    const sec = calculateScrubSeconds(e.clientX);
+    if (sec !== null) {
+      setPos(sec);
+      window.twocode?.mediaControl?.('seek', sec);
+    }
+  };
+
+  const displayPos = isScrubbing && scrubPosition !== null ? scrubPosition : pos;
+  const pct = currentMedia.duration > 0
+    ? Math.min(100, Math.max(0, ((displayPos || 0) / currentMedia.duration) * 100))
+    : 0;
+
+  return (
+    <div className="music-progress-row">
+      <span className="music-time-label">{formatMMSS(displayPos)}</span>
+      <div
+        ref={trackRef}
+        className={`music-scrubber-track ${isScrubbing ? 'is-scrubbing' : ''}`}
+        role="slider"
+        tabIndex={0}
+        aria-label="Parça ilerlemesi"
+        aria-valuemin={0}
+        aria-valuemax={currentMedia.duration || 0}
+        aria-valuenow={Math.round(displayPos || 0)}
+        onClick={handleClick}
+        onMouseDown={handleMouseDown}
+      >
+        <div className="music-scrubber-fill" style={{ width: `${pct}%` }} />
+        <div className="music-scrubber-thumb" style={{ left: `${pct}%` }} />
+      </div>
+      <span className="music-time-label">
+        -{formatMMSS(Math.max(0, (currentMedia.duration || 0) - (displayPos || 0)))}
+      </span>
+    </div>
+  );
+});
+
 export default function App() {
   // Island mode: 'idle' | 'mini-progress' | 'battery' | 'music-bar' | 'expanded'
   const [islandMode, setIslandMode] = useState('idle');
+  const [expandedKeepAlive, setExpandedKeepAlive] = useState(false);
+  useEffect(() => {
+    if (islandMode === 'expanded') {
+      setExpandedKeepAlive(true);
+      return undefined;
+    }
+    const t = setTimeout(() => setExpandedKeepAlive(false), 260);
+    return () => clearTimeout(t);
+  }, [islandMode]);
+  const shouldRenderExpanded = islandMode === 'expanded' || expandedKeepAlive;
   const [gameModeActive, setGameModeActive] = useState(false);
   // Right-click thin progress bar toggle
   const [isMiniProgressBar, setIsMiniProgressBar] = useState(false);
@@ -957,6 +1116,78 @@ export default function App() {
   const [notificationHistoryOpen, setNotificationHistoryOpen] = useState(false);
   const notificationHistoryPanelRef = useRef(null);
   const notificationHistoryTriggerRef = useRef(null);
+  const [notifPreview, setNotifPreview] = useState({
+    visible: false,
+    title: '',
+    body: '',
+    time: '',
+    accentRgb: '56, 189, 248',
+    accentHex: '#38bdf8',
+    x: 0,
+    y: 0,
+    width: 340,
+    maxHeight: 220,
+    placement: 'bottom',
+  });
+  const notifPreviewTimerRef = useRef(null);
+
+  const hideNotifPreview = useCallback(() => {
+    clearTimeout(notifPreviewTimerRef.current);
+    notifPreviewTimerRef.current = null;
+    setNotifPreview((prev) => (prev.visible ? { ...prev, visible: false } : prev));
+  }, []);
+
+  const scheduleNotifPreview = useCallback((event, item, title, body, accent) => {
+    clearTimeout(notifPreviewTimerRef.current);
+    const buttonEl = event.currentTarget;
+    if (!buttonEl) return;
+
+    notifPreviewTimerRef.current = setTimeout(() => {
+      if (!buttonEl.isConnected) return;
+      const titleEl = buttonEl.querySelector('.notif-card-title');
+      const bodyEl = buttonEl.querySelector('.notif-card-body');
+      const isTitleTruncated = Boolean(titleEl && titleEl.scrollWidth > titleEl.clientWidth + 1);
+      const isBodyTruncated = Boolean(bodyEl && bodyEl.scrollWidth > bodyEl.clientWidth + 1);
+      if (!isTitleTruncated && !isBodyTruncated) return;
+
+      const cardEl = buttonEl.closest('.notif-card') || buttonEl;
+      const rect = cardEl.getBoundingClientRect();
+      const viewportW = window.innerWidth;
+      const viewportH = window.innerHeight;
+      const width = Math.min(Math.max(rect.width, 260), viewportW - 20);
+      const left = Math.max(10, Math.min(viewportW - width - 10, rect.left));
+      const spaceBelow = viewportH - rect.bottom - 10;
+      const spaceAbove = rect.top - 10;
+      const placement = spaceBelow >= 130 || spaceBelow >= spaceAbove ? 'bottom' : 'top';
+      const availableSpace = placement === 'bottom' ? spaceBelow : spaceAbove;
+      const maxHeight = Math.min(240, Math.max(96, availableSpace - 6));
+      const top = placement === 'bottom' ? rect.bottom + 6 : rect.top - 6;
+
+      setNotifPreview({
+        visible: true,
+        title,
+        body,
+        time: formatNotifTime(item.timestamp),
+        accentRgb: accent.rgb,
+        accentHex: accent.hex,
+        x: left,
+        y: top,
+        width,
+        maxHeight,
+        placement,
+      });
+    }, 450);
+  }, []);
+
+  useEffect(() => {
+    if (!notificationHistoryOpen) {
+      hideNotifPreview();
+    }
+  }, [notificationHistoryOpen, hideNotifPreview]);
+
+  useEffect(() => () => {
+    clearTimeout(notifPreviewTimerRef.current);
+  }, []);
   const [notificationHistory, setNotificationHistory] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem('twocode-notification-history') || '[]')
@@ -1774,7 +2005,11 @@ export default function App() {
     try { localStorage.setItem('twocode-notification-history', JSON.stringify(notificationHistory.slice(0, 100))); } catch { }
   }, [notificationHistory]);
   const openNotification = (item) => {
+    const hadUnread = notificationHistory.some((entry) => entry.id === item?.id && !entry.isRead);
     setNotificationHistory((items) => items.map((entry) => entry.id === item?.id ? { ...entry, isRead: true } : entry));
+    if (hadUnread) {
+      triggerRoboReaction('notif-read', 3, 950);
+    }
     if (hoverExpandTimerRef.current) {
       clearTimeout(hoverExpandTimerRef.current);
       hoverExpandTimerRef.current = null;
@@ -1844,51 +2079,40 @@ export default function App() {
     return Math.round(Math.min(460, Math.max(210, contentWidth + 118)));
   }, [notifPresentation.title, notifPresentation.subtitle, notifPresentation.app]);
 
-  const liveMediaRef = useRef(liveMedia);
-  liveMediaRef.current = liveMedia;
-  const scrubberTrackRef = useRef(null);
-  const [isScrubbing, setIsScrubbing] = useState(false);
-  const [scrubPosition, setScrubPosition] = useState(null);
-  const [smoothPosition, setSmoothPosition] = useState(0);
-  const lastMediaTickRef = useRef(Date.now());
+  const dynamicNotifToastHeight = useMemo(() => {
+    const title = String(notifPresentation.title || '').trim();
+    const rawSub = String(notifPresentation.subtitle || '').trim();
+    const hasSub = Boolean(rawSub && rawSub !== title && rawSub !== notifPresentation.app);
+    return hasSub ? 60 : 50;
+  }, [notifPresentation.title, notifPresentation.subtitle, notifPresentation.app]);
 
-  useEffect(() => {
-    if (!isScrubbing && liveMedia && typeof liveMedia.position === 'number') {
-      setSmoothPosition(liveMedia.position);
-      lastMediaTickRef.current = Date.now();
+  const dynamicHudSize = useMemo(() => {
+    if (hudOverlay.type === 'ghelper' && hudOverlay.ghelper) {
+      if (hudOverlay.ghelper.category === 'aura') {
+        const valLen = String(hudOverlay.ghelper.valueText || '').trim().length;
+        return {
+          width: Math.round(Math.min(346, Math.max(290, 210 + valLen * 7.5))),
+          height: 38,
+        };
+      }
+      const labelLen = String(hudOverlay.ghelper.label || '').trim().length;
+      const valLen = String(hudOverlay.ghelper.valueText || '').trim().length;
+      const hasDots = hudOverlay.ghelper.category === 'backlight' && typeof hudOverlay.ghelper.level === 'number';
+      const extra = (hasDots ? 28 : 0) + (hudOverlay.ghelper.category === 'mic' ? 12 : 0);
+      const w = Math.round(Math.min(340, Math.max(200, 96 + labelLen * 6.8 + valLen * 8.2 + extra)));
+      return { width: w, height: 38 };
     }
-  }, [liveMedia?.position, liveMedia?.title, isScrubbing]);
+    // Volume or Brightness HUD: compact & balanced
+    return { width: 278, height: 36 };
+  }, [hudOverlay]);
 
-  // Advance by real elapsed time so lyric timing stays locked to the media clock.
-  // ONLY run when media is actively playing AND a media-displaying surface is visible.
-  useEffect(() => {
-    const mediaUiVisible =
-      islandMode === 'expanded' ||
-      islandMode === 'music-bar' ||
-      islandMode === 'focus-bar-media';
-    if (!liveMedia?.isPlaying || isScrubbing || !mediaUiVisible) return;
-    lastMediaTickRef.current = Date.now();
-    const mediaTick = setInterval(() => {
-      const now = Date.now();
-      const elapsed = Math.min(1, Math.max(0, (now - lastMediaTickRef.current) / 1000));
-      lastMediaTickRef.current = now;
-      const media = liveMediaRef.current;
-      if (!media || !media.hasSession || !media.isPlaying) return;
-      setSmoothPosition((prev) => {
-        const next = prev + elapsed;
-        return media.duration > 0 ? Math.min(media.duration, next) : next;
-      });
-    }, 250);
-    return () => clearInterval(mediaTick);
-  }, [liveMedia?.isPlaying, isScrubbing, islandMode]);
-
-  // Active media comes strictly from live Windows SMTC with sub-second smooth position
+  // Active media comes strictly from live Windows SMTC without triggering 4Hz App re-renders
   const currentMedia = useMemo(() => {
     if (liveMedia && liveMedia.hasSession && liveMedia.title) {
       return {
         ...liveMedia,
         isLive: true,
-        position: smoothPosition,
+        position: liveMedia.position || 0,
         thumbnail: liveMedia.thumbnail || '',
         lyrics: liveMedia.lyrics || [],
       };
@@ -1905,7 +2129,7 @@ export default function App() {
       thumbnail: '',
       lyrics: [],
     };
-  }, [liveMedia, smoothPosition]);
+  }, [liveMedia]);
 
   const musicAccent = useDominantColor(currentMedia.thumbnail);
 
@@ -1918,29 +2142,65 @@ export default function App() {
         ? musicAccent.hex
         : '#ffffff';
 
+  // Compute active lyric index without re-rendering App on every sub-second tick:
+  // App only updates when the active lyric line index actually changes.
+  const computeLyricIndex = useCallback((list, pos) => {
+    if (!list || list.length === 0) return -1;
+    if (list[0]?.time && pos < (list[0].time - 0.5)) return -2; // intro
+    let idx = 0;
+    for (let i = 0; i < list.length; i++) {
+      if (pos >= list[i].time) idx = i;
+      else break;
+    }
+    return idx;
+  }, []);
+
+  const [activeLyricIndex, setActiveLyricIndex] = useState(() =>
+    computeLyricIndex(liveMedia?.lyrics, liveMedia?.position || 0)
+  );
+  const activeLyricIndexRef = useRef(activeLyricIndex);
+  activeLyricIndexRef.current = activeLyricIndex;
+  const lyricSyncRef = useRef({ pos: liveMedia?.position || 0, at: Date.now() });
+
+  useEffect(() => {
+    const pos = liveMedia?.position || 0;
+    lyricSyncRef.current = { pos, at: Date.now() };
+    const nextIdx = computeLyricIndex(liveMedia?.lyrics, pos);
+    if (nextIdx !== activeLyricIndexRef.current) {
+      setActiveLyricIndex(nextIdx);
+    }
+  }, [liveMedia?.position, liveMedia?.title, liveMedia?.lyrics, computeLyricIndex]);
+
+  useEffect(() => {
+    const list = currentMedia.lyrics || [];
+    const lyricsSurfaceVisible =
+      islandMode === 'music-bar' || (islandMode === 'expanded' && activeTab === 'music');
+    if (islandSettings.lyricsEnabled === false || list.length === 0 || !currentMedia.isPlaying || !lyricsSurfaceVisible) {
+      return undefined;
+    }
+    const timer = setInterval(() => {
+      const elapsed = Math.max(0, (Date.now() - lyricSyncRef.current.at) / 1000);
+      const estPos = lyricSyncRef.current.pos + elapsed;
+      const nextIdx = computeLyricIndex(list, estPos);
+      if (nextIdx !== activeLyricIndexRef.current) {
+        setActiveLyricIndex(nextIdx);
+      }
+    }, 350);
+    return () => clearInterval(timer);
+  }, [currentMedia.lyrics, currentMedia.isPlaying, islandSettings.lyricsEnabled, islandMode, activeTab, computeLyricIndex]);
+
   // Synced lyrics & karaoke line progress calculation with accurate intro & break handling
   const { hasSyncedLyrics, primaryLine, secondaryLine } = useMemo(() => {
     const list = currentMedia.lyrics || [];
     if (islandSettings.lyricsEnabled !== false && list.length > 0) {
-      const pos = currentMedia.position || 0;
-
-      // Handle instrumental intro before first sung line
-      if (list[0]?.time && pos < (list[0].time - 0.5)) {
+      if (activeLyricIndex === -2) {
         return {
           hasSyncedLyrics: true,
           primaryLine: currentMedia.title,
           secondaryLine: list[0]?.text || '',
         };
       }
-
-      let idx = 0;
-      for (let i = 0; i < list.length; i++) {
-        if (pos >= list[i].time) {
-          idx = i;
-        } else {
-          break;
-        }
-      }
+      const idx = Math.max(0, activeLyricIndex);
       const currItem = list[idx];
       const rawText = (currItem?.text || '').trim();
       const nextRawText = (list[idx + 1]?.text || '').trim();
@@ -1956,7 +2216,7 @@ export default function App() {
       primaryLine: currentMedia.title || 'Nothing playing',
       secondaryLine: currentMedia.artist || '',
     };
-  }, [currentMedia, islandSettings.lyricsEnabled]);
+  }, [currentMedia.lyrics, currentMedia.title, currentMedia.artist, islandSettings.lyricsEnabled, activeLyricIndex]);
 
   // Dynamic width for the compact music/karaoke notch taking into account cover art + lyric + soundwave + inline download orb
   const dynamicMusicBarWidth = useMemo(() => {
@@ -1992,18 +2252,30 @@ export default function App() {
     currentMedia.isPlaying,
   ]);
 
+  const collapsedBaseWidth = useMemo(() => {
+    if (resolvedCollapsedMode === 'music-bar') return dynamicMusicBarWidth + 18;
+    if (resolvedCollapsedMode === 'mini-progress') return 268;
+    if (resolvedCollapsedMode === 'focus-bar') return 126;
+    if (resolvedCollapsedMode === 'focus-bar-media') return 120;
+    return liveActivity?.active ? 200 : 146;
+  }, [resolvedCollapsedMode, dynamicMusicBarWidth, liveActivity?.active]);
+
   // Sync window shape & 60fps animation with Electron main process whenever islandMode or dynamic widths change
   useEffect(() => {
     if (islandMode === 'music-bar') {
       window.twocode?.setIslandMode('music-bar', dynamicMusicBarWidth);
     } else if (islandMode === 'notif-toast') {
       window.twocode?.setIslandMode('notif-toast', dynamicNotifToastWidth);
+    } else if (islandMode === 'hud') {
+      window.twocode?.setIslandMode('hud', dynamicHudSize.width);
+    } else if (islandMode === 'battery') {
+      window.twocode?.setIslandMode('battery', 366);
     } else if (islandMode === 'idle' && liveActivity?.active) {
       window.twocode?.setIslandMode('idle-live');
     } else {
       window.twocode?.setIslandMode(islandMode);
     }
-  }, [islandMode, dynamicMusicBarWidth, dynamicNotifToastWidth, liveActivity?.active]);
+  }, [islandMode, dynamicMusicBarWidth, dynamicNotifToastWidth, dynamicHudSize.width, liveActivity?.active]);
 
   // Keep collapsed notch updated if media starts/pauses/stops while collapsed
   useEffect(() => {
@@ -2144,31 +2416,52 @@ export default function App() {
     };
   }, []);
 
-  // Synchronize clock when expanded only if stale (>1s) to avoid redundant re-render on hover
+  // Synchronize clock when expanded only if minute/hour/date changed to avoid redundant re-render
   useEffect(() => {
     if (islandMode === 'expanded') {
-      setNow((prev) => (Date.now() - prev.getTime() >= 1000 ? new Date() : prev));
+      setNow((prev) => {
+        const d = new Date();
+        if (
+          d.getMinutes() === prev.getMinutes() &&
+          d.getHours() === prev.getHours() &&
+          d.getDate() === prev.getDate()
+        ) {
+          return prev;
+        }
+        return d;
+      });
     }
   }, [islandMode]);
 
-  // Clock & Focus timer: Ticks every 1s when expanded or timer is actively counting down;
-  // otherwise idles down to 30s ticks to avoid continuous React re-renders and V8 heap churn.
+  // Clock & Focus timer: Ticks every 1s when expanded or timer is actively counting down,
+  // but `now` only updates state when the displayed minute changes (60x fewer App re-renders).
   useEffect(() => {
     const isHighFrequencyNeeded = islandMode === 'expanded' || timerRunning;
     const intervalMs = isHighFrequencyNeeded ? 1000 : 30000;
     const timer = setInterval(() => {
-      setNow(new Date());
-      setTimerSeconds((prev) => {
-        if (!timerRunning) return prev;
-        if (prev <= 1) {
-          setTimerRunning(false);
-          playNotifSound(islandSettings.notifSound || 'Ding', islandSettings.soundEffects !== false);
-          playRoboSound('happy', islandSettings.soundEffects !== false);
-          setRoboMood('happy');
-          return focusMinutes * 60;
+      setNow((prev) => {
+        const d = new Date();
+        if (
+          d.getMinutes() === prev.getMinutes() &&
+          d.getHours() === prev.getHours() &&
+          d.getDate() === prev.getDate()
+        ) {
+          return prev;
         }
-        return prev - 1;
+        return d;
       });
+      if (timerRunning) {
+        setTimerSeconds((prev) => {
+          if (prev <= 1) {
+            setTimerRunning(false);
+            playNotifSound(islandSettings.notifSound || 'Ding', islandSettings.soundEffects !== false);
+            playRoboSound('happy', islandSettings.soundEffects !== false);
+            setRoboMood('happy');
+            return focusMinutes * 60;
+          }
+          return prev - 1;
+        });
+      }
     }, intervalMs);
     return () => clearInterval(timer);
   }, [islandMode, timerRunning, focusMinutes, islandSettings.notifSound, islandSettings.soundEffects]);
@@ -2223,7 +2516,10 @@ export default function App() {
       const stayMs = Math.max(3000, (Number(islandSettings.notifDurationSec) || 5) * 1000);
       isShowingNotifToastRef.current = true;
       setIslandMode((curr) => {
-        const prevMode = curr === 'notif-toast' ? resolvedCollapsedModeRef.current : curr;
+        const prevMode =
+          curr === 'notif-toast' || curr === 'hud' || curr === 'battery'
+            ? resolvedCollapsedModeRef.current
+            : curr;
         if (notifTimerRef.current) clearTimeout(notifTimerRef.current);
         notifPrevModeRef.current = prevMode;
         notifRemainingMsRef.current = stayMs;
@@ -2539,13 +2835,6 @@ export default function App() {
     return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   };
 
-  const formatMMSS = (sec) => {
-    const s = Math.max(0, Math.floor(sec || 0));
-    const m = Math.floor(s / 60);
-    const r = s % 60;
-    return `${m}:${String(r).padStart(2, '0')}`;
-  };
-
   const formatTimerBig = (sec) => {
     const s = Math.max(0, Math.floor(sec || 0));
     const m = Math.floor(s / 60);
@@ -2597,6 +2886,22 @@ export default function App() {
     window.twocode?.launchMusicService?.(service);
   };
 
+  const handleOpenMediaSource = (e) => {
+    if (e) e.stopPropagation();
+    if (!currentMedia.hasSession) return;
+    playRoboSound('tap', islandSettings.soundEffects !== false);
+    window.twocode?.focusMediaSource?.({
+      sourceApp: currentMedia.sourceApp || '',
+      title: currentMedia.title || '',
+      artist: currentMedia.artist || '',
+    });
+    if (islandMode === 'expanded') {
+      setShowMenu(false);
+      setNotificationHistoryOpen(false);
+      setIslandMode(resolvedCollapsedMode);
+    }
+  };
+
   const handleNext = (e) => {
     if (e) e.stopPropagation();
     playRoboSound('tap', islandSettings.soundEffects !== false);
@@ -2607,61 +2912,6 @@ export default function App() {
     if (e) e.stopPropagation();
     playRoboSound('tap', islandSettings.soundEffects !== false);
     window.twocode?.mediaControl('prev');
-  };
-
-  const calculateScrubSeconds = (clientX) => {
-    if (!scrubberTrackRef.current || !currentMedia.duration || currentMedia.duration <= 0) return null;
-    const rect = scrubberTrackRef.current.getBoundingClientRect();
-    if (rect.width <= 0) return null;
-    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-    return ratio * currentMedia.duration;
-  };
-
-  const handleScrubberMouseDown = (e) => {
-    if (!currentMedia.hasSession || !currentMedia.duration || currentMedia.duration <= 0) return;
-    e.preventDefault();
-    e.stopPropagation();
-    setIsScrubbing(true);
-    const sec = calculateScrubSeconds(e.clientX);
-    if (sec !== null) {
-      setScrubPosition(sec);
-      setSmoothPosition(sec);
-    }
-
-    const handleMouseMove = (moveEvent) => {
-      const moveSec = calculateScrubSeconds(moveEvent.clientX);
-      if (moveSec !== null) {
-        setScrubPosition(moveSec);
-        setSmoothPosition(moveSec);
-      }
-    };
-
-    const handleMouseUp = (upEvent) => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-      setIsScrubbing(false);
-      const finalSec = calculateScrubSeconds(upEvent.clientX);
-      if (finalSec !== null) {
-        setScrubPosition(null);
-        setSmoothPosition(finalSec);
-        window.twocode?.mediaControl?.('seek', finalSec);
-      } else {
-        setScrubPosition(null);
-      }
-    };
-
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
-  };
-
-  const handleScrubberClick = (e) => {
-    if (!currentMedia.hasSession || !currentMedia.duration || currentMedia.duration <= 0) return;
-    e.stopPropagation();
-    const sec = calculateScrubSeconds(e.clientX);
-    if (sec !== null) {
-      setSmoothPosition(sec);
-      window.twocode?.mediaControl?.('seek', sec);
-    }
   };
 
   const updateRulerMinutes = (clientX) => {
@@ -2809,14 +3059,6 @@ export default function App() {
 
   const activeRecentJobs = agentActivity;
 
-  const progressPercent =
-    currentMedia.duration > 0
-      ? Math.min(100, Math.max(0, (currentMedia.position / currentMedia.duration) * 100))
-      : currentMedia.hasSession
-        ? 35
-        : 0;
-  const remainingSec = Math.max(0, (currentMedia.duration || 0) - (currentMedia.position || 0));
-
   // Robo's eyes & props reflect the most relevant live device/app state (never random).
   const topEyeMood = timerRunning || activeTab === 'timer'
     ? 'focus-arc'
@@ -2837,6 +3079,7 @@ export default function App() {
     ? modeToggles.onlyClaude ? 'Yalnızca Claude bildirimleri' : allNotificationsEnabled ? 'Tüm bildirimler açık' : 'Bildirimler kapalı'
     : [modeToggles.onlyClaude ? 'Claude öncelikli' : '', modeToggles.blockSocial ? 'Sosyal sınırları açık' : ''].filter(Boolean).join(' · ') || 'Bildirimler serbest';
   const unreadNotificationCount = notificationHistory.filter((item) => !item.isRead).length;
+  const pendingAgendaCount = agendaItems.filter((item) => !item?.completed).length;
   const currentMailFolder = MAIL_FOLDERS.find((folder) => folder.id === mailCategory) || MAIL_FOLDERS[0];
   const CurrentMailFolderIcon = currentMailFolder.icon;
   const mailIsConnected = Boolean(googleData?.connected || islandSettings.googleConnected);
@@ -2852,6 +3095,9 @@ export default function App() {
   });
   const openNotificationHistory = () => {
     setShowMenu(false);
+    if (unreadNotificationCount > 0) {
+      triggerRoboReaction('notif-read', 3, 950);
+    }
     setNotificationHistory((items) => items.map((item) => ({ ...item, isRead: true })));
     setNotificationHistoryOpen((open) => !open);
   };
@@ -2862,6 +3108,14 @@ export default function App() {
   const handleDeleteAgendaEvent = (eventId) => {
     setAgendaItems((items) => items.filter((event) => String(event.id) !== String(eventId)));
     window.twocode?.deleteAgendaEvent?.(eventId);
+  };
+  const handleToggleAgendaEvent = (eventId) => {
+    setAgendaItems((items) =>
+      items.map((event) =>
+        String(event.id) === String(eventId) ? { ...event, completed: !event.completed } : event
+      )
+    );
+    window.twocode?.toggleAgendaEvent?.(eventId);
   };
 
   return (
@@ -2899,6 +3153,10 @@ export default function App() {
           '--robo-eye-color': islandSettings.eyeColorHex || '#ffffff',
           '--dynamic-music-w': `${dynamicMusicBarWidth}px`,
           '--dynamic-notif-w': `${dynamicNotifToastWidth}px`,
+          '--dynamic-notif-h': `${dynamicNotifToastHeight}px`,
+          '--dynamic-hud-w': `${dynamicHudSize.width}px`,
+          '--dynamic-hud-h': `${dynamicHudSize.height}px`,
+          '--collapsed-base-w': `${collapsedBaseWidth}px`,
           ...(hudOverlay.ghelper?.color ? {
             '--ghelper-aura-color': hudOverlay.ghelper.color,
             '--ghelper-aura-color2': hudOverlay.ghelper.color2 || hudOverlay.ghelper.color,
@@ -2962,6 +3220,8 @@ export default function App() {
                 size="normal"
                 batteryPercent={batteryPercent}
                 batteryCharging={batteryCharging}
+                unreadNotificationCount={unreadNotificationCount}
+                pendingAgendaCount={pendingAgendaCount}
               />
             </div>
           )}
@@ -2976,12 +3236,7 @@ export default function App() {
             }`}
           title="Normal görünüme dönmek için sağ tıkla veya tıkla"
         >
-          <div className="mini-progress-track">
-            <div
-              className="mini-progress-fill"
-              style={{ width: `${Math.max(6, progressPercent)}%` }}
-            />
-          </div>
+          <MiniProgressBar liveMedia={liveMedia} active={islandMode === 'mini-progress'} />
         </div>
 
         {/* ============================================================
@@ -3052,7 +3307,7 @@ export default function App() {
         {/* ============================================================
             COLLAPSED LAYER 2B: SYSTEM VOLUME / BRIGHTNESS HUD NOTCH
             ============================================================ */}
-        <div className={`morph-layer layer-hud ${hudOverlay.type === 'ghelper' ? 'is-ghelper' : ''} ${hudOverlay.ghelper?.category === 'aura' ? `is-aura effect-${hudOverlay.ghelper.effectType || 'static'}` : ''} ${islandMode === 'hud' || isSystemHudVisible ? 'is-visible' : ''}`}>
+        <div className={`morph-layer layer-hud ${hudOverlay.type === 'ghelper' ? 'is-ghelper' : ''} ${hudOverlay.ghelper?.category === 'aura' ? `is-aura effect-${hudOverlay.ghelper.effectType || 'static'}` : ''} ${islandMode === 'hud' || (islandMode === 'expanded' && isSystemHudVisible) ? 'is-visible' : ''}`}>
           {hudOverlay.type === 'ghelper' && hudOverlay.ghelper ? (
             hudOverlay.ghelper.category === 'aura' ? (
               <div className={`hud-aura-clean effect-${hudOverlay.ghelper.effectType || 'static'}`}>
@@ -3249,7 +3504,14 @@ export default function App() {
           className={`morph-layer layer-music-bar ${islandMode === 'music-bar' ? 'is-visible' : ''
             } ${hasSyncedLyrics ? 'is-karaoke-mode' : ''}`}
         >
-          <div className="compact-left">
+          <div
+            className="compact-left"
+            onClick={(e) => {
+              if (currentMedia.hasSession) handleOpenMediaSource(e);
+            }}
+            title={currentMedia.hasSession ? 'Çaldığı sekmeyi / uygulamayı aç' : undefined}
+            style={currentMedia.hasSession ? { cursor: 'pointer' } : undefined}
+          >
             {currentMedia.thumbnail ? (
               <img
                 src={currentMedia.thumbnail}
@@ -3310,6 +3572,8 @@ export default function App() {
           className={`morph-layer layer-expanded ${islandMode === 'expanded' ? 'is-visible' : ''
             }`}
         >
+          {shouldRenderExpanded && (
+            <>
           {/* TOP STATUS BAR */}
           <header className="island-topbar">
             <div className="topbar-left">
@@ -3499,6 +3763,8 @@ export default function App() {
                     active={documentVisible && (islandMode === 'expanded' || Boolean(roboReaction))}
                     batteryPercent={batteryPercent}
                     batteryCharging={batteryCharging}
+                    unreadNotificationCount={unreadNotificationCount}
+                    pendingAgendaCount={pendingAgendaCount}
                     onPoke={(m) => {
                       setRoboMood(m);
                       playRoboSound(m, islandSettings.soundEffects !== false);
@@ -3788,84 +4054,82 @@ export default function App() {
                 </div>
               </header>
 
-              <div className="notification-history-list">
-                {notificationHistory.length ? notificationHistory.map((item, index) => (
-                  <div
-                    className={`notif-card ${item.isRead ? 'is-read' : 'is-unread'}`}
-                    key={item.id}
-                    style={(() => {
-                      const accent = resolveNotifBrand(item, item.logoAccent);
-                      return {
+              <div className="notification-history-list" onScroll={hideNotifPreview}>
+                {notificationHistory.length ? notificationHistory.map((item, index) => {
+                  const accent = resolveNotifBrand(item, item.logoAccent);
+                  const cardPresentation = resolveNotificationPresentation(item);
+                  const primaryTitle = String(
+                    cardPresentation.title || item.title || item.app || 'Sistem'
+                  ).trim();
+                  const rawSub = String(cardPresentation.subtitle || item.body || '').trim();
+                  const hasBody = Boolean(
+                    rawSub &&
+                    rawSub !== primaryTitle &&
+                    rawSub !== item.app
+                  );
+                  return (
+                    <div
+                      className={`notif-card ${item.isRead ? 'is-read' : 'is-unread'}`}
+                      key={item.id}
+                      style={{
                         '--notif-accent-rgb': accent.rgb,
                         '--notif-accent-hex': accent.hex,
                         '--card-delay': `${Math.min(index * 35, 240)}ms`,
-                      };
-                    })()}
-                  >
-                    <button
-                      type="button"
-                      className="notif-card-main"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        openNotification(item);
-                      }}
-                      aria-label={`${item.app || 'Uygulama'} bildirimini aç`}
-                    >
-                      <div className="notif-card-avatar">
-                        <NotificationAvatar
-                          banner={item}
-                          brand={resolveNotifBrand(item).brand}
-                          presentation={resolveNotificationPresentation(item)}
-                        />
-                      </div>
-
-                      <div className="notif-card-content">
-                        {(() => {
-                          const cardPresentation = resolveNotificationPresentation(item);
-                          const primaryTitle = String(
-                            cardPresentation.title || item.title || item.app || 'Sistem'
-                          ).trim();
-                          const rawSub = String(cardPresentation.subtitle || item.body || '').trim();
-                          const hasBody = Boolean(
-                            rawSub &&
-                            rawSub !== primaryTitle &&
-                            rawSub !== item.app
-                          );
-                          return (
-                            <>
-                              <div className="notif-card-top-row">
-                                <span className="notif-card-title">
-                                  <NotificationText text={primaryTitle} />
-                                </span>
-                                <span className="notif-card-time">{formatNotifTime(item.timestamp)}</span>
-                              </div>
-                              {hasBody && (
-                                <div className="notif-card-message-row">
-                                  <span className="notif-card-body">
-                                    <NotificationText text={rawSub} />
-                                  </span>
-                                </div>
-                              )}
-                            </>
-                          );
-                        })()}
-                      </div>
-                    </button>
-
-                    <button
-                      type="button"
-                      className="notif-card-delete"
-                      aria-label="Bildirimi sil"
-                      title="Bildirimi sil"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setNotificationHistory((items) => items.filter((entry) => entry.id !== item.id));
                       }}
                     >
-                      <Trash2 size={13} strokeWidth={2} />
-                    </button>
-                  </div>
-                )) : (
+                      <button
+                        type="button"
+                        className="notif-card-main"
+                        onMouseEnter={(event) => scheduleNotifPreview(event, item, primaryTitle, hasBody ? rawSub : '', accent)}
+                        onMouseLeave={hideNotifPreview}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          hideNotifPreview();
+                          openNotification(item);
+                        }}
+                        aria-label={`${item.app || 'Uygulama'} bildirimini aç`}
+                      >
+                        <div className="notif-card-avatar">
+                          <NotificationAvatar
+                            banner={item}
+                            brand={accent.brand}
+                            presentation={cardPresentation}
+                          />
+                        </div>
+
+                        <div className="notif-card-content">
+                          <div className="notif-card-top-row">
+                            <span className="notif-card-title">
+                              <NotificationText text={primaryTitle} />
+                            </span>
+                            <span className="notif-card-time">{formatNotifTime(item.timestamp)}</span>
+                          </div>
+                          {hasBody && (
+                            <div className="notif-card-message-row">
+                              <span className="notif-card-body">
+                                <NotificationText text={rawSub} />
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        className="notif-card-delete"
+                        aria-label="Bildirimi sil"
+                        title="Bildirimi sil"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          hideNotifPreview();
+                          setNotificationHistory((items) => items.filter((entry) => entry.id !== item.id));
+                        }}
+                      >
+                        <Trash2 size={13} strokeWidth={2} />
+                      </button>
+                    </div>
+                  );
+                }) : (
                   <div className="notification-history-empty">
                     <div className="notification-empty-icon">
                       <Bell size={20} strokeWidth={2} />
@@ -4376,11 +4640,24 @@ export default function App() {
                                         src={currentMedia.thumbnail}
                                         alt=""
                                         className="mini-card-cover"
+                                        onClick={currentMedia.hasSession ? handleOpenMediaSource : undefined}
+                                        title={currentMedia.hasSession ? 'Çaldığı sekmeyi / uygulamayı aç' : undefined}
+                                        style={currentMedia.hasSession ? { cursor: 'pointer' } : undefined}
                                       />
                                     ) : (
-                                      <div className="mini-card-cover crimson-placeholder-cover" />
+                                      <div
+                                        className="mini-card-cover crimson-placeholder-cover"
+                                        onClick={currentMedia.hasSession ? handleOpenMediaSource : undefined}
+                                        title={currentMedia.hasSession ? 'Çaldığı sekmeyi / uygulamayı aç' : undefined}
+                                        style={currentMedia.hasSession ? { cursor: 'pointer' } : undefined}
+                                      />
                                     )}
-                                    <div className="home-card-meta truncate">
+                                    <div
+                                      className="home-card-meta truncate"
+                                      onClick={currentMedia.hasSession ? handleOpenMediaSource : undefined}
+                                      title={currentMedia.hasSession ? 'Çaldığı sekmeyi / uygulamayı aç' : undefined}
+                                      style={currentMedia.hasSession ? { cursor: 'pointer' } : undefined}
+                                    >
                                       <strong className="home-card-title">
                                         {currentMedia.title}
                                       </strong>
@@ -4516,7 +4793,12 @@ export default function App() {
                     {activeTab === 'music' && (
                       <div className="music-view">
                         <div className="music-art-column">
-                          <div className={`music-cover-art ${currentMedia.thumbnail ? 'has-art' : ''}`}>
+                          <div
+                            className={`music-cover-art ${currentMedia.thumbnail ? 'has-art' : ''}`}
+                            onClick={currentMedia.hasSession ? handleOpenMediaSource : undefined}
+                            title={currentMedia.hasSession ? 'Çaldığı sekmeyi / uygulamayı aç' : undefined}
+                            style={currentMedia.hasSession ? { cursor: 'pointer' } : undefined}
+                          >
                             {currentMedia.thumbnail ? (
                               <img src={currentMedia.thumbnail} alt={`${currentMedia.title} albüm kapağı`} />
                             ) : (
@@ -4525,7 +4807,13 @@ export default function App() {
                           </div>
                         </div>
                         <div className="music-right-panel">
-                          <div className="music-track-header" aria-live="polite">
+                          <div
+                            className="music-track-header"
+                            aria-live="polite"
+                            onClick={currentMedia.hasSession ? handleOpenMediaSource : undefined}
+                            title={currentMedia.hasSession ? 'Çaldığı sekmeyi / uygulamayı aç' : undefined}
+                            style={currentMedia.hasSession ? { cursor: 'pointer' } : undefined}
+                          >
                             <span className={`music-status-dot ${currentMedia.isPlaying ? 'is-playing' : ''}`} />
                             <span>{currentMedia.hasSession ? 'NOW PLAYING' : 'Nothing playing'}</span>
                             <span className="music-track-dot">·</span>
@@ -4544,45 +4832,10 @@ export default function App() {
                             {secondaryLine && <p className="lyric-line-next">{secondaryLine}</p>}
                           </div>
 
-                          <div className="music-progress-row">
-                            <span className="music-time-label">
-                              {formatMMSS(isScrubbing && scrubPosition !== null ? scrubPosition : currentMedia.position)}
-                            </span>
-                            <div
-                              ref={scrubberTrackRef}
-                              className={`music-scrubber-track ${isScrubbing ? 'is-scrubbing' : ''}`}
-                              role="slider"
-                              tabIndex={0}
-                              aria-label="Parça ilerlemesi"
-                              aria-valuemin={0}
-                              aria-valuemax={currentMedia.duration || 0}
-                              aria-valuenow={Math.round(isScrubbing && scrubPosition !== null ? scrubPosition : (currentMedia.position || 0))}
-                              onClick={handleScrubberClick}
-                              onMouseDown={handleScrubberMouseDown}
-                            >
-                              <div
-                                className="music-scrubber-fill"
-                                style={{
-                                  width: `${currentMedia.duration > 0
-                                    ? Math.min(100, Math.max(0, (((isScrubbing && scrubPosition !== null ? scrubPosition : currentMedia.position) || 0) / currentMedia.duration) * 100))
-                                    : 0
-                                    }%`,
-                                }}
-                              />
-                              <div
-                                className="music-scrubber-thumb"
-                                style={{
-                                  left: `${currentMedia.duration > 0
-                                    ? Math.min(100, Math.max(0, (((isScrubbing && scrubPosition !== null ? scrubPosition : currentMedia.position) || 0) / currentMedia.duration) * 100))
-                                    : 0
-                                    }%`,
-                                }}
-                              />
-                            </div>
-                            <span className="music-time-label">
-                              -{formatMMSS(Math.max(0, (currentMedia.duration || 0) - (isScrubbing && scrubPosition !== null ? scrubPosition : (currentMedia.position || 0))))}
-                            </span>
-                          </div>
+                          <MusicProgressRow
+                            currentMedia={currentMedia}
+                            active={islandMode === 'expanded' && activeTab === 'music'}
+                          />
 
                           <div className="music-controls-row">
                             {!currentMedia.hasSession && showMusicServicePicker ? (
@@ -5396,6 +5649,7 @@ export default function App() {
                         events={agendaItems}
                         onAddEvent={handleAddAgendaEvent}
                         onDeleteEvent={handleDeleteAgendaEvent}
+                        onToggleEvent={handleToggleAgendaEvent}
                       />
                     )}
                     {activeTab === 'perf' && islandMode === 'expanded' && <PerfMonitorTab />}
@@ -5531,6 +5785,8 @@ export default function App() {
               </footer>
             </>
           )}
+            </>
+          )}
         </div>
       </div>
 
@@ -5563,6 +5819,36 @@ export default function App() {
       >
         <div className="modern-tooltip-bubble">
           {renderTooltipContent(tooltipState.text)}
+        </div>
+      </div>
+
+      {/* Notification History Full-Message Hover Preview */}
+      <div
+        className={`notif-history-preview-portal is-${notifPreview.placement} ${notifPreview.visible ? 'is-visible' : 'is-hidden'}`}
+        style={{
+          left: notifPreview.x,
+          top: notifPreview.y,
+          width: notifPreview.width,
+          maxHeight: notifPreview.maxHeight,
+          '--notif-accent-rgb': notifPreview.accentRgb,
+          '--notif-accent-hex': notifPreview.accentHex,
+        }}
+        aria-hidden="true"
+      >
+        <div className="notif-history-preview-card">
+          <div className="notif-history-preview-header">
+            <span className="notif-history-preview-title">
+              <NotificationText text={notifPreview.title} />
+            </span>
+            {notifPreview.time && (
+              <span className="notif-history-preview-time">{notifPreview.time}</span>
+            )}
+          </div>
+          {notifPreview.body && (
+            <div className="notif-history-preview-body">
+              <NotificationText text={notifPreview.body} />
+            </div>
+          )}
         </div>
       </div>
     </div>

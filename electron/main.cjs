@@ -35,7 +35,7 @@ const { createPerfMonitor } = require('./perf-monitor.cjs');
 const perfMonitor = createPerfMonitor();
 
 app.commandLine.appendSwitch('no-sandbox');
-app.commandLine.appendSwitch('js-flags', '--expose-gc --max-old-space-size=96 --optimize-for-size');
+app.commandLine.appendSwitch('js-flags', '--expose-gc --max-old-space-size=192');
 app.commandLine.appendSwitch('disable-breakpad');
 app.commandLine.appendSwitch('disable-component-update');
 app.commandLine.appendSwitch('disable-dev-shm-usage');
@@ -55,31 +55,26 @@ app.commandLine.appendSwitch(
   'SpareRendererForSitePerProcess,CalculateNativeWinOcclusion,InterestFeedContentSuggestions,AutofillServerCommunication,CertificateTransparencyComponentUpdater'
 );
 
-function trimWorkingSetAndGC() {
+function trimWorkingSetAndGC({ trimWorkingSet = false } = {}) {
   try {
     if (global.gc) {
       global.gc();
     }
   } catch {}
-  try {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents
-        .executeJavaScript('if (window.gc) { try { window.gc(); } catch(e){} }', true)
-        .catch(() => {});
-    }
-  } catch {}
-  try {
-    if (process.platform === 'win32' && typeof process.trimWorkingSet === 'function') {
-      process.trimWorkingSet();
-    }
-  } catch {}
+  if (trimWorkingSet) {
+    try {
+      if (process.platform === 'win32' && typeof process.trimWorkingSet === 'function') {
+        process.trimWorkingSet();
+      }
+    } catch {}
+  }
 }
 
 const CANVAS_WIDTH = 700;
 const CANVAS_HEIGHT = 320;
 
 const MODE_DIMENSIONS = {
-  idle: { bodyWidth: 130, height: 20, earRadius: 8, bottomRadius: 10, droplet: 0 },
+  idle: { bodyWidth: 136, height: 22, earRadius: 8, bottomRadius: 11, droplet: 0 },
   'idle-live': { bodyWidth: 184, height: 22, earRadius: 8, bottomRadius: 11, droplet: 0 },
   'mini-progress': { bodyWidth: 268, height: 12, earRadius: 7, bottomRadius: 6, droplet: 0 },
   hud: { bodyWidth: 312, height: 36, earRadius: 0, bottomRadius: 18, droplet: 0 },
@@ -1252,7 +1247,7 @@ function openOrFocusSettingsWindow(tabId = 'home') {
 
   settingsWindow.on('closed', () => {
     settingsWindow = null;
-    trimWorkingSetAndGC();
+    trimWorkingSetAndGC({ trimWorkingSet: true });
   });
 }
 
@@ -1448,22 +1443,41 @@ function animateWindowShapeToMode(modeOrExpanded, customBodyWidth) {
         ? Math.min(360, Math.max(222, Math.round(customBodyWidth)))
         : modeKey === 'notif-toast' && typeof customBodyWidth === 'number' && customBodyWidth >= 180
         ? Math.min(460, Math.max(210, Math.round(customBodyWidth)))
+        : modeKey === 'hud' && typeof customBodyWidth === 'number' && customBodyWidth >= 180
+        ? Math.min(460, Math.max(180, Math.round(customBodyWidth)))
+        : modeKey === 'battery' && typeof customBodyWidth === 'number' && customBodyWidth >= 300
+        ? Math.min(460, Math.max(366, Math.round(customBodyWidth)))
         : baseTarget.bodyWidth,
   };
 }
 
 function startCursorHoverWatcher() {
   let cachedBounds = null;
-  setInterval(() => {
-    if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible()) return;
-    if (gameModeActive) {
-      isHoveringNotch = false;
-      if (leaveTimer) clearTimeout(leaveTimer);
-      leaveTimer = null;
-      updateWindowMouseIgnore(true);
-      return;
-    }
+  let hoverTimer = null;
+
+  const invalidateBounds = () => {
+    cachedBounds = null;
+  };
+  screen.on('display-metrics-changed', invalidateBounds);
+  screen.on('display-added', invalidateBounds);
+  screen.on('display-removed', invalidateBounds);
+
+  const tick = () => {
+    let nextDelay = 180;
     try {
+      if (isSystemLockedOrSuspended || !mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible()) {
+        nextDelay = 400;
+        return;
+      }
+      if (gameModeActive) {
+        isHoveringNotch = false;
+        if (leaveTimer) clearTimeout(leaveTimer);
+        leaveTimer = null;
+        updateWindowMouseIgnore(true);
+        nextDelay = 400;
+        return;
+      }
+
       if (!cachedBounds) cachedBounds = mainWindow.getBounds();
       const pt = screen.getCursorScreenPoint();
       const relX = pt.x - cachedBounds.x;
@@ -1485,6 +1499,13 @@ function startCursorHoverWatcher() {
 
       updateWindowMouseIgnore(!insideActiveNotch);
 
+      const nearNotch =
+        relY >= -20 &&
+        relY <= currentShape.height + 160 &&
+        relX >= leftEdge - 160 &&
+        relX <= rightEdge + dropletExtra + 160;
+      nextDelay = nearNotch || isHoveringNotch || currentModeKey === 'expanded' ? 60 : 180;
+
       if (userSettings.islandOpenMode === 'On click' && currentModeKey !== 'expanded') return;
 
       if (insideActiveNotch && !isHoveringNotch) {
@@ -1503,8 +1524,12 @@ function startCursorHoverWatcher() {
           }
         }, 180);
       }
-    } catch {}
-  }, 60);
+    } catch {} finally {
+      hoverTimer = setTimeout(tick, nextDelay);
+    }
+  };
+
+  hoverTimer = setTimeout(tick, 60);
 }
 
 function createWindow() {
@@ -1608,23 +1633,27 @@ function registerGlobalShortcuts() {
 
 let systemWatcherProc = null;
 let gameModeActive = false;
+let isSystemLockedOrSuspended = false;
 let gameModeSettingsWasVisible = false;
 let agentHistoryPollTimer = null;
 let mediaPollTimeout = null;
 let clipboardPollTimer = null;
 
 function scheduleNextMediaPoll(customDelay) {
-  if (gameModeActive) return;
+  if (gameModeActive || isSystemLockedOrSuspended) return;
   if (mediaPollTimeout) clearTimeout(mediaPollTimeout);
 
   let delay = customDelay;
   if (!delay) {
+    const onBattery = powerMonitor.isOnBatteryPower();
     if (lastMediaState && lastMediaState.hasSession && lastMediaState.isPlaying) {
-      delay = 2500; // Actively playing: fast track position updates
+      // win-system-watcher.ps1 emits 'media-changed' in-process on play/pause/track changes;
+      // this timer only drift-corrects playback position without spawning PowerShell constantly.
+      delay = onBattery ? 12000 : 8000;
     } else if (lastMediaState && lastMediaState.hasSession) {
-      delay = 6000; // Paused track: moderate check
+      delay = onBattery ? 30000 : 20000;
     } else {
-      delay = 12000; // No media session: idle backoff (prevents spawning powershell constantly)
+      delay = onBattery ? 60000 : 45000;
     }
   }
 
@@ -1646,10 +1675,11 @@ function stopBackgroundPolling() {
 }
 
 function startBackgroundPolling() {
-  if (gameModeActive) return;
+  if (gameModeActive || isSystemLockedOrSuspended) return;
+  const onBattery = powerMonitor.isOnBatteryPower();
   if (!agentHistoryPollTimer) {
     loadLocalAiHistory();
-    agentHistoryPollTimer = setInterval(() => loadLocalAiHistory(), 20000);
+    agentHistoryPollTimer = setInterval(() => loadLocalAiHistory(), onBattery ? 35000 : 20000);
   }
   scheduleNextMediaPoll(100);
   if (!clipboardPollTimer) {
@@ -1680,16 +1710,20 @@ function startBackgroundPolling() {
           const img = clipboard.readImage();
           if (img && !img.isEmpty()) {
             const size = img.getSize();
-            const bmp = img.toBitmap();
-            const imgKey = `${size.width}x${size.height}:${bmp.subarray(0, 256).toString('base64')}`;
+            // Compute a tiny 24px fingerprint instead of allocating a full-res RGBA bitmap every poll.
+            const tinyBmp = img.resize({ width: 24, quality: 'good' }).toBitmap();
+            const imgKey = `${size.width}x${size.height}:${tinyBmp.toString('base64')}`;
             if (imgKey !== lastClipboardImageKey) {
               lastClipboardImageKey = imgKey;
-              const maxDim = 480;
+              const maxDim = 320;
               const scale = Math.min(1, maxDim / Math.max(size.width || 1, size.height || 1));
               const resized = scale < 1
                 ? img.resize({ width: Math.max(1, Math.round(size.width * scale)), quality: 'good' })
                 : img;
-              const thumb = resized.toDataURL();
+              const jpegBuf = resized.toJPEG(82);
+              const thumb = jpegBuf && jpegBuf.length > 0
+                ? `data:image/jpeg;base64,${jpegBuf.toString('base64')}`
+                : resized.toDataURL();
               clipboardHistory = [
                 {
                   id: Date.now(),
@@ -1707,7 +1741,7 @@ function startBackgroundPolling() {
           }
         }
       } catch {}
-    }, 3000);
+    }, onBattery ? 6000 : 4000);
   }
 }
 
@@ -1954,9 +1988,13 @@ app.whenReady().then(() => {
   }
 
   // Automatically ensure the elevated G-Helper bridge background task is running on startup
+  let ghelperTaskKnownMissing = false;
+  let lastGHelperMissingCheckAt = 0;
   setTimeout(async () => {
     try {
       const taskStatus = await checkGHelperTaskStatus();
+      ghelperTaskKnownMissing = !taskStatus.installed;
+      lastGHelperMissingCheckAt = Date.now();
       if (taskStatus.installed && !taskStatus.running) {
         console.log('[Main] Auto-starting G-Helper bridge task...');
         await startGHelperTask();
@@ -1966,18 +2004,39 @@ app.whenReady().then(() => {
     }
   }, 2000);
 
-  // Periodic RAM trimming, Garbage Collection & bridge health check (every 60s)
+  // Pause background polling on system suspend or screen lock to save power/CPU
+  const handlePowerPause = () => {
+    if (isSystemLockedOrSuspended) return;
+    isSystemLockedOrSuspended = true;
+    stopBackgroundPolling();
+    trimWorkingSetAndGC({ trimWorkingSet: true });
+  };
+  const handlePowerResume = () => {
+    if (!isSystemLockedOrSuspended) return;
+    isSystemLockedOrSuspended = false;
+    if (!gameModeActive) startBackgroundPolling();
+  };
+  powerMonitor.on('suspend', handlePowerPause);
+  powerMonitor.on('lock-screen', handlePowerPause);
+  powerMonitor.on('resume', handlePowerResume);
+  powerMonitor.on('unlock-screen', handlePowerResume);
+
+  // Periodic bridge health check (every 3 min); avoid trimming working set during active use to prevent page-fault stutters
   setInterval(async () => {
-    trimWorkingSetAndGC();
+    if (isSystemLockedOrSuspended || gameModeActive) return;
     if (ghelperBridgeClient?.connected) return;
+    // Avoid spawning schtasks.exe repeatedly if the task is not installed (re-check every 10 min).
+    if (ghelperTaskKnownMissing && Date.now() - lastGHelperMissingCheckAt < 600000) return;
     try {
       const taskStatus = await checkGHelperTaskStatus();
+      ghelperTaskKnownMissing = !taskStatus.installed;
+      lastGHelperMissingCheckAt = Date.now();
       if (taskStatus.installed && !taskStatus.running) {
         console.log('[Main] Background check: G-Helper bridge task stopped, restarting...');
         await startGHelperTask();
       }
     } catch {}
-  }, 60000);
+  }, 180000);
 
   registerGlobalShortcuts();
   startGoogleMailAndAgendaWatcher();
@@ -1985,13 +2044,10 @@ app.whenReady().then(() => {
 });
 
 function scheduleTrimWorkingSetAndGC() {
-  if (trimGcTimer) clearTimeout(trimGcTimer);
-  trimGcTimer = setTimeout(() => {
+  if (trimGcTimer) {
+    clearTimeout(trimGcTimer);
     trimGcTimer = null;
-    if (currentModeKey === 'idle') {
-      trimWorkingSetAndGC();
-    }
-  }, 1500);
+  }
 }
 
 ipcMain.on('set-ignore-mouse-events', (_event, ignore) => {
@@ -2000,28 +2056,16 @@ ipcMain.on('set-ignore-mouse-events', (_event, ignore) => {
 
 ipcMain.on('set-expanded', (_event, expanded) => {
   const isExp = Boolean(expanded);
-  if (isExp && trimGcTimer) {
-    clearTimeout(trimGcTimer);
-    trimGcTimer = null;
-  }
   animateWindowShapeToMode(isExp);
   if (isExp) {
     scheduleNextMediaPoll(50);
-  } else {
-    scheduleTrimWorkingSetAndGC();
   }
 });
 
 ipcMain.on('set-island-mode', (_event, mode, customWidth) => {
-  if (mode !== 'idle' && trimGcTimer) {
-    clearTimeout(trimGcTimer);
-    trimGcTimer = null;
-  }
   animateWindowShapeToMode(mode, customWidth);
   if (mode === 'expanded' || mode === 'music-bar') {
     scheduleNextMediaPoll(50);
-  } else if (mode === 'idle') {
-    scheduleTrimWorkingSetAndGC();
   }
 });
 
@@ -2536,6 +2580,73 @@ ipcMain.handle('open-notification-target', async (_event, target = {}) => {
   return false;
 });
 
+ipcMain.handle('focus-media-source', async (_event, media = {}) => {
+  try {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.blur();
+    }
+    const sourceApp = typeof media.sourceApp === 'string' ? media.sourceApp.trim() : '';
+    const title = typeof media.title === 'string' ? media.title.trim() : '';
+    const artist = typeof media.artist === 'string' ? media.artist.trim() : '';
+
+    const scriptPath = path.join(__dirname, 'win-focus-media.ps1');
+    const result = await new Promise((resolve) => {
+      execFile(
+        'powershell.exe',
+        [
+          '-WindowStyle', 'Hidden',
+          '-NoProfile',
+          '-ExecutionPolicy', 'Bypass',
+          '-File', scriptPath,
+          '-SourceApp', sourceApp,
+          '-Title', title,
+          '-Artist', artist,
+        ],
+        { windowsHide: true, timeout: 8000 },
+        (_err, stdout) => {
+          try {
+            const parsed = JSON.parse((stdout || '').trim().split(/\r?\n/).pop());
+            resolve(parsed);
+          } catch {
+            resolve({ ok: false });
+          }
+        }
+      );
+    });
+
+    if (result && result.ok) {
+      return true;
+    }
+
+    // Never launch shell:AppsFolder for a browser when focus fails, because
+    // Windows opens a blank new tab in the existing browser instead.
+    const isBrowserSource =
+      /(?:chrome|msedge|microsoftedge|brave|opera|vivaldi|\barc\b|firefox|308046b0af4a39cb|0d797b6d|comet|zen|floorp|waterfox|librewolf|thorium|chromium|yandex)/i.test(sourceApp) &&
+      !/_crx_/i.test(sourceApp);
+
+    if (sourceApp && !isBrowserSource && !/[\r\n\0"<>|&^;]/.test(sourceApp)) {
+      const child = spawn('explorer.exe', [`shell:AppsFolder\\${sourceApp}`], {
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true,
+      });
+      child.unref();
+      return true;
+    }
+  } catch (error) {
+    console.warn('Could not focus media source:', error.message);
+  } finally {
+    if (mainWindow && !mainWindow.isDestroyed() && !gameModeActive) {
+      setTimeout(() => {
+        if (mainWindow && !mainWindow.isDestroyed() && !gameModeActive) {
+          mainWindow.setAlwaysOnTop(true, 'screen-saver');
+        }
+      }, 300);
+    }
+  }
+  return false;
+});
+
 ipcMain.handle('capture-screen', async () => {
   try {
     const sources = await desktopCapturer.getSources({
@@ -2752,6 +2863,7 @@ ipcMain.handle('add-agenda-event', async (_event, evt) => {
     time: evt.time || defaultTime,
     date: evt.date || 'Bugün',
     notified: false,
+    completed: Boolean(evt.completed),
   };
   localAgendaEvents = [...getLocalAgendaEvents(), newEvt];
   saveLocalAgendaEvents();
@@ -2775,6 +2887,16 @@ ipcMain.handle('delete-agenda-event', async (_event, eventId) => {
   if (eventId === undefined || eventId === null) return getLocalAgendaEvents();
   localAgendaEvents = getLocalAgendaEvents().filter((evt) => String(evt?.id) !== String(eventId));
   agendaNotifiedIds.delete(String(eventId));
+  saveLocalAgendaEvents();
+  publishLocalAgendaEvents();
+  return localAgendaEvents;
+});
+
+ipcMain.handle('toggle-agenda-event', async (_event, eventId) => {
+  if (eventId === undefined || eventId === null) return getLocalAgendaEvents();
+  localAgendaEvents = getLocalAgendaEvents().map((evt) =>
+    String(evt?.id) === String(eventId) ? { ...evt, completed: !evt?.completed } : evt
+  );
   saveLocalAgendaEvents();
   publishLocalAgendaEvents();
   return localAgendaEvents;

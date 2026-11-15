@@ -13,7 +13,7 @@ function makeDefaultEventTime() {
   return `${String(soon.getHours()).padStart(2, '0')}:${String(soon.getMinutes()).padStart(2, '0')}`;
 }
 
-export default function AgendaCalendar({ events = [], onAddEvent, onDeleteEvent }) {
+export default function AgendaCalendar({ events = [], onAddEvent, onDeleteEvent, onToggleEvent }) {
   const [viewMode, setViewMode] = useState('Day');
   const [selectedDate, setSelectedDate] = useState(() => toLocalDateKey(new Date()));
   const [isAdding, setIsAdding] = useState(false);
@@ -127,7 +127,17 @@ export default function AgendaCalendar({ events = [], onAddEvent, onDeleteEvent 
           )}
           <div className="agenda-event-list">
             {eventsForDate.length ? eventsForDate.map((event, index) => (
-              <div className="agenda-event-card" key={event.id || `${event.title}-${index}`}>
+              <div className={`agenda-event-card ${event.completed ? 'is-completed' : ''}`} key={event.id || `${event.title}-${index}`}>
+                <button
+                  type="button"
+                  className={`agenda-event-check ${event.completed ? 'is-checked' : ''}`}
+                  onClick={() => onToggleEvent?.(event.id)}
+                  aria-label={event.completed ? `${event.title || 'Etkinlik'} tamamlanmadı olarak işaretle` : `${event.title || 'Etkinlik'} tamamlandı olarak işaretle`}
+                  aria-pressed={Boolean(event.completed)}
+                  title={event.completed ? 'Tamamlandı' : 'Tamamlandı olarak işaretle'}
+                >
+                  {event.completed && <Check size={11} strokeWidth={3} />}
+                </button>
                 <span className="agenda-event-time">{event.time || '09:00'}</span>
                 <i className="agenda-event-accent" />
                 <div><strong title={event.title || String(event)}>{event.title || event}</strong><small className={selectedDate === todayKey ? '' : 'clock-number-text'}>{selectedDate === todayKey ? 'Bugün' : selectedDateObject.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })}</small></div>

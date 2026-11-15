@@ -42,11 +42,12 @@ $ErrorActionPreference = 'SilentlyContinue'
 $nvSmi = 'C:\\Windows\\System32\\nvidia-smi.exe'
 if (-not (Test-Path $nvSmi)) { $nvSmi = 'nvidia-smi' }
 
+$hasNvidia = [bool](Get-CimInstance Win32_VideoController | Where-Object { $_.Name -match 'NVIDIA' -and $_.Status -eq 'OK' })
+
 while ($true) {
     $cpuPerf = Get-CimInstance Win32_PerfFormattedData_Counters_ProcessorInformation | Where-Object { $_.Name -eq '_Total' } | Select-Object -First 1
     $gpuEng = Get-CimInstance Win32_PerfFormattedData_GPUPerformanceCounters_GPUEngine | Measure-Object UtilizationPercentage -Sum
     $therm = Get-CimInstance Win32_PerfFormattedData_Counters_ThermalZoneInformation | Select-Object -First 1
-    $hasNvidia = [bool](Get-CimInstance Win32_VideoController | Where-Object { $_.Name -match 'NVIDIA' -and $_.Status -eq 'OK' })
 
     $ghz = 0
     if ($cpuPerf) {
