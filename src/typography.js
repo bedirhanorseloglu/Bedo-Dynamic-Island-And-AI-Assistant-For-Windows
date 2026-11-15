@@ -4,11 +4,11 @@ export const CLOCK_FONT_OPTIONS = [
   { id: 'cormorant', name: 'Cormorant Garamond', family: "'Cormorant Garamond', Georgia, serif", google: 'Cormorant+Garamond:wght@600;700' },
   { id: 'jetbrains', name: 'JetBrains Mono', family: "'JetBrains Mono', monospace", google: 'JetBrains+Mono:wght@400;500;600;700;800' },
   { id: 'caveat', name: 'Caveat', family: "'Caveat', cursive", google: 'Caveat:wght@700' },
-  { id: 'sf-apple', name: 'SF Pro (Apple)', family: "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Inter', sans-serif", google: null },
+  { id: 'sf-apple', name: 'SF Pro (Apple)', family: "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Inter', 'Segoe UI', system-ui, sans-serif", google: null },
 ];
 
 export const TEXT_FONT_OPTIONS = [
-  { id: 'inter', name: 'Inter', family: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif", google: 'Inter:wght@400;500;600;700;800' },
+  { id: 'inter', name: 'Inter', family: "'Inter', 'Segoe UI', -apple-system, BlinkMacSystemFont, system-ui, sans-serif", google: 'Inter:wght@400;500;600;700;800' },
   ...CLOCK_FONT_OPTIONS,
 ];
 

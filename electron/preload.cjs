@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('twocode', {
   setIgnoreMouseEvents: (ignore) => ipcRenderer.send('set-ignore-mouse-events', ignore),
@@ -71,6 +71,18 @@ contextBridge.exposeInMainWorld('twocode', {
     return () => ipcRenderer.removeListener('clipboard-update', listener);
   },
   copyText: (text) => ipcRenderer.invoke('copy-text', text),
+  copyClip: (clip) => ipcRenderer.invoke('copy-clip', clip),
+  clearClips: () => ipcRenderer.invoke('clear-clips'),
+  getPathForFile: (file) => {
+    try {
+      return webUtils.getPathForFile(file) || '';
+    } catch {
+      return file?.path || '';
+    }
+  },
+  transcribeAudio: (payload) => ipcRenderer.invoke('transcribe-audio', payload),
+  openNoteAttachment: (payload) => ipcRenderer.invoke('open-note-attachment', payload),
+  copyNoteAttachment: (payload) => ipcRenderer.invoke('copy-note-attachment', payload),
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
   openApp: (target) => ipcRenderer.invoke('open-app', target),
   openNotificationTarget: (target) => ipcRenderer.invoke('open-notification-target', target),

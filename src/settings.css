@@ -9,7 +9,7 @@
     radial-gradient(ellipse 58% 48% at 88% 100%, rgba(139, 92, 246, 0.07), transparent 65%),
     #060608;
   color: #ffffff;
-  font-family: var(--font-family-ui, 'Inter', -apple-system, BlinkMacSystemFont, sans-serif);
+  font-family: var(--font-family-ui, 'Inter', 'Segoe UI', -apple-system, BlinkMacSystemFont, system-ui, sans-serif);
   display: flex;
   overflow: hidden;
   user-select: none;

@@ -1,10 +1,49 @@
 import React from 'react';
 import { ArrowDown, Check, Gamepad2, Video } from 'lucide-react';
 
+function useAnimatedPercent(targetPct) {
+  const [displayPct, setDisplayPct] = React.useState(targetPct);
+  const currentRef = React.useRef(targetPct);
+
+  React.useEffect(() => {
+    if (targetPct == null) {
+      currentRef.current = null;
+      setDisplayPct(null);
+      return;
+    }
+    const startVal = currentRef.current ?? targetPct;
+    if (startVal === targetPct) {
+      setDisplayPct(targetPct);
+      return;
+    }
+    const duration = 360;
+    const startTime = performance.now();
+    let rafId = 0;
+
+    const tick = (now) => {
+      const t = Math.min(1, (now - startTime) / duration);
+      const eased = 1 - Math.pow(1 - t, 3);
+      const nextVal = Math.round(startVal + (targetPct - startVal) * eased);
+      currentRef.current = nextVal;
+      setDisplayPct(nextVal);
+      if (t < 1) {
+        rafId = requestAnimationFrame(tick);
+      }
+    };
+
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, [targetPct]);
+
+  return displayPct;
+}
+
 export function IdleLiveActivityPill({ liveActivity }) {
+  const hasPercent = typeof liveActivity?.percent === 'number' && Number.isFinite(liveActivity.percent);
+  const pct = liveActivity?.done ? 100 : hasPercent ? Math.max(0, Math.min(100, Math.round(liveActivity.percent))) : null;
+  const displayPct = useAnimatedPercent(pct);
+
   if (!liveActivity?.active) return null;
-  const hasPercent = typeof liveActivity.percent === 'number' && Number.isFinite(liveActivity.percent);
-  const pct = liveActivity.done ? 100 : hasPercent ? Math.max(0, Math.min(100, Math.round(liveActivity.percent))) : null;
   const isIndeterminate = pct == null && !liveActivity.done;
   const pctWidth = liveActivity.done ? 100 : (pct ?? 42);
 
@@ -34,22 +73,24 @@ export function IdleLiveActivityPill({ liveActivity }) {
       <span className="idle-live-pct mono">
         {liveActivity.done
           ? '%100'
-          : pct != null
-          ? `%${pct}`
-          : `${liveActivity.downloadedMB ?? 0} MB`}
+          : displayPct != null
+          ? `%${displayPct}`
+          : '%'}
       </span>
     </div>
   );
 }
 
 export function InlineDownloadOrb({ liveActivity }) {
-  if (!liveActivity?.active) return null;
-  const hasPercent = typeof liveActivity.percent === 'number' && Number.isFinite(liveActivity.percent);
-  const pct = liveActivity.done
+  const hasPercent = typeof liveActivity?.percent === 'number' && Number.isFinite(liveActivity.percent);
+  const pct = liveActivity?.done
     ? 100
     : hasPercent
     ? Math.max(0, Math.min(100, Math.round(liveActivity.percent)))
     : null;
+  const displayPct = useAnimatedPercent(pct);
+
+  if (!liveActivity?.active) return null;
   const isIndeterminate = pct == null && !liveActivity.done;
   const fillPct = liveActivity.done ? 100 : (pct ?? 44);
   const tooltipText = `${liveActivity.title || 'İndirme'} • ${
@@ -77,41 +118,15 @@ export function InlineDownloadOrb({ liveActivity }) {
           </svg>
         </div>
 
-        <svg className="download-droplet-orbit" viewBox="0 0 24 24" aria-hidden="true">
-          <defs>
-            <linearGradient id="dlDropletOrbitGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.15" />
-              <stop offset="100%" stopColor="#e0f2fe" stopOpacity="0.98" />
-            </linearGradient>
-          </defs>
-          <circle
-            cx="12"
-            cy="12"
-            r="10"
-            fill="none"
-            stroke="rgba(255, 255, 255, 0.14)"
-            strokeWidth="1.6"
-          />
-          <circle
-            className="download-droplet-orbit-arc"
-            cx="12"
-            cy="12"
-            r="10"
-            fill="none"
-            stroke={liveActivity.done ? '#4ade80' : 'url(#dlDropletOrbitGrad)'}
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeDasharray={liveActivity.done ? '62.83 0' : '22 41'}
-          />
-        </svg>
-
         <span className="download-droplet-icon" aria-hidden="true">
           {liveActivity.done ? (
-            <Check size={10} strokeWidth={2.9} />
+            <Check size={11} strokeWidth={2.9} />
           ) : liveActivity.kind === 'steam' ? (
-            <Gamepad2 size={10} strokeWidth={2.3} />
+            <Gamepad2 size={11} strokeWidth={2.3} />
           ) : (
-            <ArrowDown size={10} strokeWidth={2.7} />
+            <span className="download-droplet-pct-text mono">
+              {displayPct != null ? `%${displayPct}` : '%'}
+            </span>
           )}
         </span>
       </div>

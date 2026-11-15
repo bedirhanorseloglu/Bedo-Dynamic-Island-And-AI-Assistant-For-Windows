@@ -1,10 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Sun } from 'lucide-react';
+import React, { useEffect, useRef } from 'react';
 
 export default function MirrorOverlay({ onClose }) {
   const videoRef = useRef(null);
   const streamRef = useRef(null);
-  const [ringLight, setRingLight] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -32,21 +30,11 @@ export default function MirrorOverlay({ onClose }) {
   }, []);
 
   return (
-    <div className={`mirror-overlay-view ${ringLight ? 'has-ring-light' : ''}`}>
+    <div className="mirror-overlay-view">
       <video ref={videoRef} autoPlay playsInline muted className="mirror-video-feed" />
-      <div className="mirror-controls-bar">
-        <button
-          type="button"
-          className={`mirror-action-pill ${ringLight ? 'is-active' : ''}`}
-          onClick={() => setRingLight((v) => !v)}
-          title="Ekran ışığını aç/kapat"
-        >
-          <Sun size={12} /> Işık
-        </button>
-        <button type="button" className="mirror-close-pill" onClick={onClose}>
-          Kapat
-        </button>
-      </div>
+      <button type="button" className="mirror-close-pill" onClick={onClose}>
+        Kapat
+      </button>
     </div>
   );
 }

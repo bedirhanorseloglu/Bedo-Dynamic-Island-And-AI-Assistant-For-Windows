@@ -87,8 +87,10 @@ function extractDownloadMetaFromUiaText(text, fileSize = 0) {
     return { totalBytes };
   }
 
-  // Fallback: explicit percentage in download-related text (e.g. "%23" or "23%")
-  const hasDownloadHint = /(indir|download|kaldı|remaining|left|gb|mb|kb|saat|dakika|saniye)/i.test(raw);
+  // Fallback: explicit percentage in download-related text (e.g. "%23" or "23%") or bare percentage ("%23")
+  const hasDownloadHint =
+    /(indir|download|tamamlan|complete|progress|devam|kaldı|remaining|left|gb|mb|kb|saat|dakika|saniye|sn|dk|sa|sec|min|hr|•)/i.test(raw) ||
+    /^\s*(?:%\s*\d{1,2}(?:[.,]\d+)?|\d{1,2}(?:[.,]\d+)?\s*%)\s*$/.test(raw);
   if (hasDownloadHint && fileSize > 0) {
     const pctMatch = raw.match(/(?:%\s*(\d{1,2}(?:[.,]\d+)?)|(\d{1,2}(?:[.,]\d+)?)\s*%)/);
     if (pctMatch) {
@@ -111,12 +113,12 @@ if (-not $procs) { exit 0 }
 $pidSet = @{}
 foreach ($p in $procs) { $pidSet[$p] = $true }
 $root = [System.Windows.Automation.AutomationElement]::RootElement
-$walker = [System.Windows.Automation.TreeWalker]::RawViewWalker
+$walker = [System.Windows.Automation.TreeWalker]::ControlViewWalker
 $docType = [System.Windows.Automation.ControlType]::Document
 $progType = [System.Windows.Automation.ControlType]::ProgressBar
 
 function Scan-Node($el, $depth, $allowDoc) {
-  if ($null -eq $el -or $depth -gt 14) { return }
+  if ($null -eq $el -or $depth -gt 12) { return }
   try {
     $ct = $el.Current.ControlType
     $n = $el.Current.Name
@@ -124,7 +126,7 @@ function Scan-Node($el, $depth, $allowDoc) {
       if (-not ($n -and $n -match '(?i)indirilenler|downloads')) { return }
     }
     foreach ($txt in @($n, $el.Current.HelpText, $el.Current.ItemStatus)) {
-      if ($txt -and ($txt -match '\\d+[.,]?\\d*\\s*(TB|GB|MB|KB|Bayt|B)?\\s*/\\s*\\d+[.,]?\\d*\\s*(TB|GB|MB|KB|Bayt|B)' -or ($txt -match '%' -and $txt -match '(?i)indir|download|kaldı|remaining|left|gb|mb'))) {
+      if ($txt -and ($txt -match '\\d+[.,]?\\d*\\s*(TB|GB|MB|KB|Bayt|B)?\\s*/\\s*\\d+[.,]?\\d*\\s*(TB|GB|MB|KB|Bayt|B)' -or $txt -match '^\\s*(?:%\\s*\\d{1,2}(?:[.,]\\d+)?|\\d{1,2}(?:[.,]\\d+)?\\s*%)\\s*$' -or ($txt -match '%' -and $txt -match '(?i)indir|download|tamamlan|complete|progress|devam|kaldı|remaining|left|gb|mb|kb|sn|dk|sa|sec|min|hr|•'))) {
         Write-Output ("TEXT:" + $txt)
       }
     }
@@ -150,7 +152,9 @@ while ($null -ne $win) {
   try {
     if ($pidSet.ContainsKey($win.Current.ProcessId)) {
       $wName = $win.Current.Name
-      $allowDoc = ($wName -and $wName -match '(?i)indirilenler|downloads')
+      $rect = $win.Current.BoundingRectangle
+      $isPopup = ($rect.Width -gt 0 -and $rect.Width -lt 800)
+      $allowDoc = ($isPopup -or ($wName -and $wName -match '(?i)indirilenler|downloads'))
       Scan-Node $win 0 $allowDoc
     }
   } catch {}
@@ -164,7 +168,7 @@ while ($null -ne $win) {
     ['-NoProfile', '-NonInteractive', '-EncodedCommand', encodedPs],
     { timeout: 3500, windowsHide: true },
     (err, stdout) => {
-      if (err || !stdout) return callback(null);
+      if (!stdout) return callback(null);
       const lines = String(stdout).split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
       for (const line of lines) {
         if (line.startsWith('TEXT:')) {
@@ -206,28 +210,30 @@ function lookupChromiumDownloadMeta(partialName, cleanName, fileSize, callback) 
       '    return conn.execute("SELECT current_path, target_path, total_bytes, received_bytes, state FROM downloads WHERE total_bytes > 0 ORDER BY start_time DESC LIMIT 15").fetchall()',
       'for src in sys.argv[4:]:',
       '    rows = None',
+      '    tmp = os.path.join(tempfile.gettempdir(), f"tc_hist_{os.getpid()}.db")',
       '    try:',
-      '        uri = "file:" + urllib.request.pathname2url(os.path.abspath(src)) + "?immutable=1"',
-      '        conn = sqlite3.connect(uri, uri=True)',
+      '        shutil.copy2(src, tmp)',
+      '        for ext in ("-wal", "-shm", "-journal"):',
+      '            if os.path.exists(src + ext):',
+      '                try: shutil.copy2(src + ext, tmp + ext)',
+      '                except Exception: pass',
+      '        conn = sqlite3.connect(tmp)',
       '        rows = query_conn(conn)',
       '        conn.close()',
       '    except Exception:',
-      '        tmp = os.path.join(tempfile.gettempdir(), f"tc_hist_{os.getpid()}.db")',
+      '        rows = None',
+      '    finally:',
+      '        for ext in ("", "-wal", "-shm", "-journal"):',
+      '            try: os.remove(tmp + ext)',
+      '            except Exception: pass',
+      '    if not rows:',
       '        try:',
-      '            shutil.copy2(src, tmp)',
-      '            for ext in ("-wal", "-shm", "-journal"):',
-      '                if os.path.exists(src + ext):',
-      '                    try: shutil.copy2(src + ext, tmp + ext)',
-      '                    except Exception: pass',
-      '            conn = sqlite3.connect(tmp)',
+      '            uri = "file:" + urllib.request.pathname2url(os.path.abspath(src)) + "?immutable=1"',
+      '            conn = sqlite3.connect(uri, uri=True)',
       '            rows = query_conn(conn)',
       '            conn.close()',
       '        except Exception:',
       '            rows = None',
-      '        finally:',
-      '            for ext in ("", "-wal", "-shm", "-journal"):',
-      '                try: os.remove(tmp + ext)',
-      '                except Exception: pass',
       '    if not rows:',
       '        continue',
       '    for cur, tgt, tb, rb, st in rows:',
@@ -237,7 +243,7 @@ function lookupChromiumDownloadMeta(partialName, cleanName, fileSize, callback) 
       '            print(json.dumps({"totalBytes": int(tb), "title": os.path.basename(tgt) if tgt else None}))',
       '            sys.exit(0)',
       '    for cur, tgt, tb, rb, st in rows:',
-      '        if st == 0 and tb > 0 and (fsize <= 0 or abs((rb or 0) - fsize) <= max(50000000, fsize * 0.5)):',
+      '        if st == 0 and tb > 0 and (fsize <= 0 or fsize <= tb * 1.05):',
       '            print(json.dumps({"totalBytes": int(tb), "title": os.path.basename(tgt) if tgt else None}))',
       '            sys.exit(0)',
     ].join('\n');
@@ -431,7 +437,7 @@ function createLiveActivityWatcher({ downloadsDir, onUpdate }) {
                 cachedDownloadMeta = { file: partial, totalBytes: null, title: null, lastLookupTime: 0, lookingUp: false };
               }
               if (!cachedDownloadMeta.totalBytes && !cachedDownloadMeta.lookingUp) {
-                if (now - cachedDownloadMeta.lastLookupTime >= 2000) {
+                if (now - cachedDownloadMeta.lastLookupTime >= 1000) {
                   cachedDownloadMeta.lookingUp = true;
                   cachedDownloadMeta.lastLookupTime = now;
                   const targetFile = partial;
@@ -533,5 +539,7 @@ module.exports = {
   createLiveActivityWatcher,
   parseSizeToBytes,
   extractDownloadMetaFromUiaText,
+  lookupChromiumDownloadMeta,
+  lookupBrowserUiaDownloadMeta,
 };
 

@@ -65,6 +65,8 @@ import {
   Keyboard,
   Sparkles,
   Activity,
+  Paperclip,
+  AlignLeft,
   Touchpad as TouchpadIcon,
 } from 'lucide-react';
 import RoboEyes from './RoboEyes';
@@ -1290,6 +1292,7 @@ export default function App() {
   };
 
   useEffect(() => {
+    if (islandMode !== 'expanded') return undefined;
     let mounted = true;
     const refresh = async () => {
       try {
@@ -1304,7 +1307,7 @@ export default function App() {
     refresh();
     const timer = setInterval(refresh, 12000);
     return () => { mounted = false; clearInterval(timer); };
-  }, []);
+  }, [islandMode]);
 
   const toggleRadio = async (kind) => {
     if (radioBusy) return;
@@ -1389,34 +1392,319 @@ export default function App() {
   // CLIPS tab state
   const [clips, setClips] = useState([]);
   const [copiedId, setCopiedId] = useState(null);
+  const [clipsFilter, setClipsFilter] = useState('all');
+  const [clipPreview, setClipPreview] = useState(null);
 
-  // NOTE tab state (persisted in localStorage)
-  const [notesText, setNotesText] = useState(() => {
+  const handleCopyClip = async (clip) => {
+    if (!clip) return;
+    const ok = await window.twocode?.copyClip?.(clip);
+    if (!ok && clip.text) {
+      window.twocode?.copyText?.(clip.text);
+    }
+    setCopiedId(clip.id);
+    setTimeout(() => setCopiedId((curr) => (curr === clip.id ? null : curr)), 1100);
+  };
+
+  // NOTE tab state (multi-note glassmorphism pockets persisted in localStorage)
+  const NOTE_DOT_COLORS = ['#38BDF8', '#FBBF24', '#34D399', '#FB7185', '#A78BFA'];
+  const [notesList, setNotesList] = useState(() => {
     try {
-      return localStorage.getItem('twocode_note') || '';
+      const saved = JSON.parse(localStorage.getItem('twocode_notes_v2') || 'null');
+      if (Array.isArray(saved) && saved.length > 0) return saved;
+      const legacy = localStorage.getItem('twocode_note') || '';
+      return [{ id: 'note_1', color: '#38BDF8', text: legacy, attachments: [] }];
     } catch {
-      return '';
+      return [{ id: 'note_1', color: '#38BDF8', text: '', attachments: [] }];
     }
   });
+  const [activeNoteIndex, setActiveNoteIndex] = useState(0);
+  const [noteRecording, setNoteRecording] = useState(false);
+  const [noteTranscribing, setNoteTranscribing] = useState(false);
+  const [noteStatusHint, setNoteStatusHint] = useState('');
+  const [noteSummaryOpen, setNoteSummaryOpen] = useState(false);
+  const [noteCopied, setNoteCopied] = useState(false);
+  const [noteAttCopiedId, setNoteAttCopiedId] = useState(null);
+  const [notePreviewAtt, setNotePreviewAtt] = useState(null);
+  const [noteDragOver, setNoteDragOver] = useState(false);
+  const noteFileInputRef = useRef(null);
+  const noteTextareaRef = useRef(null);
+  const noteAudioRef = useRef(null);
+
+  const showNoteHint = (msg) => {
+    setNoteStatusHint(msg);
+    setTimeout(() => setNoteStatusHint((curr) => (curr === msg ? '' : curr)), 2400);
+  };
 
   useEffect(() => {
     try {
-      localStorage.setItem('twocode_note', notesText);
-    } catch { }
-  }, [notesText]);
+      localStorage.setItem('twocode_notes_v2', JSON.stringify(notesList));
+    } catch {
+      try {
+        const compact = notesList.map((n) => ({
+          ...n,
+          attachments: (n.attachments || []).map((a) => ({ ...a, thumb: a.path ? '' : a.thumb })),
+        }));
+        localStorage.setItem('twocode_notes_v2', JSON.stringify(compact));
+      } catch { }
+    }
+  }, [notesList]);
 
-  const toggleNoteTask = (lineIndex) => {
-    setNotesText((current) => current.split('\n').map((line, index) => {
-      if (index !== lineIndex) return line;
-      return /^\[x\]/i.test(line.trim())
-        ? line.replace(/\[x\]/i, '[ ]')
-        : line.replace(/^\s*\[\s?\]/, '[x]');
-    }).join('\n'));
+  useEffect(() => {
+    if (activeNoteIndex >= notesList.length) {
+      setActiveNoteIndex(Math.max(0, notesList.length - 1));
+    }
+  }, [activeNoteIndex, notesList.length]);
+
+  const activeNote = notesList[activeNoteIndex] || notesList[0];
+
+  const updateActiveNote = (updater) => {
+    setNotesList((prev) => prev.map((item, idx) => (idx === activeNoteIndex ? updater(item) : item)));
   };
 
-  const appendNoteTask = () => {
-    setNotesText((current) => `${current}${current && !current.endsWith('\n') ? '\n' : ''}[ ] `);
+  const addNotePocket = () => {
+    const nextColor = NOTE_DOT_COLORS[notesList.length % NOTE_DOT_COLORS.length];
+    const newIndex = notesList.length;
+    setNotesList((prev) => [...prev, { id: `note_${Date.now()}`, color: nextColor, text: '', attachments: [] }]);
+    setActiveNoteIndex(newIndex);
+    setNoteSummaryOpen(false);
+    setNotePreviewAtt(null);
+    setTimeout(() => noteTextareaRef.current?.focus(), 40);
   };
+
+  const deleteActiveNotePocket = () => {
+    setNotePreviewAtt(null);
+    if (notesList.length <= 1) {
+      updateActiveNote((n) => ({ ...n, text: '', attachments: [] }));
+      setNoteSummaryOpen(false);
+      return;
+    }
+    setNotesList((prev) => prev.filter((_, idx) => idx !== activeNoteIndex));
+    setActiveNoteIndex((idx) => Math.max(0, idx - 1));
+    setNoteSummaryOpen(false);
+  };
+
+  const buildImageThumbnail = (file) => new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = String(reader.result || '');
+      const img = new Image();
+      img.onload = () => {
+        const maxDim = 640;
+        const scale = Math.min(1, maxDim / Math.max(img.width || 1, img.height || 1));
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(dataUrl);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', 0.82));
+      };
+      img.onerror = () => resolve(dataUrl);
+      img.src = dataUrl;
+    };
+    reader.onerror = () => resolve('');
+    reader.readAsDataURL(file);
+  });
+
+  const handleNoteFiles = (fileList) => {
+    const files = Array.from(fileList || []).slice(0, 4);
+    if (!files.length) return;
+    files.forEach(async (file) => {
+      const filePath = window.twocode?.getPathForFile?.(file) || file.path || '';
+      const isImage = file.type.startsWith('image/') || /\.(png|jpe?g|webp|gif|bmp)$/i.test(file.name);
+      const thumb = isImage ? await buildImageThumbnail(file) : '';
+      updateActiveNote((n) => ({
+        ...n,
+        attachments: [
+          ...(n.attachments || []),
+          { id: `att_${Date.now()}_${Math.random()}`, name: file.name, path: filePath, isImage, thumb },
+        ].slice(-4),
+      }));
+    });
+  };
+
+  const removeNoteAttachment = (attId) => {
+    if (notePreviewAtt?.id === attId) setNotePreviewAtt(null);
+    updateActiveNote((n) => ({
+      ...n,
+      attachments: (n.attachments || []).filter((a) => a.id !== attId),
+    }));
+  };
+
+  const copyNoteAttachment = async (att) => {
+    const ok = await window.twocode?.copyNoteAttachment?.({
+      isImage: Boolean(att.isImage),
+      path: att.path || '',
+      thumb: att.thumb || '',
+      name: att.name || '',
+    });
+    if (ok) {
+      setNoteAttCopiedId(att.id);
+      setTimeout(() => setNoteAttCopiedId((curr) => (curr === att.id ? null : curr)), 1200);
+    }
+  };
+
+  const encodePcmChunksToWavBase64 = (chunks, inputSampleRate) => {
+    const totalLen = chunks.reduce((acc, c) => acc + c.length, 0);
+    const merged = new Float32Array(totalLen);
+    let offset = 0;
+    for (const chunk of chunks) {
+      merged.set(chunk, offset);
+      offset += chunk.length;
+    }
+    const targetRate = 16000;
+    const ratio = inputSampleRate / targetRate;
+    const outLen = Math.max(1, Math.floor(merged.length / ratio));
+    const buffer = new ArrayBuffer(44 + outLen * 2);
+    const view = new DataView(buffer);
+    const writeStr = (pos, str) => {
+      for (let i = 0; i < str.length; i += 1) view.setUint8(pos + i, str.charCodeAt(i));
+    };
+    writeStr(0, 'RIFF');
+    view.setUint32(4, 36 + outLen * 2, true);
+    writeStr(8, 'WAVE');
+    writeStr(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true);
+    view.setUint32(24, targetRate, true);
+    view.setUint32(28, targetRate * 2, true);
+    view.setUint16(32, 2, true);
+    view.setUint16(34, 16, true);
+    writeStr(36, 'data');
+    view.setUint32(40, outLen * 2, true);
+    for (let i = 0; i < outLen; i += 1) {
+      const sample = Math.max(-1, Math.min(1, merged[Math.floor(i * ratio)] || 0));
+      view.setInt16(44 + i * 2, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+    }
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    }
+    return btoa(binary);
+  };
+
+  const toggleNoteVoice = async () => {
+    if (noteRecording && noteAudioRef.current) {
+      const session = noteAudioRef.current;
+      noteAudioRef.current = null;
+      setNoteRecording(false);
+      try { session.proc.disconnect(); session.source.disconnect(); } catch { }
+      try { session.stream.getTracks().forEach((t) => t.stop()); } catch { }
+      try { await session.ctx.close(); } catch { }
+      session.flushChunk(true);
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      const ctx = new AudioCtx();
+      const sampleRate = ctx.sampleRate || 48000;
+      const source = ctx.createMediaStreamSource(stream);
+      const proc = ctx.createScriptProcessor(4096, 1, 1);
+      const targetNoteId = activeNote?.id;
+
+      let speechChunks = [];
+      let speechMs = 0;
+      let silenceMs = 0;
+      let hasSpeech = false;
+      const pendingQueue = [];
+      let draining = false;
+
+      const drainQueue = async () => {
+        if (draining) return;
+        draining = true;
+        setNoteTranscribing(true);
+        try {
+          while (pendingQueue.length > 0) {
+            const wavBase64 = pendingQueue.shift();
+            const res = await window.twocode?.transcribeAudio?.({ wavBase64, lang: 'tr-TR' });
+            if (res?.ok && res.text) {
+              setNoteSummaryOpen(false);
+              setNotesList((prev) => prev.map((item) => {
+                if (item.id !== targetNoteId) return item;
+                const sep = item.text && !item.text.endsWith('\n') && !item.text.endsWith(' ') ? ' ' : '';
+                return { ...item, text: `${item.text || ''}${sep}${res.text}` };
+              }));
+            }
+          }
+        } catch {
+          showNoteHint('Ses yazıya dökülemedi');
+        } finally {
+          draining = false;
+          setNoteTranscribing(false);
+        }
+      };
+
+      const flushChunk = (force = false) => {
+        if (!hasSpeech || speechChunks.length === 0) {
+          speechChunks = [];
+          speechMs = 0;
+          silenceMs = 0;
+          hasSpeech = false;
+          return;
+        }
+        if (!force && speechMs < 280) return;
+        const wavBase64 = encodePcmChunksToWavBase64(speechChunks, sampleRate);
+        speechChunks = [];
+        speechMs = 0;
+        silenceMs = 0;
+        hasSpeech = false;
+        pendingQueue.push(wavBase64);
+        drainQueue();
+      };
+
+      proc.onaudioprocess = (ev) => {
+        const data = ev.inputBuffer.getChannelData(0);
+        const frameMs = (data.length / sampleRate) * 1000;
+        let sumSq = 0;
+        for (let i = 0; i < data.length; i += 1) {
+          sumSq += data[i] * data[i];
+        }
+        const rms = Math.sqrt(sumSq / data.length);
+        if (rms > 0.012) {
+          hasSpeech = true;
+          silenceMs = 0;
+          speechChunks.push(new Float32Array(data));
+          speechMs += frameMs;
+          if (speechMs >= 1800) {
+            flushChunk(true);
+          }
+        } else if (hasSpeech) {
+          speechChunks.push(new Float32Array(data));
+          silenceMs += frameMs;
+          if (silenceMs >= 450) {
+            flushChunk(false);
+          }
+        }
+      };
+
+      source.connect(proc);
+      proc.connect(ctx.destination);
+      noteAudioRef.current = { stream, ctx, proc, source, flushChunk };
+      setNoteRecording(true);
+    } catch {
+      showNoteHint('Mikrofon izni alınamadı');
+      setNoteRecording(false);
+    }
+  };
+
+  const noteSummaryLines = useMemo(() => {
+    const raw = String(activeNote?.text || '').trim();
+    if (!raw) return [];
+    return raw
+      .split(/\n+/)
+      .map((l) => l.replace(/^[-•*]\s*/, '').trim())
+      .filter(Boolean)
+      .slice(0, 5);
+  }, [activeNote?.text]);
 
   // Agenda event data is owned here; its calendar UI is isolated in AgendaCalendar.
   const [agendaItems, setAgendaItems] = useState([]);
@@ -1464,6 +1752,7 @@ export default function App() {
   const notifPrevModeRef = useRef('idle');
   const isShowingNotifToastRef = useRef(false);
   const hoverExpandTimerRef = useRef(null);
+  const suppressHoverExpandUntilRef = useRef(0);
   const suppressGHelperHudUntilRef = useRef(0);
 
   // Live Windows System HUD (Volume & Screen Brightness) and Windows Notification Toast state
@@ -1486,13 +1775,22 @@ export default function App() {
   }, [notificationHistory]);
   const openNotification = (item) => {
     setNotificationHistory((items) => items.map((entry) => entry.id === item?.id ? { ...entry, isRead: true } : entry));
+    if (hoverExpandTimerRef.current) {
+      clearTimeout(hoverExpandTimerRef.current);
+      hoverExpandTimerRef.current = null;
+    }
+    suppressHoverExpandUntilRef.current = Date.now() + 700;
+    if (notifTimerRef.current) {
+      clearTimeout(notifTimerRef.current);
+      notifTimerRef.current = null;
+    }
+    notifRemainingMsRef.current = 0;
+    isShowingNotifToastRef.current = false;
+    setNotificationHistoryOpen(false);
+    setIslandMode((mode) => (mode === 'notif-toast' || mode === 'expanded') ? resolvedCollapsedModeRef.current : mode);
     if (item?.targetUrl || item?.appId) {
       window.twocode?.openNotificationTarget?.({ url: item.targetUrl || '', appId: item.appId || '' });
     }
-    setNotificationHistoryOpen(false);
-    if (notifTimerRef.current) clearTimeout(notifTimerRef.current);
-    isShowingNotifToastRef.current = false;
-    setIslandMode((mode) => mode === 'notif-toast' ? resolvedCollapsedModeRef.current : mode);
   };
   const notifLogoAccent = useDominantColor(toastBanner.logo);
   useEffect(() => {
@@ -1666,7 +1964,7 @@ export default function App() {
     const charLen = Math.min(38, Math.max(8, text.length));
     // A compact cap keeps the media notch from covering neighboring dock tabs.
     const baseWidth = Math.round(Math.min(322, Math.max(222, charLen * 5.2 + 170)));
-    return liveActivity?.active ? baseWidth + 32 : baseWidth;
+    return liveActivity?.active ? baseWidth + 48 : baseWidth;
   }, [primaryLine, currentMedia.title, liveActivity?.active]);
 
   // Determine which collapsed state to use when mouse leaves
@@ -1846,10 +2144,10 @@ export default function App() {
     };
   }, []);
 
-  // Synchronize clock immediately whenever island is expanded
+  // Synchronize clock when expanded only if stale (>1s) to avoid redundant re-render on hover
   useEffect(() => {
     if (islandMode === 'expanded') {
-      setNow(new Date());
+      setNow((prev) => (Date.now() - prev.getTime() >= 1000 ? new Date() : prev));
     }
   }, [islandMode]);
 
@@ -2015,6 +2313,7 @@ export default function App() {
       if (gameModeActive) return;
       if (isShowingNotifToastRef.current) return;
       if (hovering) {
+        if (Date.now() < suppressHoverExpandUntilRef.current) return;
         if (!isMiniProgressBar) {
           setIslandMode('expanded');
         }
@@ -2525,16 +2824,9 @@ export default function App() {
       ? 'music'
       : islandSettings.doNotDisturb
         ? 'dnd-sleep'
-        : ghelperStatus.performanceMode === 2
-          ? 'turbo'
-          : activeHookTask
-            ? 'thinking'
-            : roboMood;
-
-  const noteCheckItems = notesText
-    .split('\n')
-    .map((line, i) => ({ line, idx: i }))
-    .filter((item) => item.line.trim().startsWith('[ ]') || item.line.trim().startsWith('[x]'));
+        : activeHookTask
+          ? 'thinking'
+          : roboMood;
 
   const currentLayoutId = HOME_LAYOUTS[homeLayoutIndex]?.id || 'clock';
   const clockDisplay = formatClockDisplay(now);
@@ -2621,6 +2913,7 @@ export default function App() {
         }}
         onMouseEnter={() => {
           if (gameModeActive || isShowingNotifToastRef.current) return;
+          if (Date.now() < suppressHoverExpandUntilRef.current) return;
           if (islandMode !== 'expanded' && !isMiniProgressBar) {
             if (hoverExpandTimerRef.current) clearTimeout(hoverExpandTimerRef.current);
             hoverExpandTimerRef.current = setTimeout(() => {
@@ -2924,8 +3217,17 @@ export default function App() {
               setIslandMode(prevMode);
             }, remainingMs);
           }}
-          onClick={() => openNotification(toastBanner)}
-          onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') openNotification(toastBanner); }}
+          onClick={(event) => {
+            event.stopPropagation();
+            openNotification(toastBanner);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              event.stopPropagation();
+              openNotification(toastBanner);
+            }
+          }}
         >
           <NotifToastContent
             avatarNode={
@@ -3503,7 +3805,10 @@ export default function App() {
                     <button
                       type="button"
                       className="notif-card-main"
-                      onClick={() => openNotification(item)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        openNotification(item);
+                      }}
                       aria-label={`${item.app || 'Uygulama'} bildirimini aç`}
                     >
                       <div className="notif-card-avatar">
@@ -3808,7 +4113,7 @@ export default function App() {
                     </div>
                   </div>
                 ) : (
-                  <>
+                  <div key={activeTab} className="tab-stage-enter">
                     {/* ============================================================
                         1. HOME TAB (Supports Clock / Grid / Dial / Minimal + Clock Customizer)
                         ============================================================ */}
@@ -4671,108 +4976,413 @@ export default function App() {
                     )}
 
                     {/* ============================================================
-                        8. CLIPS TAB
+                        8. CLIPS TAB (Minimal Glassmorphism + Image & Text Clips)
                         ============================================================ */}
                     {activeTab === 'clips' && (
-                      <div className="clips-tab-view">
-                        {clips.length === 0 ? (
-                          <div className="clips-empty-state">
-                            <strong>Nothing copied yet</strong>
-                            <span>Copy something (Ctrl + C) and it shows up here.</span>
+                      <div className="clips-glass-stage">
+                        {clipPreview ? (
+                          <div className="note-glass-card">
+                            <div className="note-glass-lightbox">
+                              <img
+                                src={clipPreview.thumb}
+                                alt="Kopyalanan görsel"
+                                className="note-lightbox-img"
+                              />
+                              <div className="note-lightbox-bar">
+                                <span className="note-lightbox-name">
+                                  {clipPreview.dims || 'Görsel'} · {clipPreview.time}
+                                </span>
+                                <div className="note-lightbox-btns">
+                                  <button
+                                    type="button"
+                                    className="note-glass-orb"
+                                    onClick={() => handleCopyClip(clipPreview)}
+                                    title="Görseli kopyala"
+                                    aria-label="Görseli kopyala"
+                                  >
+                                    {copiedId === clipPreview.id ? <Check size={12} /> : <Copy size={12} />}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="note-glass-orb"
+                                    onClick={() => setClipPreview(null)}
+                                    title="Kapat"
+                                    aria-label="Önizlemeyi kapat"
+                                  >
+                                    <X size={12} />
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
                           </div>
                         ) : (
-                          <div className="panel-view clips-view">
-                            <div className="clips-header">
-                              <span>Copied Clips ({clips.length})</span>
-                              <button
-                                type="button"
-                                className="mini-action-btn"
-                                onClick={() => setClips([])}
-                              >
-                                Clear
-                              </button>
-                            </div>
-                            <div className="clips-list">
-                              {clips.map((c) => (
-                                <div
-                                  key={c.id}
-                                  className="clip-row"
-                                  onClick={() => {
-                                    window.twocode?.copyText(c.text);
-                                    setCopiedId(c.id);
-                                    setTimeout(() => setCopiedId(null), 1200);
-                                  }}
+                          <>
+                            <div className="clips-glass-topbar">
+                              <div className="clips-glass-filters">
+                                <button
+                                  type="button"
+                                  className={`clips-filter-pill ${clipsFilter === 'all' ? 'is-active' : ''}`}
+                                  onClick={() => setClipsFilter('all')}
                                 >
-                                  <code className="clip-text">{c.text}</code>
-                                  <span className="clip-time">
-                                    {copiedId === c.id ? '✓ Copied' : c.time}
-                                  </span>
-                                </div>
-                              ))}
+                                  Tümü
+                                </button>
+                                <button
+                                  type="button"
+                                  className={`note-glass-orb ${clipsFilter === 'image' ? 'is-active' : ''}`}
+                                  onClick={() => setClipsFilter('image')}
+                                  title="Görseller"
+                                  aria-label="Görseller"
+                                >
+                                  <span className="clips-apple-emoji"><NotificationText text="🖼️" /></span>
+                                </button>
+                                <button
+                                  type="button"
+                                  className={`note-glass-orb ${clipsFilter === 'text' ? 'is-active' : ''}`}
+                                  onClick={() => setClipsFilter('text')}
+                                  title="Metinler"
+                                  aria-label="Metinler"
+                                >
+                                  <span className="clips-apple-emoji"><NotificationText text="📝" /></span>
+                                </button>
+                              </div>
+
+                              {clips.length > 0 && (
+                                <button
+                                  type="button"
+                                  className="note-glass-orb is-danger"
+                                  onClick={() => {
+                                    setClips([]);
+                                    setClipPreview(null);
+                                    window.twocode?.clearClips?.();
+                                  }}
+                                  title="Temizle"
+                                  aria-label="Panoyu temizle"
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              )}
                             </div>
-                          </div>
+
+                            {(() => {
+                              const visibleClips = clips.filter((c) => {
+                                const kind = c.kind || 'text';
+                                return clipsFilter === 'all' || kind === clipsFilter;
+                              });
+                              if (visibleClips.length === 0) {
+                                return (
+                                  <div className="clips-glass-empty">
+                                    <span className="clips-empty-emoji"><NotificationText text="📋" /></span>
+                                    <span>Pano boş…</span>
+                                  </div>
+                                );
+                              }
+                              return (
+                                <div className="clips-glass-list">
+                                  {visibleClips.map((c) => {
+                                    const isImage = c.kind === 'image' && c.thumb;
+                                    const isCopied = copiedId === c.id;
+                                    if (isImage) {
+                                      return (
+                                        <div
+                                          key={c.id}
+                                          className={`clips-glass-card is-image ${isCopied ? 'is-copied' : ''}`}
+                                        >
+                                          <button
+                                            type="button"
+                                            className="clips-image-open"
+                                            onClick={() => setClipPreview(c)}
+                                            title="Büyüt"
+                                          >
+                                            <img src={c.thumb} alt="" className="clips-glass-thumb" />
+                                            <div className="clips-image-meta">
+                                              <span className="clips-image-dims">{c.dims || 'Görsel'}</span>
+                                              <span className="clips-glass-time">{c.time}</span>
+                                            </div>
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="note-glass-orb"
+                                            onClick={() => handleCopyClip(c)}
+                                            title="Görseli kopyala"
+                                            aria-label="Görseli kopyala"
+                                          >
+                                            {isCopied ? <Check size={12} /> : <Copy size={12} />}
+                                          </button>
+                                        </div>
+                                      );
+                                    }
+                                    return (
+                                      <button
+                                        key={c.id}
+                                        type="button"
+                                        className={`clips-glass-card ${isCopied ? 'is-copied' : ''}`}
+                                        onClick={() => handleCopyClip(c)}
+                                      >
+                                        <span className="clips-glass-text">{c.text}</span>
+                                        <span className={`clips-glass-time ${isCopied ? 'is-copied' : ''}`}>
+                                          {isCopied ? <Check size={12} /> : c.time}
+                                        </span>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              );
+                            })()}
+                          </>
                         )}
                       </div>
                     )}
 
                     {/* ============================================================
-                        9. NOTE TAB
+                        9. NOTE TAB (Minimal Glassmorphism Pockets)
                         ============================================================ */}
                     {activeTab === 'notes' && (
-                      <div className="note-split-view">
-                        <div className="note-left-pane">
-                          <div className="note-header">
-                            <div>
-                              <span className="note-eyebrow">NOTE</span>
-                              <span className="note-save-hint">Otomatik kaydedilir</span>
-                            </div>
-                            <span className="note-character-count"><span className="clock-number-text">{notesText.length}</span> karakter</span>
+                      <div
+                        className={`note-glass-stage ${noteDragOver ? 'is-drag-over' : ''}`}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setNoteDragOver(true);
+                        }}
+                        onDragLeave={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setNoteDragOver(false);
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setNoteDragOver(false);
+                          if (e.dataTransfer?.files?.length) {
+                            handleNoteFiles(e.dataTransfer.files);
+                          }
+                        }}
+                      >
+                        <input
+                          ref={noteFileInputRef}
+                          type="file"
+                          multiple
+                          className="note-hidden-file-input"
+                          onChange={(e) => {
+                            handleNoteFiles(e.target.files);
+                            e.target.value = '';
+                          }}
+                        />
+
+                        <div className="note-glass-topbar">
+                          <div className="note-glass-dots">
+                            {notesList.map((n, idx) => (
+                              <button
+                                key={n.id}
+                                type="button"
+                                className={`note-color-dot ${idx === activeNoteIndex ? 'is-active' : ''}`}
+                                style={{ '--dot-color': n.color }}
+                                onClick={() => {
+                                  setActiveNoteIndex(idx);
+                                  setNoteSummaryOpen(false);
+                                  setNotePreviewAtt(null);
+                                  setTimeout(() => noteTextareaRef.current?.focus(), 30);
+                                }}
+                                aria-label={`Not ${idx + 1}`}
+                              />
+                            ))}
+                            <button
+                              type="button"
+                              className="note-glass-orb"
+                              onClick={addNotePocket}
+                              title="Yeni not"
+                              aria-label="Yeni not"
+                            >
+                              <Plus size={13} />
+                            </button>
+                            {noteStatusHint && (
+                              <span className="note-status-pill">{noteStatusHint}</span>
+                            )}
                           </div>
-                          <textarea
-                            className="note-clean-input"
-                            placeholder="Başlık ya da notunu yaz…"
-                            value={notesText}
-                            onChange={(e) => setNotesText(e.target.value)}
-                            aria-label="Not içeriği"
-                          />
+
+                          <div className="note-glass-actions">
+                            <button
+                              type="button"
+                              className={`note-glass-orb ${noteRecording ? 'is-recording' : ''} ${noteTranscribing ? 'is-transcribing' : ''}`}
+                              onClick={toggleNoteVoice}
+                              title={noteRecording ? 'Kaydı durdur' : noteTranscribing ? 'Yazıya dökülüyor…' : 'Sesli not'}
+                              aria-label="Sesli not"
+                            >
+                              {noteRecording ? (
+                                <span className="note-voice-waves" aria-hidden="true">
+                                  <span />
+                                  <span />
+                                  <span />
+                                </span>
+                              ) : noteTranscribing ? (
+                                <RotateCw size={12} className="note-spin-icon" />
+                              ) : (
+                                <Mic size={13} />
+                              )}
+                            </button>
+                            <button
+                              type="button"
+                              className="note-glass-orb"
+                              onClick={() => noteFileInputRef.current?.click()}
+                              title="Görsel veya dosya ekle"
+                              aria-label="Görsel veya dosya ekle"
+                            >
+                              <Paperclip size={13} />
+                            </button>
+                            <button
+                              type="button"
+                              className={`note-glass-orb ${noteSummaryOpen ? 'is-active' : ''}`}
+                              onClick={() => setNoteSummaryOpen((v) => !v)}
+                              title="Özetle"
+                              aria-label="Özetle"
+                            >
+                              <AlignLeft size={13} />
+                            </button>
+                            <button
+                              type="button"
+                              className="note-glass-orb"
+                              onClick={() => {
+                                if (!activeNote?.text) return;
+                                if (window.twocode?.copyText) {
+                                  window.twocode.copyText(activeNote.text);
+                                } else {
+                                  navigator.clipboard?.writeText?.(activeNote.text).catch(() => {});
+                                }
+                                setNoteCopied(true);
+                                setTimeout(() => setNoteCopied(false), 1200);
+                              }}
+                              title="Kopyala"
+                              aria-label="Kopyala"
+                            >
+                              {noteCopied ? <Check size={13} /> : <Copy size={12} />}
+                            </button>
+                            {(activeNote?.text || (activeNote?.attachments?.length || 0) > 0 || notesList.length > 1) && (
+                              <button
+                                type="button"
+                                className="note-glass-orb is-danger"
+                                onClick={deleteActiveNotePocket}
+                                title="Sil"
+                                aria-label="Notu sil"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            )}
+                          </div>
                         </div>
 
-                        <div className="note-vertical-divider" />
-
-                        <div className="note-right-pane">
-                          <div className="note-task-header">
-                            <div>
-                              <strong>Görevler</strong>
-                              <span>{noteCheckItems.length ? `${noteCheckItems.filter((item) => /^\[x\]/i.test(item.line.trim())).length}/${noteCheckItems.length} tamamlandı` : 'Notundan görev listesi'}</span>
-                            </div>
-                            <button type="button" className="note-add-task" onClick={appendNoteTask} title="Görev ekle" aria-label="Görev ekle">
-                              <Plus size={14} /> Görev ekle
-                            </button>
-                          </div>
-                          {noteCheckItems.length > 0 ? (
-                            <div className="note-checklist">
-                              {noteCheckItems.map((item) => {
-                                const cleanLabel = item.line.replace(/^\[( |x)\]\s*/i, '');
-                                const isChecked = /^\[x\]/i.test(item.line.trim());
-                                return (
+                        <div className="note-glass-card">
+                          {notePreviewAtt ? (
+                            <div className="note-glass-lightbox">
+                              <img
+                                src={notePreviewAtt.thumb}
+                                alt={notePreviewAtt.name}
+                                className="note-lightbox-img"
+                              />
+                              <div className="note-lightbox-bar">
+                                <span className="note-lightbox-name">{notePreviewAtt.name}</span>
+                                <div className="note-lightbox-btns">
                                   <button
-                                    key={item.idx}
                                     type="button"
-                                    className={`note-check-row ${isChecked ? 'checked' : ''}`}
-                                    onClick={() => toggleNoteTask(item.idx)}
+                                    className="note-glass-orb"
+                                    onClick={() => copyNoteAttachment(notePreviewAtt)}
+                                    title="Görseli kopyala"
+                                    aria-label="Görseli kopyala"
                                   >
-                                    <span className={`note-check-circle ${isChecked ? 'on' : ''}`}>
-                                      {isChecked && <Check size={10} strokeWidth={3} color="#000" />}
-                                    </span>
-                                    <span>{cleanLabel || 'Task item'}</span>
+                                    {noteAttCopiedId === notePreviewAtt.id ? <Check size={12} /> : <Copy size={12} />}
                                   </button>
-                                );
-                              })}
+                                  <button
+                                    type="button"
+                                    className="note-glass-orb"
+                                    onClick={() => window.twocode?.openNoteAttachment?.({ path: notePreviewAtt.path || '', thumb: notePreviewAtt.thumb || '' })}
+                                    title="Dışarıda aç"
+                                    aria-label="Dışarıda aç"
+                                  >
+                                    <ExternalLink size={12} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="note-glass-orb"
+                                    onClick={() => setNotePreviewAtt(null)}
+                                    title="Kapat"
+                                    aria-label="Önizlemeyi kapat"
+                                  >
+                                    <X size={12} />
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          ) : noteSummaryOpen ? (
+                            <div className="note-glass-summary">
+                              {noteSummaryLines.length > 0 ? (
+                                noteSummaryLines.map((line, i) => (
+                                  <div key={i} className="note-summary-line">
+                                    <span className="note-summary-bullet" style={{ background: activeNote?.color || '#38BDF8' }} />
+                                    <span><NotificationText text={line} /></span>
+                                  </div>
+                                ))
+                              ) : (
+                                <span className="note-glass-empty">Özetlenecek metin yok…</span>
+                              )}
                             </div>
                           ) : (
-                            <p className="note-helper-copy">
-                              Görev ekleyebilir ya da notta yeni bir satıra <code>[ ]</code> yazarak kontrol listesi oluşturabilirsin.
-                            </p>
+                            <textarea
+                              ref={noteTextareaRef}
+                              className="note-glass-textarea"
+                              placeholder="Bir şeyler yaz…"
+                              value={activeNote?.text || ''}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                updateActiveNote((n) => ({ ...n, text: val }));
+                              }}
+                              aria-label="Not içeriği"
+                            />
+                          )}
+
+                          {!notePreviewAtt && (activeNote?.attachments?.length || 0) > 0 && (
+                            <div className="note-glass-attachments">
+                              {activeNote.attachments.map((att) => (
+                                <div key={att.id} className="note-att-chip">
+                                  <button
+                                    type="button"
+                                    className="note-att-open"
+                                    onClick={() => {
+                                      if (att.isImage && att.thumb) {
+                                        setNotePreviewAtt(att);
+                                      } else {
+                                        window.twocode?.openNoteAttachment?.({ path: att.path || '', thumb: att.thumb || '' });
+                                      }
+                                    }}
+                                    title={att.isImage ? 'Büyüt' : 'Aç'}
+                                  >
+                                    {att.thumb ? (
+                                      <img src={att.thumb} alt="" className="note-att-thumb" />
+                                    ) : (
+                                      <span className="note-att-emoji">
+                                        <NotificationText text={att.isImage ? '🖼️' : '📄'} />
+                                      </span>
+                                    )}
+                                    <span className="note-att-name">{att.name}</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="note-att-action"
+                                    onClick={() => copyNoteAttachment(att)}
+                                    title={att.isImage ? 'Görseli kopyala' : 'Yolu kopyala'}
+                                    aria-label="Eki kopyala"
+                                  >
+                                    {noteAttCopiedId === att.id ? <Check size={10} /> : <Copy size={10} />}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="note-att-remove"
+                                    onClick={() => removeNoteAttachment(att.id)}
+                                    aria-label="Eki kaldır"
+                                  >
+                                    <X size={10} />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
                           )}
                         </div>
                       </div>
@@ -4846,7 +5456,7 @@ export default function App() {
                         </section>
                       </div>
                     )}
-                  </>
+                  </div>
                 )}
               </main>
 
