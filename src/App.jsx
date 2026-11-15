@@ -2215,16 +2215,42 @@ export default function App() {
     if (islandSettings.lyricsEnabled === false || list.length === 0 || !currentMedia.isPlaying || !lyricsSurfaceVisible) {
       return undefined;
     }
-    const timer = setInterval(() => {
-      const elapsed = Math.max(0, (Date.now() - lyricSyncRef.current.at) / 1000);
-      const estPos = lyricSyncRef.current.pos + elapsed;
-      const nextIdx = computeLyricIndex(list, estPos);
+
+    let targetTime = null;
+    if (activeLyricIndex === -2) {
+      targetTime = Math.max(0, (list[0]?.time ?? 0) - 0.5);
+    } else if (activeLyricIndex >= 0 && activeLyricIndex + 1 < list.length) {
+      targetTime = list[activeLyricIndex + 1].time;
+    }
+
+    if (targetTime === null || !Number.isFinite(targetTime)) {
+      return undefined;
+    }
+
+    const elapsed = Math.max(0, (Date.now() - lyricSyncRef.current.at) / 1000);
+    const estPos = lyricSyncRef.current.pos + elapsed;
+    const delayMs = Math.max(16, Math.round((targetTime - estPos) * 1000));
+
+    const timer = setTimeout(() => {
+      const nowElapsed = Math.max(0, (Date.now() - lyricSyncRef.current.at) / 1000);
+      const nowPos = lyricSyncRef.current.pos + nowElapsed;
+      const nextIdx = computeLyricIndex(list, nowPos);
       if (nextIdx !== activeLyricIndexRef.current) {
         setActiveLyricIndex(nextIdx);
       }
-    }, 350);
-    return () => clearInterval(timer);
-  }, [currentMedia.lyrics, currentMedia.isPlaying, islandSettings.lyricsEnabled, islandMode, activeTab, computeLyricIndex]);
+    }, delayMs);
+
+    return () => clearTimeout(timer);
+  }, [
+    currentMedia.lyrics,
+    currentMedia.isPlaying,
+    islandSettings.lyricsEnabled,
+    islandMode,
+    activeTab,
+    activeLyricIndex,
+    liveMedia?.position,
+    computeLyricIndex,
+  ]);
 
   // Synced lyrics & karaoke line progress calculation with accurate intro & break handling
   const { hasSyncedLyrics, primaryLine, secondaryLine } = useMemo(() => {
@@ -3562,7 +3588,10 @@ export default function App() {
             )}
           </div>
           <div className="compact-center">
-            <span className={`compact-lyric ${hasSyncedLyrics ? 'karaoke-fill' : ''}`}>
+            <span
+              key={hasSyncedLyrics ? `compact-${activeLyricIndex}` : 'compact-static'}
+              className={`compact-lyric ${hasSyncedLyrics ? 'karaoke-fill' : ''}`}
+            >
               {primaryLine}
             </span>
           </div>
@@ -4856,12 +4885,20 @@ export default function App() {
 
                           <div className="music-lyrics-box">
                             <p
+                              key={hasSyncedLyrics ? `active-${activeLyricIndex}` : 'active-static'}
                               className={`lyric-line-active ${hasSyncedLyrics ? 'karaoke-active-line' : ''
                                 }`}
                             >
                               {primaryLine}
                             </p>
-                            {secondaryLine && <p className="lyric-line-next">{secondaryLine}</p>}
+                            {secondaryLine && (
+                              <p
+                                key={hasSyncedLyrics ? `next-${activeLyricIndex}` : 'next-static'}
+                                className={`lyric-line-next ${hasSyncedLyrics ? 'karaoke-next-line' : ''}`}
+                              >
+                                {secondaryLine}
+                              </p>
+                            )}
                           </div>
 
                           <MusicProgressRow
