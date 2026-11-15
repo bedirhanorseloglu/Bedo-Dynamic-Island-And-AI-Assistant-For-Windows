@@ -25,6 +25,7 @@ public static class WinFocusHelper {
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
     [DllImport("user32.dll")] public static extern int GetWindowTextLength(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern int GetWindowLong(IntPtr hWnd, int nIndex);
     [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
     [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
 
@@ -32,6 +33,9 @@ public static class WinFocusHelper {
         public IntPtr Hwnd;
         public uint Pid;
         public string Title;
+        public bool IsTopmost;
+        public bool IsToolWindow;
+        public bool IsMinimized;
     }
 
     public static List<WinInfo> GetVisibleWindows() {
@@ -44,10 +48,27 @@ public static class WinFocusHelper {
             GetWindowText(hWnd, sb, sb.Capacity);
             uint pid;
             GetWindowThreadProcessId(hWnd, out pid);
-            list.Add(new WinInfo { Hwnd = hWnd, Pid = pid, Title = sb.ToString() });
+            int exStyle = GetWindowLong(hWnd, -20);
+            list.Add(new WinInfo {
+                Hwnd = hWnd,
+                Pid = pid,
+                Title = sb.ToString(),
+                IsTopmost = (exStyle & 0x00000008) != 0,
+                IsToolWindow = (exStyle & 0x00000080) != 0,
+                IsMinimized = IsIconic(hWnd)
+            });
             return true;
         }, IntPtr.Zero);
         return list;
+    }
+
+    public static IntPtr GetTopNormalWindow(List<WinInfo> windows) {
+        foreach (var w in windows) {
+            if (!w.IsTopmost && !w.IsToolWindow && !w.IsMinimized) {
+                return w.Hwnd;
+            }
+        }
+        return IntPtr.Zero;
     }
 
     public static bool FocusWindow(IntPtr hWnd) {
@@ -138,6 +159,8 @@ function Test-TitleMatch([string]$haystack, [string]$needleTitle, [string]$needl
 }
 
 $allWindows = [WinFocusHelper]::GetVisibleWindows()
+$fgHwnd = [WinFocusHelper]::GetForegroundWindow()
+$topNormalHwnd = [WinFocusHelper]::GetTopNormalWindow($allWindows)
 $candidateNames = Get-CandidateProcessNames $SourceApp
 $targetPids = [System.Collections.Generic.HashSet[uint32]]::new()
 
@@ -152,11 +175,18 @@ foreach ($procName in $candidateNames) {
 
 $appWindows = @($allWindows | Where-Object { $targetPids.Contains($_.Pid) })
 
+function Test-IsWindowActive([IntPtr]$hwnd) {
+    return ($hwnd -eq $fgHwnd) -or ($topNormalHwnd -ne [IntPtr]::Zero -and $hwnd -eq $topNormalHwnd)
+}
+
 # 1. Exact window title match among candidate app windows
 foreach ($w in $appWindows) {
     if (Test-TitleMatch $w.Title $Title $Artist) {
-        $null = [WinFocusHelper]::FocusWindow($w.Hwnd)
-        Write-Output (@{ ok = $true; method = 'window-title'; title = $w.Title } | ConvertTo-Json -Compress)
+        $alreadyActive = Test-IsWindowActive $w.Hwnd
+        if (-not $alreadyActive) {
+            $null = [WinFocusHelper]::FocusWindow($w.Hwnd)
+        }
+        Write-Output (@{ ok = $true; alreadyActive = $alreadyActive; method = 'window-title'; title = $w.Title } | ConvertTo-Json -Compress)
         exit 0
     }
 }
@@ -211,24 +241,23 @@ public static class WinTabWalker {
 
         function Select-TabAndFocus($tab, $hwnd, [string]$tabName, [string]$method) {
             $switched = $false
+            $isSelected = $false
             try {
-                $selPattern = $tab.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern)
-                if ($null -ne $selPattern) {
-                    $selPattern.Select()
-                    $switched = $true
-                }
-            } catch {}
-            if (-not $switched) {
-                try {
-                    $invPattern = $tab.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
-                    if ($null -ne $invPattern) {
-                        $invPattern.Invoke()
+                $selPattern = $null
+                if ($tab.TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern, [ref]$selPattern) -and $null -ne $selPattern) {
+                    if ($selPattern.Current.IsSelected) {
+                        $isSelected = $true
+                    } else {
+                        $selPattern.Select()
                         $switched = $true
                     }
-                } catch {}
+                }
+            } catch {}
+            $alreadyActive = (Test-IsWindowActive $hwnd) -and $isSelected
+            if (-not $alreadyActive) {
+                $null = [WinFocusHelper]::FocusWindow($hwnd)
             }
-            $null = [WinFocusHelper]::FocusWindow($hwnd)
-            Write-Output (@{ ok = $true; method = $method; tabSwitched = $switched; tab = $tabName } | ConvertTo-Json -Compress)
+            Write-Output (@{ ok = $true; alreadyActive = $alreadyActive; method = $method; tabSwitched = $switched; tab = $tabName } | ConvertTo-Json -Compress)
             exit 0
         }
 
@@ -260,8 +289,11 @@ public static class WinTabWalker {
 # 3. Fallback: focus the first visible window of the candidate app (e.g. Spotify, Apple Music, browser)
 if ($appWindows.Count -gt 0) {
     $w = $appWindows[0]
-    $null = [WinFocusHelper]::FocusWindow($w.Hwnd)
-    Write-Output (@{ ok = $true; method = 'app-window'; title = $w.Title } | ConvertTo-Json -Compress)
+    $alreadyActive = Test-IsWindowActive $w.Hwnd
+    if (-not $alreadyActive) {
+        $null = [WinFocusHelper]::FocusWindow($w.Hwnd)
+    }
+    Write-Output (@{ ok = $true; alreadyActive = $alreadyActive; method = 'app-window'; title = $w.Title } | ConvertTo-Json -Compress)
     exit 0
 }
 
@@ -269,8 +301,11 @@ if ($appWindows.Count -gt 0) {
 if (-not [string]::IsNullOrWhiteSpace($Title)) {
     foreach ($w in $allWindows) {
         if (Test-TitleMatch $w.Title $Title "") {
-            $null = [WinFocusHelper]::FocusWindow($w.Hwnd)
-            Write-Output (@{ ok = $true; method = 'global-title'; title = $w.Title } | ConvertTo-Json -Compress)
+            $alreadyActive = Test-IsWindowActive $w.Hwnd
+            if (-not $alreadyActive) {
+                $null = [WinFocusHelper]::FocusWindow($w.Hwnd)
+            }
+            Write-Output (@{ ok = $true; alreadyActive = $alreadyActive; method = 'global-title'; title = $w.Title } | ConvertTo-Json -Compress)
             exit 0
         }
     }

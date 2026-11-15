@@ -3736,8 +3736,35 @@ body .robo-eyes-wrap.has-unread .robo-eye.left {
 }
 
 /* Bildirim okunduğunda/açıldığında: sıcak kehribar parıltıdan yumuşakça beyaza eriyen mutlu göz kırpma */
-body .robo-eyes-wrap.reaction-notif-read .robo-eye {
+body .robo-eyes-wrap.reaction-notif-read:not(.is-charging) .robo-eye {
   animation: roboNotifReadSettle 0.92s cubic-bezier(0.22, 1, 0.36, 1) forwards !important;
+}
+
+body .robo-eyes-wrap.is-charging.reaction-notif-read .robo-eye.right {
+  animation: roboNotifReadSettleCharging 0.92s cubic-bezier(0.22, 1, 0.36, 1) forwards !important;
+}
+
+@keyframes roboNotifReadSettleCharging {
+  0% {
+    background: #fbbf24;
+    box-shadow: 0 0 11px rgba(251, 191, 36, 0.95), 0 0 20px rgba(245, 158, 11, 0.6);
+    transform: scaleY(1) translateY(0);
+  }
+  24% {
+    background: #fde68a;
+    box-shadow: 0 0 12px rgba(253, 230, 138, 0.92), 0 0 22px rgba(251, 191, 36, 0.48);
+    transform: scaleY(0.26) translateY(1.2px);
+  }
+  52% {
+    background: #a7f3d0;
+    box-shadow: 0 0 11px rgba(73, 227, 154, 0.95), 0 0 20px rgba(48, 205, 129, 0.65);
+    transform: scaleY(1.1) translateY(-1px);
+  }
+  100% {
+    background: #49e39a;
+    box-shadow: 0 0 9px rgba(73, 227, 154, 0.9), 0 0 18px rgba(48, 205, 129, 0.58);
+    transform: scaleY(1) translateY(0);
+  }
 }
 
 @keyframes roboNotifReadSettle {
@@ -3844,6 +3871,36 @@ body .robo-eyes-wrap.is-charging .robo-heart-eye {
   text-shadow: 0 0 9px rgba(73, 227, 154, 0.9), 0 0 18px rgba(48, 205, 129, 0.58);
 }
 
+/* Şarj olurken okunmamış bildirim / bildirim tepkisi varsa: sol göz şarj yeşili, sağ göz bildirim rengi */
+body .robo-eyes-wrap.is-charging.has-unread .robo-eye.right,
+body .robo-eyes-wrap.is-charging.reaction-notification .robo-eye.right {
+  --robo-eye-color: #fbbf24;
+  background: #fbbf24 !important;
+  border-bottom-color: #fbbf24;
+  box-shadow: 0 0 9px rgba(251, 191, 36, 0.9), 0 0 18px rgba(245, 158, 11, 0.55) !important;
+}
+
+body .robo-eyes-wrap.is-charging.has-unread .robo-eye.right {
+  animation: roboUnreadWink 3.4s ease-in-out infinite;
+}
+
+body .robo-eyes-wrap.is-charging.reaction-notification .robo-eye.right {
+  animation: roboReactionAlert 460ms ease-out 1;
+}
+
+body .robo-eyes-wrap.is-charging.has-unread .robo-eye.right.focus-arc,
+body .robo-eyes-wrap.is-charging.reaction-notification .robo-eye.right.focus-arc {
+  background: transparent !important;
+  border-bottom-color: #fbbf24;
+  box-shadow: 0 2px 8px rgba(251, 191, 36, 0.9) !important;
+}
+
+body .robo-eyes-wrap.is-charging.has-unread .robo-heart-eye.right,
+body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
+  color: #fbbf24;
+  text-shadow: 0 0 9px rgba(251, 191, 36, 0.9), 0 0 18px rgba(245, 158, 11, 0.55);
+}
+
 @keyframes roboFocusPulse {
 
   0%,
@@ -3918,6 +3975,7 @@ body .robo-eyes-wrap.is-charging .robo-heart-eye {
   body .robo-eye.curious,
   body .robo-eyes-wrap.is-low-battery .robo-eye,
   body .robo-eyes-wrap.is-charging .robo-eye,
+  body .robo-eyes-wrap.is-charging.has-unread .robo-eye.right,
   body .robo-charge-battery-fill {
     animation: none;
     transform: scaleX(1);

@@ -2582,9 +2582,6 @@ ipcMain.handle('open-notification-target', async (_event, target = {}) => {
 
 ipcMain.handle('focus-media-source', async (_event, media = {}) => {
   try {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.blur();
-    }
     const sourceApp = typeof media.sourceApp === 'string' ? media.sourceApp.trim() : '';
     const title = typeof media.title === 'string' ? media.title.trim() : '';
     const artist = typeof media.artist === 'string' ? media.artist.trim() : '';
@@ -2615,7 +2612,14 @@ ipcMain.handle('focus-media-source', async (_event, media = {}) => {
     });
 
     if (result && result.ok) {
-      return true;
+      if (!result.alreadyActive && mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.blur();
+      }
+      return { ok: true, alreadyActive: Boolean(result.alreadyActive) };
+    }
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.blur();
     }
 
     // Never launch shell:AppsFolder for a browser when focus fails, because

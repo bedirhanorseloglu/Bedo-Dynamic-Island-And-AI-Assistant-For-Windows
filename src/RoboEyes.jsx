@@ -121,6 +121,7 @@ export default function RoboEyes({ mood = 'normal', reaction = null, active = tr
   const hasPendingAgenda = pendingAgendaCount > 0;
 
   const statusHints = [];
+  if (batteryCharging) statusHints.push('Şarj oluyor');
   if (hasUnread) statusHints.push(`${unreadNotificationCount} açılmamış bildirim`);
   if (hasPendingAgenda) statusHints.push(`${pendingAgendaCount} bekleyen ajanda`);
   const roboTitle = statusHints.length ? `Robo · ${statusHints.join(' · ')}` : 'Robo';

@@ -2886,16 +2886,16 @@ export default function App() {
     window.twocode?.launchMusicService?.(service);
   };
 
-  const handleOpenMediaSource = (e) => {
+  const handleOpenMediaSource = async (e) => {
     if (e) e.stopPropagation();
     if (!currentMedia.hasSession) return;
     playRoboSound('tap', islandSettings.soundEffects !== false);
-    window.twocode?.focusMediaSource?.({
+    const result = await window.twocode?.focusMediaSource?.({
       sourceApp: currentMedia.sourceApp || '',
       title: currentMedia.title || '',
       artist: currentMedia.artist || '',
     });
-    if (islandMode === 'expanded') {
+    if (islandMode === 'expanded' && !result?.alreadyActive) {
       setShowMenu(false);
       setNotificationHistoryOpen(false);
       setIslandMode(resolvedCollapsedMode);
