@@ -52,7 +52,7 @@ $null = [Windows.Storage.Streams.IRandomAccessStreamWithContentType, Windows.Sto
 
 try {
     $manager = Await-WinRT ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager]::RequestAsync()) ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager])
-    $session = $manager.GetCurrentSession()
+    $session = $null
     $sessions = $manager.GetSessions()
 
     if ($sessions -and $sessions.Count -gt 0) {
@@ -65,9 +65,9 @@ try {
                 }
             } catch {}
         }
-        if ($null -eq $session) {
-            $session = $sessions[0]
-        }
+    }
+    if ($null -eq $session) {
+        $session = $manager.GetCurrentSession()
     }
 
     if ($null -eq $session) {
@@ -98,9 +98,21 @@ try {
 
     $props = Await-WinRT ($session.TryGetMediaPropertiesAsync()) ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionMediaProperties])
     $playbackInfo = $session.GetPlaybackInfo()
+    if (
+        $playbackInfo.PlaybackStatus -eq [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionPlaybackStatus]::Closed -or
+        $playbackInfo.PlaybackStatus -eq [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionPlaybackStatus]::Stopped
+    ) {
+        Write-Output '{"hasSession":false}'
+        exit 0
+    }
     $timeline = $session.GetTimelineProperties()
 
     $isPlaying = ($playbackInfo.PlaybackStatus -eq [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionPlaybackStatus]::Playing)
+    $titleStr = [string]$props.Title
+    if (-not $isPlaying -and [string]::IsNullOrWhiteSpace($titleStr)) {
+        Write-Output '{"hasSession":false}'
+        exit 0
+    }
 
     $posSec = [math]::Round($timeline.Position.TotalSeconds, 1)
     $endSec = [math]::Round($timeline.EndTime.TotalSeconds, 1)
@@ -115,7 +127,6 @@ try {
         }
     }
 
-    $titleStr = [string]$props.Title
     $thumbBase64 = ""
     if ($null -ne $props.Thumbnail) {
         try {

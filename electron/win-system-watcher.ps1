@@ -525,12 +525,30 @@ while ($true) {
         if ($null -ne $mediaManager -and ($now - $lastMediaPoll).TotalMilliseconds -ge 250) {
             $lastMediaPoll = $now
             try {
-                $curSess = $mediaManager.GetCurrentSession()
+                $curSess = $null
+                $allSessions = $mediaManager.GetSessions()
+                if ($allSessions -and $allSessions.Count -gt 0) {
+                    foreach ($s in $allSessions) {
+                        try {
+                            $spb = $s.GetPlaybackInfo()
+                            if ($spb.PlaybackStatus -eq [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionPlaybackStatus]::Playing) {
+                                $curSess = $s
+                                break
+                            }
+                        } catch {}
+                    }
+                }
+                if ($null -eq $curSess) {
+                    $curSess = $mediaManager.GetCurrentSession()
+                }
                 $sig = 'none'
                 if ($null -ne $curSess) {
                     $pb = $curSess.GetPlaybackInfo()
-                    $tl = $curSess.GetTimelineProperties()
-                    $sig = "$($curSess.SourceAppUserModelId)|$([string]$pb.PlaybackStatus)|$($tl.EndTime.TotalSeconds)"
+                    $st = [string]$pb.PlaybackStatus
+                    if ($st -ne 'Closed' -and $st -ne 'Stopped') {
+                        $tl = $curSess.GetTimelineProperties()
+                        $sig = "$($curSess.SourceAppUserModelId)|$st|$($tl.EndTime.TotalSeconds)"
+                    }
                 }
                 if ($lastMediaSig -ne '' -and $sig -ne $lastMediaSig) {
                     Write-Output ((@{ event = 'media-changed' }) | ConvertTo-Json -Compress)

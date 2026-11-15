@@ -1,7 +1,8 @@
 param(
     [string]$SourceApp = "",
     [string]$Title = "",
-    [string]$Artist = ""
+    [string]$Artist = "",
+    [switch]$CheckOnly
 )
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -175,6 +176,11 @@ foreach ($procName in $candidateNames) {
 
 $appWindows = @($allWindows | Where-Object { $targetPids.Contains($_.Pid) })
 
+if ($CheckOnly -and $appWindows.Count -eq 0) {
+    Write-Output '{"exists":false,"reason":"no-window"}'
+    exit 0
+}
+
 function Test-IsWindowActive([IntPtr]$hwnd) {
     return ($hwnd -eq $fgHwnd) -or ($topNormalHwnd -ne [IntPtr]::Zero -and $hwnd -eq $topNormalHwnd)
 }
@@ -182,6 +188,10 @@ function Test-IsWindowActive([IntPtr]$hwnd) {
 # 1. Exact window title match among candidate app windows
 foreach ($w in $appWindows) {
     if (Test-TitleMatch $w.Title $Title $Artist) {
+        if ($CheckOnly) {
+            Write-Output '{"exists":true,"reason":"window-title"}'
+            exit 0
+        }
         $alreadyActive = Test-IsWindowActive $w.Hwnd
         if (-not $alreadyActive) {
             $null = [WinFocusHelper]::FocusWindow($w.Hwnd)
@@ -262,12 +272,18 @@ public static class WinTabWalker {
         }
 
         $windowTabs = @()
+        $totalTabs = 0
         foreach ($w in $appWindows) {
             try {
                 $tabs = [WinTabWalker]::FindTabItems($w.Hwnd, 800)
+                $totalTabs += $tabs.Count
                 foreach ($tab in $tabs) {
                     $tabName = $tab.Current.Name
                     if (-not [string]::IsNullOrWhiteSpace($Title) -and (Test-TitleMatch $tabName $Title $Artist)) {
+                        if ($CheckOnly) {
+                            Write-Output '{"exists":true,"reason":"tab-match"}'
+                            exit 0
+                        }
                         Select-TabAndFocus $tab $w.Hwnd $tabName 'uia-tab'
                     }
                     $windowTabs += [pscustomobject]@{ Tab = $tab; Hwnd = $w.Hwnd; Name = $tabName }
@@ -280,10 +296,28 @@ public static class WinTabWalker {
         foreach ($entry in $windowTabs) {
             $n = if ($entry.Name) { $entry.Name.ToLowerInvariant() } else { '' }
             if ($n -match 'youtube music|spotify|soundcloud|apple music|deezer|tidal|bandcamp') {
+                if ($CheckOnly) {
+                    Write-Output '{"exists":true,"reason":"tab-service"}'
+                    exit 0
+                }
                 Select-TabAndFocus $entry.Tab $entry.Hwnd $entry.Name 'uia-tab-service'
             }
         }
+
+        if ($CheckOnly) {
+            if ($totalTabs -gt 0) {
+                Write-Output '{"exists":false,"reason":"tab-closed"}'
+            } else {
+                Write-Output '{"exists":true,"reason":"unknown"}'
+            }
+            exit 0
+        }
     } catch {}
+}
+
+if ($CheckOnly) {
+    Write-Output '{"exists":true,"reason":"fallback"}'
+    exit 0
 }
 
 # 3. Fallback: focus the first visible window of the candidate app (e.g. Spotify, Apple Music, browser)

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from 'react';
 import RealAppIcon from './RealAppIcon';
 import { shouldPersistNotification } from './notification-history-policy.mjs';
 import {
@@ -90,8 +90,8 @@ import { playRoboSound, playNotifSound } from './sounds';
 // matching the original TwoCode app (media_1794022256939_a2c228a1.jpg)
 function useDominantColor(imageSrc) {
   const [accent, setAccent] = useState({
-    rgb: '190, 32, 68',
-    hex: '#be2044',
+    rgb: '110, 142, 185',
+    hex: '#6e8eb9',
     hasColor: true,
     isLiveCover: false,
   });
@@ -99,8 +99,8 @@ function useDominantColor(imageSrc) {
   useEffect(() => {
     if (!imageSrc) {
       setAccent({
-        rgb: '190, 32, 68',
-        hex: '#be2044',
+        rgb: '110, 142, 185',
+        hex: '#6e8eb9',
         hasColor: true,
         isLiveCover: false,
       });
@@ -1111,6 +1111,43 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('home');
   // Overlay inside expanded island: null | 'all-apps' | 'customize-carousel' | 'mirror'
   const [islandOverlay, setIslandOverlay] = useState(null);
+  const dockTabsRef = useRef(null);
+  const [dockBubble, setDockBubble] = useState({ left: 0, width: 0, visible: false });
+
+  useLayoutEffect(() => {
+    const nav = dockTabsRef.current;
+    if (!nav || !shouldRenderExpanded) {
+      setDockBubble((prev) => (prev.visible ? { ...prev, visible: false } : prev));
+      return;
+    }
+    const updateBubble = () => {
+      const activeBtn = nav.querySelector('.dock-tab-btn.is-active');
+      if (!activeBtn) {
+        setDockBubble((prev) => (prev.visible ? { ...prev, visible: false } : prev));
+        return;
+      }
+      const nextLeft = activeBtn.offsetLeft;
+      const nextWidth = activeBtn.offsetWidth;
+      setDockBubble((prev) =>
+        prev.left === nextLeft && prev.width === nextWidth && prev.visible
+          ? prev
+          : { left: nextLeft, width: nextWidth, visible: true }
+      );
+    };
+    updateBubble();
+    const rafId = requestAnimationFrame(updateBubble);
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(updateBubble);
+      ro.observe(nav);
+      const activeBtn = nav.querySelector('.dock-tab-btn.is-active');
+      if (activeBtn) ro.observe(activeBtn);
+      return () => {
+        cancelAnimationFrame(rafId);
+        ro.disconnect();
+      };
+    }
+    return () => cancelAnimationFrame(rafId);
+  }, [activeTab, islandOverlay, shouldRenderExpanded]);
   const [homeLayoutIndex, setHomeLayoutIndex] = useState(0);
   const [showMenu, setShowMenu] = useState(false);
   const [notificationHistoryOpen, setNotificationHistoryOpen] = useState(false);
@@ -5749,7 +5786,15 @@ export default function App() {
                   </div>
                 </div>
 
-                <nav className="dock-tabs" aria-label="Dynamic Island Modes">
+                <nav className="dock-tabs" ref={dockTabsRef} aria-label="Dynamic Island Modes">
+                  <div
+                    className={`dock-liquid-bubble ${dockBubble.visible ? 'is-visible' : ''}`}
+                    style={{
+                      width: `${dockBubble.width}px`,
+                      transform: `translate3d(${dockBubble.left}px, 0, 0)`,
+                    }}
+                    aria-hidden="true"
+                  />
                   {navItems.map((item) => {
                     const Icon = item.icon;
                     const isActive = activeTab === item.id && !islandOverlay;

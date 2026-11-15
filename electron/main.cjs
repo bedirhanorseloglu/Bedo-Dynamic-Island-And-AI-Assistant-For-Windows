@@ -200,7 +200,7 @@ async function fetchAlbumCover(title, artist) {
 
   return '';
 }
-let lastMediaState = {
+const EMPTY_MEDIA_STATE = {
   hasSession: false,
   title: '',
   artist: '',
@@ -208,9 +208,49 @@ let lastMediaState = {
   isPlaying: false,
   position: 0,
   duration: 0,
+  sourceApp: '',
   thumbnail: '',
   lyrics: [],
 };
+
+let lastMediaState = { ...EMPTY_MEDIA_STATE };
+
+function isBrowserMediaSource(sourceApp) {
+  if (typeof sourceApp !== 'string' || !sourceApp.trim()) return false;
+  return (
+    /(?:chrome|msedge|microsoftedge|brave|opera|vivaldi|\barc\b|firefox|308046b0af4a39cb|0d797b6d|comet|zen|floorp|waterfox|librewolf|thorium|chromium|yandex)/i.test(sourceApp) &&
+    !/_crx_/i.test(sourceApp)
+  );
+}
+
+function checkBrowserMediaTabExists(sourceApp, title, artist) {
+  return new Promise((resolve) => {
+    const scriptPath = path.join(__dirname, 'win-focus-media.ps1');
+    execFile(
+      'powershell.exe',
+      [
+        '-WindowStyle', 'Hidden',
+        '-NoProfile',
+        '-ExecutionPolicy', 'Bypass',
+        '-File', scriptPath,
+        '-SourceApp', sourceApp || '',
+        '-Title', title || '',
+        '-Artist', artist || '',
+        '-CheckOnly',
+      ],
+      { windowsHide: true, timeout: 4000 },
+      (err, stdout) => {
+        if (err || !stdout) return resolve(true);
+        try {
+          const parsed = JSON.parse(stdout.trim().split(/\r?\n/).pop());
+          resolve(parsed?.exists !== false);
+        } catch {
+          resolve(true);
+        }
+      }
+    );
+  });
+}
 
 let clipboardHistory = [];
 let lastClipboardText = '';
@@ -936,10 +976,12 @@ async function fetchLyricsFromLrclib(title, artist) {
 }
 
 let isPollingMedia = false;
+let pendingMediaRepoll = false;
 function pollWindowsMedia(action = 'status', value = null) {
   return new Promise((resolve) => {
     if (gameModeActive && action === 'status') return resolve(lastMediaState);
     if (isPollingMedia && action === 'status') {
+      pendingMediaRepoll = true;
       return resolve(lastMediaState);
     }
     isPollingMedia = true;
@@ -963,17 +1005,29 @@ function pollWindowsMedia(action = 'status', value = null) {
 
     execFile('powershell.exe', args, { timeout: 4000, windowsHide: true }, async (err, stdout) => {
       isPollingMedia = false;
+      if (pendingMediaRepoll) {
+        pendingMediaRepoll = false;
+        scheduleNextMediaPoll(20);
+      }
       if (err || !stdout) {
         return resolve(lastMediaState);
       }
       try {
         const line = stdout.trim().split(/\r?\n/).pop();
         const data = JSON.parse(line);
-        if (data && data.hasSession) {
+        let sessionActive = Boolean(data && data.hasSession);
+        if (sessionActive && !data.isPlaying && data.title && isBrowserMediaSource(data.sourceApp)) {
+          const tabExists = await checkBrowserMediaTabExists(data.sourceApp, data.title, data.artist);
+          if (!tabExists) {
+            sessionActive = false;
+          }
+        }
+        if (sessionActive) {
           const titleChanged = data.title !== lastMediaTitle || data.artist !== lastMediaArtist;
           if (titleChanged) {
             lastMediaTitle = data.title;
             lastMediaArtist = data.artist || '';
+            cachedThumbnail = '';
             cachedLyrics = [];
             lyricsLookupKey = `${data.artist || ''}__${data.title || ''}`.toLowerCase();
             lyricsRequestId += 1;
@@ -1026,7 +1080,12 @@ function pollWindowsMedia(action = 'status', value = null) {
             lyrics: cachedLyrics,
           };
         } else {
-          lastMediaState = { ...lastMediaState, hasSession: false, isPlaying: false };
+          lastMediaTitle = '';
+          lastMediaArtist = '';
+          cachedThumbnail = '';
+          cachedLyrics = [];
+          lyricsLookupKey = '';
+          lastMediaState = { ...EMPTY_MEDIA_STATE };
         }
       } catch {}
       if (mainWindow && !mainWindow.isDestroyed()) {
@@ -2259,13 +2318,15 @@ ipcMain.handle('launch-music-service', async (_event, service) => {
     ];
     for (const p of candidatePaths) {
       if (p && fs.existsSync(p)) {
-        await shell.openPath(p);
-        return { launched: 'app', service: 'spotify' };
+        try {
+          const err = await shell.openPath(p);
+          if (!err) return { launched: 'app', service: 'spotify' };
+        } catch {}
       }
     }
 
-    // Also check if Windows Store Spotify or spotify: URI handler is installed
-    return await new Promise((resolve) => {
+    // Check if Spotify URI handler actually has a valid shell\open\command or Store package
+    const hasUriHandler = await new Promise((resolve) => {
       execFile(
         'powershell.exe',
         [
@@ -2273,20 +2334,22 @@ ipcMain.handle('launch-music-service', async (_event, service) => {
           'Hidden',
           '-NoProfile',
           '-Command',
-          'if ((Test-Path "HKCU:\\Software\\Classes\\spotify") -or (Test-Path "HKCR:\\spotify") -or (Get-AppxPackage -Name "*Spotify*" -ErrorAction SilentlyContinue)) { Write-Output "INSTALLED" } else { Write-Output "NONE" }',
+          '$cmd = (Get-ItemProperty "HKCU:\\Software\\Classes\\spotify\\shell\\open\\command" -ErrorAction SilentlyContinue)."(default)"; if (-not $cmd) { $cmd = (Get-ItemProperty "HKLM:\\Software\\Classes\\spotify\\shell\\open\\command" -ErrorAction SilentlyContinue)."(default)" }; if ($cmd -or (Get-AppxPackage -Name "*Spotify*" -ErrorAction SilentlyContinue)) { Write-Output "INSTALLED" } else { Write-Output "NONE" }',
         ],
         { windowsHide: true, timeout: 2500 },
-        (_err, stdout) => {
-          if ((stdout || '').includes('INSTALLED')) {
-            shell.openExternal('spotify:');
-            resolve({ launched: 'app', service: 'spotify' });
-          } else {
-            shell.openExternal('https://open.spotify.com');
-            resolve({ launched: 'web', service: 'spotify' });
-          }
-        }
+        (_err, stdout) => resolve((stdout || '').includes('INSTALLED'))
       );
     });
+
+    if (hasUriHandler) {
+      try {
+        await shell.openExternal('spotify:');
+        return { launched: 'app', service: 'spotify' };
+      } catch {}
+    }
+
+    await shell.openExternal('https://open.spotify.com');
+    return { launched: 'web', service: 'spotify' };
   }
 
   if (service === 'ytmusic') {
