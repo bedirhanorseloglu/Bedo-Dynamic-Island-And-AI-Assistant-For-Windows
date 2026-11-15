@@ -68,10 +68,15 @@ import {
   Paperclip,
   AlignLeft,
   Touchpad as TouchpadIcon,
+  UploadCloud,
+  Smartphone,
+  Image as ImageIcon,
+  File as FileIcon,
 } from 'lucide-react';
 import RoboEyes from './RoboEyes';
 import MirrorOverlay from './components/MirrorOverlay';
 import PerfMonitorTab from './components/PerfMonitorTab';
+import DropShareTab from './components/DropShareTab';
 import NotifToastContent from './components/NotifToastContent';
 import {
   IdleLiveActivityPill,
@@ -1435,6 +1440,11 @@ export default function App() {
   const [geminiHistory, setGeminiHistory] = useState([]);
   const [antigravityHistory, setAntigravityHistory] = useState([]);
   const [agentActivity, setAgentActivity] = useState([]);
+  const [agentIntegration, setAgentIntegration] = useState({ codexConnected: false, antigravityConnected: false, antigravityIdePath: '' });
+  const [selectedAgentJobId, setSelectedAgentJobId] = useState(null);
+  const [copiedAgentJobId, setCopiedAgentJobId] = useState(null);
+  const [agentFilter, setAgentFilter] = useState('all');
+  const [agentNowTick, setAgentNowTick] = useState(() => Date.now());
   const [pendingApproval, setPendingApproval] = useState(null);
   const [activeHookTask, setActiveHookTask] = useState(null);
 
@@ -2124,6 +2134,12 @@ export default function App() {
   }, [notifPresentation.title, notifPresentation.subtitle, notifPresentation.app]);
 
   const dynamicHudSize = useMemo(() => {
+    if (hudOverlay.type === 'phone-upload' && hudOverlay.file) {
+      return {
+        width: hudOverlay.phase === 'receiving' ? 228 : 246,
+        height: 38,
+      };
+    }
     if (hudOverlay.type === 'ghelper' && hudOverlay.ghelper) {
       if (hudOverlay.ghelper.category === 'aura') {
         const valLen = String(hudOverlay.ghelper.valueText || '').trim().length;
@@ -2633,6 +2649,10 @@ export default function App() {
       }
     });
 
+    window.twocode.getAgentIntegrationStatus?.().then((status) => {
+      if (status) setAgentIntegration(status);
+    });
+
     const unsubAiHist = window.twocode.onAiHistoryUpdate?.((hist) => {
       if (!hist) return;
       setCodexHistory(Array.isArray(hist.codexJobs) ? hist.codexJobs : []);
@@ -2687,6 +2707,21 @@ export default function App() {
       }
     });
 
+    const handleWindowDragOver = (e) => {
+      if (e.dataTransfer?.types && Array.from(e.dataTransfer.types).includes('Files')) {
+        e.preventDefault();
+        setIslandMode('expanded');
+        setActiveTab('drop');
+      }
+    };
+    const handleWindowDrop = (e) => {
+      if (e.dataTransfer?.files?.length) {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('dragover', handleWindowDragOver);
+    window.addEventListener('drop', handleWindowDrop);
+
     const handleGameModeChange = (active) => {
       setGameModeActive(Boolean(active));
       if (active) {
@@ -2734,13 +2769,16 @@ export default function App() {
       const newEntry = {
         id: ev.id || `agent_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
         agent: ev.agent || selectedAiProvider,
-        title: ev.detail || ev.title || ev.command || '',
+        title: ev.title || ev.detail || ev.command || 'Agent activity',
         detail: ev.detail || '',
+        command: ev.command || '',
+        file: ev.file || '',
+        timestamp: ev.timestamp || Date.now(),
         time: new Date(ev.timestamp || Date.now()).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
         type: ev.type || 'active',
       };
-      setActiveHookTask(newEntry);
-      setAgentActivity((items) => [newEntry, ...items.filter((item) => item.id !== newEntry.id)].slice(0, 12));
+      setActiveHookTask(ev.type === 'thinking' || ev.type === 'working' || ev.type === 'approval' ? newEntry : null);
+      setAgentActivity((items) => [newEntry, ...items.filter((item) => item.id !== newEntry.id)].slice(0, 20));
 
       const agentId = (ev.agent || '').toLowerCase();
       if (ev.type === 'done' && agentId.includes('claude')) setClaudeHistory((prev) => [newEntry, ...prev].slice(0, 15));
@@ -2790,21 +2828,32 @@ export default function App() {
           return;
         }
       }
+      const isPhoneUpload = hud.type === 'phone-upload';
+      const hudDuration = isPhoneUpload ? (hud.phase === 'receiving' ? 8000 : 3600) : 2100;
       setHudOverlay({
-        type: hud.type === 'brightness' ? 'brightness' : hud.type === 'ghelper' ? 'ghelper' : 'volume',
+        type: isPhoneUpload
+          ? 'phone-upload'
+          : hud.type === 'brightness'
+            ? 'brightness'
+            : hud.type === 'ghelper'
+              ? 'ghelper'
+              : 'volume',
         value: typeof hud.value === 'number' ? hud.value : 0,
         muted: Boolean(hud.muted),
         ghelper: hud.ghelper || null,
+        phase: hud.phase || 'done',
+        file: hud.file || null,
+        seq: Date.now(),
       });
       setIsSystemHudVisible(true);
       if (hudVisibleTimerRef.current) clearTimeout(hudVisibleTimerRef.current);
-      hudVisibleTimerRef.current = setTimeout(() => setIsSystemHudVisible(false), 2100);
+      hudVisibleTimerRef.current = setTimeout(() => setIsSystemHudVisible(false), hudDuration);
       setIslandMode((curr) => {
         if (curr === 'expanded') return curr;
         if (hudTimerRef.current) clearTimeout(hudTimerRef.current);
         hudTimerRef.current = setTimeout(() => {
           setIslandMode((c) => (c === 'hud' ? resolvedCollapsedModeRef.current : c));
-        }, 2100);
+        }, hudDuration);
         return 'hud';
       });
     });
@@ -2819,6 +2868,8 @@ export default function App() {
       if (unsubGameMode) unsubGameMode();
       if (unsubMedia) unsubMedia();
       if (unsubClip) unsubClip();
+      window.removeEventListener('dragover', handleWindowDragOver);
+      window.removeEventListener('drop', handleWindowDrop);
       if (unsubAgent) unsubAgent();
       if (unsubHud) unsubHud();
       if (unsubWinNotif) unsubWinNotif();
@@ -3030,13 +3081,18 @@ export default function App() {
     triggerRoboReaction('thinking', 3, 1800);
     playRoboSound('curious', islandSettings.soundEffects !== false);
     const timeStr = formatTimeHHMM(new Date());
+    const entryId = 'job_' + Date.now();
     const entry = {
-      id: 'job_' + Date.now(),
+      id: entryId,
       agent: selectedAiProvider,
       title: q.length > 55 ? q.slice(0, 52) + '...' : q,
+      detail: q,
       time: timeStr,
+      timestamp: Date.now(),
+      type: 'thinking',
       status: 'working',
     };
+    setAgentActivity((items) => [entry, ...items.filter((item) => item.id !== entryId)].slice(0, 20));
     if (selectedAiProvider === 'Claude') {
       setClaudeHistory((prev) => [entry, ...prev]);
     } else if (selectedAiProvider === 'Antigravity') {
@@ -3059,6 +3115,13 @@ export default function App() {
       setJobsToday((j) => j + 1);
       setRoboReply(res?.text || 'Cevap hazırlandı.');
       setRoboReplyProvider(res?.provider || selectedAiProvider);
+      setAgentActivity((items) =>
+        items.map((item) =>
+          item.id === entryId
+            ? { ...item, type: 'done', status: 'done', detail: res?.text || item.detail }
+            : item
+        )
+      );
       setRoboQuestion('');
     } catch (err) {
       setRoboLoading(false);
@@ -3067,6 +3130,13 @@ export default function App() {
       playRoboSound('sad', islandSettings.soundEffects !== false);
       setRoboReply(err?.message || 'Bir hata oluştu. Lütfen tekrar deneyin.');
       setRoboReplyProvider(selectedAiProvider);
+      setAgentActivity((items) =>
+        items.map((item) =>
+          item.id === entryId
+            ? { ...item, type: 'error', status: 'error', detail: err?.message || item.detail }
+            : item
+        )
+      );
     }
   };
 
@@ -3105,11 +3175,12 @@ export default function App() {
     window.twocode?.openSettingsWindow?.('apps');
   };
 
-  // Mail and Robo chat are temporarily disabled; keep their entries for later.
+  // Agents, Mail and Robo chat are temporarily disabled; keep their entries for later.
   const navItems = [
     { id: 'home', label: 'HOME', icon: Home },
     { id: 'music', label: 'MUSIC', icon: Music },
-    { id: 'code', label: 'AGENTS', icon: Terminal, badge: pendingApproval ? '!' : null },
+    { id: 'drop', label: 'DROP', icon: UploadCloud },
+    // { id: 'code', label: 'AGENTS', icon: Terminal, badge: pendingApproval ? '!' : null },
     // { id: 'robo', label: 'ROBO', icon: RoboDockIcon },
     { id: 'timer', label: 'FOCUS', icon: Timer },
     { id: 'sleep', label: 'MODES', icon: Moon },
@@ -3120,7 +3191,74 @@ export default function App() {
     // { id: 'inbox', label: 'MAIL', icon: Mail },
   ];
 
-  const activeRecentJobs = agentActivity;
+  useEffect(() => {
+    if (activeTab !== 'code') return;
+    window.twocode?.getAgentIntegrationStatus?.().then((status) => {
+      if (status) setAgentIntegration(status);
+    });
+  }, [activeTab]);
+
+  const activeRecentJobs = useMemo(() => {
+    const merged = [];
+    const seen = new Set();
+    const pushUnique = (item) => {
+      if (!item || !item.title) return;
+      const key = `${(item.agent || '').toLowerCase()}::${String(item.title).trim().toLowerCase()}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      merged.push({
+        ...item,
+        type: item.type || (item.status === 'working' ? 'thinking' : item.status === 'error' ? 'error' : 'done'),
+      });
+    };
+    agentActivity.forEach(pushUnique);
+    const historyItems = [
+      ...antigravityHistory,
+      ...codexHistory,
+      ...claudeHistory,
+      ...geminiHistory,
+    ].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0) || String(b.time || '').localeCompare(String(a.time || '')));
+    historyItems.forEach(pushUnique);
+    return merged;
+  }, [agentActivity, antigravityHistory, codexHistory, claudeHistory, geminiHistory]);
+
+  const selectedAgentJob = useMemo(
+    () => activeRecentJobs.find((job) => job.id === selectedAgentJobId) || null,
+    [activeRecentJobs, selectedAgentJobId]
+  );
+
+  const activeThinkingCount = useMemo(
+    () => activeRecentJobs.filter((job) => job.type === 'thinking').length,
+    [activeRecentJobs]
+  );
+
+  useEffect(() => {
+    if (activeTab !== 'code' || activeThinkingCount === 0) return undefined;
+    setAgentNowTick(Date.now());
+    const id = setInterval(() => setAgentNowTick(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [activeTab, activeThinkingCount]);
+
+  const filteredAgentJobs = useMemo(() => {
+    if (agentFilter === 'all') return activeRecentJobs;
+    return activeRecentJobs.filter((job) => (job.agent || '').toLowerCase().includes(agentFilter));
+  }, [activeRecentJobs, agentFilter]);
+
+  const agentBreakdown = useMemo(() => {
+    const buckets = [
+      { key: 'antigravity', label: 'Antigravity', color: '#49daca', count: 0 },
+      { key: 'codex', label: 'Codex', color: '#6198ff', count: 0 },
+      { key: 'claude', label: 'Claude', color: '#ff9f68', count: 0 },
+      { key: 'gemini', label: 'Gemini', color: '#a88bff', count: 0 },
+    ];
+    for (const job of activeRecentJobs) {
+      const name = (job.agent || '').toLowerCase();
+      const match = buckets.find((b) => name.includes(b.key));
+      if (match) match.count += 1;
+    }
+    const total = buckets.reduce((sum, b) => sum + b.count, 0);
+    return { total, items: buckets.filter((b) => b.count > 0) };
+  }, [activeRecentJobs]);
 
   // Robo's eyes & props reflect the most relevant live device/app state (never random).
   const topEyeMood = timerRunning || activeTab === 'timer'
@@ -3263,7 +3401,39 @@ export default function App() {
             setIsMiniProgressBar(false);
             setIslandMode('expanded');
           } else if (islandMode !== 'expanded') {
+            if (islandMode === 'hud' && hudOverlay.type === 'phone-upload') {
+              setActiveTab('drop');
+            }
             setIslandMode('expanded');
+          }
+        }}
+        onDragEnter={(e) => {
+          if (e.dataTransfer?.types && Array.from(e.dataTransfer.types).includes('Files')) {
+            e.preventDefault();
+            if (hoverExpandTimerRef.current) {
+              clearTimeout(hoverExpandTimerRef.current);
+              hoverExpandTimerRef.current = null;
+            }
+            if (islandMode !== 'expanded') setIslandMode('expanded');
+            if (activeTab !== 'drop') setActiveTab('drop');
+          }
+        }}
+        onDragOver={(e) => {
+          if (e.dataTransfer?.types && Array.from(e.dataTransfer.types).includes('Files')) {
+            e.preventDefault();
+            if (islandMode !== 'expanded') setIslandMode('expanded');
+            if (activeTab !== 'drop') setActiveTab('drop');
+          }
+        }}
+        onDrop={(e) => {
+          if (e.dataTransfer?.files?.length) {
+            e.preventDefault();
+            const paths = window.twocode?.getDroppedFilePaths?.(e.dataTransfer.files) || [];
+            if (paths.length) {
+              window.twocode?.addDropFiles?.(paths);
+            }
+            setIslandMode('expanded');
+            setActiveTab('drop');
           }
         }}
       >
@@ -3370,8 +3540,74 @@ export default function App() {
         {/* ============================================================
             COLLAPSED LAYER 2B: SYSTEM VOLUME / BRIGHTNESS HUD NOTCH
             ============================================================ */}
-        <div className={`morph-layer layer-hud ${hudOverlay.type === 'ghelper' ? 'is-ghelper' : ''} ${hudOverlay.ghelper?.category === 'aura' ? `is-aura effect-${hudOverlay.ghelper.effectType || 'static'}` : ''} ${islandMode === 'hud' || (islandMode === 'expanded' && isSystemHudVisible) ? 'is-visible' : ''}`}>
-          {hudOverlay.type === 'ghelper' && hudOverlay.ghelper ? (
+        <div className={`morph-layer layer-hud ${hudOverlay.type === 'ghelper' ? 'is-ghelper' : ''} ${hudOverlay.type === 'phone-upload' ? `is-phone-upload phase-${hudOverlay.phase || 'done'}` : ''} ${hudOverlay.ghelper?.category === 'aura' ? `is-aura effect-${hudOverlay.ghelper.effectType || 'static'}` : ''} ${islandMode === 'hud' || (islandMode === 'expanded' && isSystemHudVisible) ? 'is-visible' : ''}`}>
+          {hudOverlay.type === 'phone-upload' && hudOverlay.file ? (
+            (() => {
+              const f = hudOverlay.file;
+              const isReceiving = hudOverlay.phase === 'receiving';
+              const ext = String(f.ext || '').toLowerCase();
+              const isDoc = ['.pdf', '.doc', '.docx', '.txt', '.md', '.rtf', '.xlsx', '.csv', '.pptx'].includes(ext);
+              const sizeNum = Number(f.size) || 0;
+              const sizeLabel = sizeNum <= 0
+                ? ''
+                : sizeNum < 1024
+                  ? `${sizeNum} B`
+                  : sizeNum < 1024 * 1024
+                    ? `${(sizeNum / 1024).toFixed(0)} KB`
+                    : `${(sizeNum / (1024 * 1024)).toFixed(1)} MB`;
+              const titleText = isReceiving
+                ? 'Aktarılıyor'
+                : f.isImage
+                  ? 'Görsel alındı'
+                  : isDoc
+                    ? 'Belge alındı'
+                    : 'Dosya alındı';
+
+              return (
+                <div key={`${hudOverlay.seq || 0}-${hudOverlay.phase || 'done'}`} className={`hud-phone-upload-wrap ${isReceiving ? 'is-receiving' : 'is-done'}`}>
+                  <div className="hud-phone-shimmer" aria-hidden="true" />
+                  <div className="hud-phone-icon-orb">
+                    <span className="hud-phone-orb-ring" aria-hidden="true" />
+                    <span className="hud-phone-orb-core">
+                      {f.isImage ? (
+                        <ImageIcon size={14} strokeWidth={2.2} />
+                      ) : isDoc ? (
+                        <FileText size={14} strokeWidth={2.2} />
+                      ) : (
+                        <FileIcon size={14} strokeWidth={2.2} />
+                      )}
+                    </span>
+                  </div>
+                  <div className="hud-phone-label-row">
+                    <span className="hud-phone-title">{titleText}</span>
+                    {!isReceiving && sizeLabel && (
+                      <span className="hud-phone-size">{sizeLabel}</span>
+                    )}
+                  </div>
+                  <div className="hud-phone-badge" aria-hidden="true">
+                    {isReceiving ? (
+                      <div className="hud-phone-wave">
+                        <span />
+                        <span />
+                        <span />
+                      </div>
+                    ) : (
+                      <svg className="hud-phone-check-svg" viewBox="0 0 24 24" fill="none">
+                        <path
+                          className="hud-phone-check-path"
+                          d="M5.5 12.5L10 17L18.5 7.5"
+                          stroke="currentColor"
+                          strokeWidth="2.6"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    )}
+                  </div>
+                </div>
+              );
+            })()
+          ) : hudOverlay.type === 'ghelper' && hudOverlay.ghelper ? (
             hudOverlay.ghelper.category === 'aura' ? (
               <div className={`hud-aura-clean effect-${hudOverlay.ghelper.effectType || 'static'}`}>
                 {/* 1. Frameless Mode-Reactive Keyboard Icon */}
@@ -4216,8 +4452,9 @@ export default function App() {
               <div className="all-apps-grid">
                 {[
                   { id: 'music', label: 'Music', icon: Music, action: () => { setActiveTab('music'); setIslandOverlay(null); } },
+                  { id: 'drop', label: 'Drop & Share', icon: UploadCloud, action: () => { setActiveTab('drop'); setIslandOverlay(null); } },
                   // { id: 'robo', label: 'Robo', isRoboEyes: true, action: () => { setActiveTab('robo'); setIslandOverlay(null); } },
-                  { id: 'code', label: 'Agents', icon: Terminal, action: () => { setActiveTab('code'); setIslandOverlay(null); } },
+                  // { id: 'code', label: 'Agents', icon: Terminal, action: () => { setActiveTab('code'); setIslandOverlay(null); } },
                   { id: 'timer', label: 'Focus', icon: Timer, action: () => { setActiveTab('timer'); setIslandOverlay(null); } },
                   { id: 'clips', label: 'Clipboard', icon: Copy, action: () => { setActiveTab('clips'); setIslandOverlay(null); } },
                   { id: 'notes', label: 'Note', icon: FileText, action: () => { setActiveTab('notes'); setIslandOverlay(null); } },
@@ -4794,6 +5031,8 @@ export default function App() {
                       </div>
                     )}
 
+                    {activeTab === 'drop' && <DropShareTab />}
+
                     {/* ============================================================
                         2. CODEX / CLAUDE TAB
                         ============================================================ */}
@@ -4808,41 +5047,178 @@ export default function App() {
                             <span className="giant-eye" />
                             <span className="giant-eye" />
                           </div>
+                          {activeThinkingCount > 0 && (
+                            <span className="codex-active-badge">
+                              <i />
+                              {activeThinkingCount} ACTIVE
+                            </span>
+                          )}
                           <div className="codex-jobs-counter">{jobsToday}</div>
                           <div className="codex-jobs-label">
                             <i className="codex-white-sq" />
                             <span>JOBS TODAY</span>
                           </div>
+                          {agentBreakdown.total > 0 && (
+                            <div
+                              className="codex-breakdown-bar"
+                              title={agentBreakdown.items.map((b) => `${b.label}: ${b.count}`).join(' · ')}
+                            >
+                              {agentBreakdown.items.map((b) => (
+                                <span
+                                  key={b.key}
+                                  style={{
+                                    width: `${(b.count / agentBreakdown.total) * 100}%`,
+                                    background: b.color,
+                                  }}
+                                />
+                              ))}
+                            </div>
+                          )}
                         </div>
                         <div className="codex-right-col">
                           <div className="codex-header-row">
                             <h3 className="codex-title" title="Kod ajanlarının görev geçmişi">AI ACTIVITY</h3>
-                            {pendingApproval && (
-                              <div className="approval-inline-btns">
-                                <button type="button" className="btn-allow-sm" onClick={() => handleApprovalDecision(true)}>Allow</button>
-                                <button type="button" className="btn-deny-sm" onClick={() => handleApprovalDecision(false)}>Deny</button>
-                              </div>
-                            )}
-                          </div>
-                          <div className="codex-recently-card">
-                            <span className="recently-heading">AGENT ACTIVITY</span>
-                            <div className="recently-list">
-                              {activeRecentJobs.length === 0 ? (
-                                <div className="recently-row">
-                                  <span className="recently-prompt-text" style={{ opacity: 0.5 }}>Agent activity will appear here</span>
+                            <div className="codex-header-actions">
+                              {pendingApproval ? (
+                                <div className="approval-inline-btns">
+                                  <button type="button" className="btn-allow-sm" onClick={() => handleApprovalDecision(true)}>Allow</button>
+                                  <button type="button" className="btn-deny-sm" onClick={() => handleApprovalDecision(false)}>Deny</button>
                                 </div>
                               ) : (
-                                activeRecentJobs.slice(0, 3).map((job) => (
-                                  <div key={job.id} className="recently-row">
-                                    <span className={`recently-check-circle ${job.type === 'thinking' ? 'is-agent-thinking' : ''}`}>
-                                      {job.type === 'thinking' ? <i /> : <Check size={11} strokeWidth={3.2} color="#000000" />}
-                                    </span>
-                                    <span className="recently-prompt-text">{job.title}</span>
-                                    <span className="recently-time">{job.agent} · {job.type === 'thinking' ? 'Düşünüyor' : job.type === 'done' ? 'Yanıtladı' : job.type === 'error' ? 'Hata' : job.type === 'interrupted' ? 'Durduruldu' : job.time}</span>
-                                  </div>
-                                ))
+                                <button
+                                  type="button"
+                                  className="codex-bridge-pill"
+                                  onClick={() => window.twocode?.openSettingsWindow?.('agents')}
+                                  title="Ajan hook ve bridge ayarlarını aç"
+                                >
+                                  <span className={`bridge-dot ${agentIntegration.codexConnected ? 'is-on' : ''}`} />
+                                  <span>Codex</span>
+                                  <span className={`bridge-dot ${agentIntegration.antigravityConnected ? 'is-on' : ''}`} />
+                                  <span>Antigravity</span>
+                                </button>
                               )}
                             </div>
+                          </div>
+                          {pendingApproval && (pendingApproval.command || pendingApproval.file || pendingApproval.title) && (
+                            <div className="codex-approval-banner">
+                              <strong>{pendingApproval.agent || 'Agent'} onay istiyor:</strong>
+                              <span>{pendingApproval.command || pendingApproval.file || pendingApproval.title}</span>
+                            </div>
+                          )}
+                          <div className="codex-recently-card">
+                            <div className="recently-heading-row">
+                              <span className="recently-heading">AGENT ACTIVITY</span>
+                              {selectedAgentJob ? (
+                                <button
+                                  type="button"
+                                  className="recently-back-btn"
+                                  onClick={() => setSelectedAgentJobId(null)}
+                                >
+                                  ← Listeye dön
+                                </button>
+                              ) : agentBreakdown.items.length > 1 ? (
+                                <div className="codex-filter-pills">
+                                  <button
+                                    type="button"
+                                    className={`codex-filter-pill ${agentFilter === 'all' ? 'is-active' : ''}`}
+                                    onClick={() => setAgentFilter('all')}
+                                  >
+                                    Tümü
+                                  </button>
+                                  {agentBreakdown.items.map((b) => (
+                                    <button
+                                      key={b.key}
+                                      type="button"
+                                      className={`codex-filter-pill ${agentFilter === b.key ? 'is-active' : ''}`}
+                                      onClick={() => setAgentFilter(b.key)}
+                                    >
+                                      {b.label === 'Antigravity' ? 'AGY' : b.label}
+                                    </button>
+                                  ))}
+                                </div>
+                              ) : null}
+                            </div>
+                            {selectedAgentJob ? (
+                              <div className="recently-detail-box">
+                                <div className="recently-detail-meta">
+                                  <span>{selectedAgentJob.agent || 'Agent'}</span>
+                                  <span>{selectedAgentJob.time}</span>
+                                </div>
+                                <p className="recently-detail-text">
+                                  {selectedAgentJob.detail || selectedAgentJob.title}
+                                </p>
+                                {(selectedAgentJob.command || selectedAgentJob.file) && (
+                                  <div className="recently-detail-context">
+                                    <code>{selectedAgentJob.command || selectedAgentJob.file}</code>
+                                  </div>
+                                )}
+                                <div className="recently-detail-actions">
+                                  <button
+                                    type="button"
+                                    className="recently-action-btn"
+                                    onClick={() => {
+                                      const text = selectedAgentJob.detail || selectedAgentJob.title || '';
+                                      navigator.clipboard?.writeText(text);
+                                      setCopiedAgentJobId(selectedAgentJob.id);
+                                      setTimeout(() => setCopiedAgentJobId(null), 1400);
+                                    }}
+                                  >
+                                    {copiedAgentJobId === selectedAgentJob.id ? 'Kopyalandı' : 'Kopyala'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="recently-action-btn"
+                                    onClick={() => window.twocode?.focusAgentWindow?.({
+                                      agent: selectedAgentJob.agent,
+                                      file: selectedAgentJob.file,
+                                      title: selectedAgentJob.title,
+                                    })}
+                                  >
+                                    Pencereye Git
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="recently-list">
+                                {filteredAgentJobs.length === 0 ? (
+                                  <div className="recently-row">
+                                    <span className="recently-prompt-text" style={{ opacity: 0.5 }}>
+                                      {agentIntegration.codexConnected || agentIntegration.antigravityConnected
+                                        ? 'Agent activity will appear here'
+                                        : 'Hook bağlı değil · Sağ üstten bağlayın'}
+                                    </span>
+                                  </div>
+                                ) : (
+                                  filteredAgentJobs.slice(0, 4).map((job) => {
+                                    const elapsedSec = job.type === 'thinking' && job.timestamp
+                                      ? Math.max(0, Math.floor((agentNowTick - job.timestamp) / 1000))
+                                      : null;
+                                    return (
+                                      <button
+                                        key={job.id}
+                                        type="button"
+                                        className="recently-row recently-row-btn"
+                                        onClick={() => setSelectedAgentJobId(job.id)}
+                                        title="Detayı görüntüle"
+                                      >
+                                        <span className={`recently-check-circle ${job.type === 'thinking' ? 'is-agent-thinking' : job.type === 'error' ? 'is-agent-error' : job.type === 'interrupted' ? 'is-agent-interrupted' : ''}`}>
+                                          {job.type === 'thinking' ? <i /> : job.type === 'error' ? <span>!</span> : <Check size={11} strokeWidth={3.2} color="#000000" />}
+                                        </span>
+                                        <span className="recently-prompt-wrap">
+                                          <span className="recently-prompt-text">{job.title}</span>
+                                          {(job.command || job.file) && (
+                                            <span className="recently-sub-meta">{job.command || job.file}</span>
+                                          )}
+                                        </span>
+                                        <span className="recently-time">
+                                          {job.agent} · {job.type === 'thinking' ? `Düşünüyor${elapsedSec !== null ? ` · ${elapsedSec}s` : ''}` : job.type === 'error' ? 'Hata' : job.type === 'interrupted' ? 'Durduruldu' : job.time}
+                                        </span>
+                                      </button>
+                                    );
+                                  })
+                                )}
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>

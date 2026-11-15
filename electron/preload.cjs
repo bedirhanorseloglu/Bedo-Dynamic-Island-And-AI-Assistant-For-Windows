@@ -1,5 +1,25 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
+let lastCapturedDrop = { time: 0, paths: [] };
+window.addEventListener(
+  'drop',
+  (e) => {
+    const files = e.dataTransfer?.files;
+    if (!files || !files.length || !webUtils?.getPathForFile) return;
+    const paths = [];
+    for (let i = 0; i < files.length; i++) {
+      try {
+        const p = webUtils.getPathForFile(files[i]);
+        if (p) paths.push(p);
+      } catch {}
+    }
+    if (paths.length) {
+      lastCapturedDrop = { time: Date.now(), paths };
+    }
+  },
+  true
+);
+
 contextBridge.exposeInMainWorld('twocode', {
   setIgnoreMouseEvents: (ignore) => ipcRenderer.send('set-ignore-mouse-events', ignore),
   setExpanded: (expanded) => ipcRenderer.send('set-expanded', expanded),
@@ -91,6 +111,38 @@ contextBridge.exposeInMainWorld('twocode', {
   getSystemStats: () => ipcRenderer.invoke('get-system-stats'),
   getPerfMetrics: () => ipcRenderer.invoke('get-perf-metrics'),
   openTaskMgrPerf: (section) => ipcRenderer.invoke('open-taskmgr-perf', section),
+  focusAgentWindow: (payload) => ipcRenderer.invoke('focus-agent-window', payload),
+  getDroppedFilePaths: (files) => {
+    const direct = [];
+    if (files && webUtils?.getPathForFile) {
+      for (let i = 0; i < files.length; i++) {
+        try {
+          const p = webUtils.getPathForFile(files[i]);
+          if (p) direct.push(p);
+        } catch {}
+      }
+    }
+    if (direct.length) return direct;
+    if (Date.now() - lastCapturedDrop.time < 1000 && lastCapturedDrop.paths.length) {
+      return lastCapturedDrop.paths;
+    }
+    return [];
+  },
+  getDropShelf: () => ipcRenderer.invoke('get-drop-shelf'),
+  addDropFiles: (paths) => ipcRenderer.invoke('add-drop-files', paths),
+  pickDropFiles: () => ipcRenderer.invoke('pick-drop-files'),
+  removeDropFile: (id) => ipcRenderer.invoke('remove-drop-file', id),
+  clearDropShelf: () => ipcRenderer.invoke('clear-drop-shelf'),
+  getDropShareStatus: () => ipcRenderer.invoke('get-drop-share-status'),
+  toggleDropShareServer: (enabled) => ipcRenderer.invoke('toggle-drop-share-server', enabled),
+  openDropFile: (filePath) => ipcRenderer.invoke('open-drop-file', filePath),
+  saveAllDropFiles: () => ipcRenderer.invoke('save-all-drop-files'),
+  startDropDrag: (filePath) => ipcRenderer.sendSync('start-drop-drag', filePath),
+  onDropShelfUpdate: (cb) => {
+    const listener = (_event, files) => cb(files);
+    ipcRenderer.on('drop-shelf-update', listener);
+    return () => ipcRenderer.removeListener('drop-shelf-update', listener);
+  },
   onAgentEvent: (cb) => {
     const listener = (_event, data) => cb(data);
     ipcRenderer.on('agent-event', listener);

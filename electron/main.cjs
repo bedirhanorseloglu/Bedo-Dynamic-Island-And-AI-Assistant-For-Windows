@@ -22,6 +22,7 @@ const http = require('http');
 const https = require('https');
 const os = require('os');
 const fs = require('fs');
+const { DropShareServer } = require('./drop-share-server.cjs');
 const {
   GHelperBridgeClient,
   checkScheduledTaskStatus: checkGHelperTaskStatus,
@@ -636,6 +637,7 @@ function loadLocalAiHistory() {
               agent: 'Codex',
               title: text,
               time: timeStr,
+              timestamp: tsMs,
               status: 'done',
             });
           }
@@ -664,6 +666,7 @@ function loadLocalAiHistory() {
                 agent: 'Codex',
                 title: item.thread_name,
                 time: formatHHMMFromDate(dt),
+                timestamp: dt.getTime(),
                 status: 'done',
               });
             }
@@ -695,6 +698,7 @@ function loadLocalAiHistory() {
               agent: 'Claude',
               title: text,
               time: formatHHMMFromDate(dt),
+              timestamp: dt.getTime(),
               status: 'done',
             });
           }
@@ -721,23 +725,24 @@ function loadLocalAiHistory() {
         const tPath = path.join(brain.path, d.name, '.system_generated', 'logs', 'transcript.jsonl');
         if (fs.existsSync(tPath)) {
           try {
-            const lines = readLastBytesSync(tPath, 32768).split(/\r?\n/).filter(Boolean);
+            const lines = readLastBytesSync(tPath, 131072).split(/\r?\n/).filter(Boolean);
             for (let i = lines.length - 1; i >= 0; i--) {
               const line = lines[i];
-              if (line.includes('USER_REQUEST')) {
+              if (line.includes('USER_REQUEST') || line.includes('"USER_INPUT"')) {
                 const parsed = JSON.parse(line);
                 const content = parsed.content || '';
                 const m = content.match(/<USER_REQUEST>([\s\S]*?)<\/USER_REQUEST>/);
                 const reqText = (m ? m[1] : content).trim().replace(/\r?\n/g, ' ').slice(0, 120);
                 if (reqText && !seenAg.has(reqText)) {
                   seenAg.add(reqText);
-                  const dt = parsed.created_at ? new Date(parsed.created_at) : new Date();
+                  const dt = parsed.created_at ? new Date(parsed.created_at) : new Date(d.mtime || Date.now());
                   if (dt.toDateString() === todayStr) todayCount++;
                   antigravityJobs.push({
                     id: `ag_${d.name}_${antigravityJobs.length}`,
                     agent: brain.agent,
                     title: reqText,
                     time: formatHHMMFromDate(dt),
+                    timestamp: dt.getTime(),
                     status: 'done',
                   });
                   break;
@@ -771,6 +776,7 @@ function loadLocalAiHistory() {
           agent: 'Gemini',
           title: `Gemini CLI Session: ${e.name.length > 16 ? e.name.slice(0, 14) + '...' : e.name}`,
           time: formatHHMMFromDate(dt),
+          timestamp: dt.getTime(),
           status: 'done',
         });
       }
@@ -1546,8 +1552,8 @@ function startCursorHoverWatcher() {
       const leftEdge = (CANVAS_WIDTH - activeTotalWidth) / 2;
       const rightEdge = leftEdge + activeTotalWidth;
 
-      const padX = currentModeKey === 'expanded' ? 14 : 6;
-      const padY = currentModeKey === 'expanded' ? 14 : 6;
+      const padX = currentModeKey === 'expanded' ? 14 : 16;
+      const padY = currentModeKey === 'expanded' ? 14 : 12;
 
       const dropletExtra = currentShape.droplet > 0.05 ? 56 : 0;
       const insideActiveNotch =
@@ -1989,6 +1995,9 @@ app.on('will-quit', () => {
   stopLiveActivityWatchers();
   perfMonitor.stop();
   stopLocalAgentServers();
+  if (dropShareServerInstance) {
+    try { dropShareServerInstance.stop(); } catch {}
+  }
   if (ghelperBridgeClient) {
     try { ghelperBridgeClient.stop(); } catch {}
     ghelperBridgeClient = null;
@@ -2749,6 +2758,219 @@ ipcMain.handle('open-taskmgr-perf', async (_event, section = 'cpu') => {
     () => {}
   );
   return true;
+});
+
+ipcMain.handle('focus-agent-window', async (_event, payload = {}) => {
+  const agent = String(payload?.agent || '');
+  const file = String(payload?.file || '');
+  const title = String(payload?.title || '');
+  const scriptPath = path.join(__dirname, 'win-focus-agent.ps1');
+  return new Promise((resolve) => {
+    execFile(
+      'powershell.exe',
+      [
+        '-WindowStyle', 'Hidden',
+        '-NoProfile',
+        '-ExecutionPolicy', 'Bypass',
+        '-File', scriptPath,
+        '-Agent', agent,
+        '-File', file,
+        '-Title', title,
+      ],
+      { windowsHide: true, timeout: 5000 },
+      (err, stdout) => {
+        try {
+          const parsed = JSON.parse((stdout || '').trim() || '{}');
+          if (parsed.ok) return resolve(parsed);
+        } catch {}
+        if (/antigravity/i.test(agent)) {
+          const status = getAgentIntegrationStatus();
+          if (status.antigravityIdePath && fs.existsSync(status.antigravityIdePath)) {
+            try {
+              const child = spawn(status.antigravityIdePath, [], { detached: true, stdio: 'ignore', windowsHide: true });
+              child.unref();
+              return resolve({ ok: true, launched: true });
+            } catch {}
+          }
+        }
+        resolve({ ok: false });
+      }
+    );
+  });
+});
+
+const dropIconCache = new Map();
+function cacheDropFileIcons(paths = []) {
+  for (const p of paths) {
+    if (!p || dropIconCache.has(p) || !fs.existsSync(p)) continue;
+    app.getFileIcon(p, { size: 'normal' })
+      .then((img) => {
+        if (img && !img.isEmpty()) dropIconCache.set(p, img);
+      })
+      .catch(() => {});
+  }
+}
+
+let dropShareServerInstance = null;
+function getDropShareServer() {
+  if (!dropShareServerInstance) {
+    const uploadDir = path.join(app.getPath('downloads'), 'TwoCode Drop');
+    dropShareServerInstance = new DropShareServer({ uploadDir, port: 4343 });
+    dropShareServerInstance.on('change', (files) => {
+      cacheDropFileIcons(files.map((f) => f.path));
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('drop-shelf-update', files);
+      }
+    });
+    dropShareServerInstance.on('phone-upload-start', (meta) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('system-hud', {
+          type: 'phone-upload',
+          phase: 'receiving',
+          file: meta || null,
+        });
+      }
+    });
+    dropShareServerInstance.on('phone-upload', (file) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('system-hud', {
+          type: 'phone-upload',
+          phase: 'done',
+          file: file
+            ? {
+                id: file.id,
+                name: file.name,
+                path: file.path,
+                size: file.size,
+                ext: file.ext,
+                isImage: Boolean(file.isImage),
+              }
+            : null,
+        });
+      }
+    });
+  }
+  return dropShareServerInstance;
+}
+
+ipcMain.handle('get-drop-shelf', async () => getDropShareServer().getFiles());
+
+ipcMain.handle('add-drop-files', async (_event, paths = []) => {
+  const list = Array.isArray(paths) ? paths : [];
+  cacheDropFileIcons(list);
+  const srv = getDropShareServer();
+  srv.addFiles(list, 'pc');
+  return srv.getFiles();
+});
+
+ipcMain.handle('pick-drop-files', async () => {
+  const res = await dialog.showOpenDialog(mainWindow || undefined, {
+    title: 'Dosya Seç — TwoCode Drop',
+    properties: ['openFile', 'multiSelections'],
+  });
+  if (res.canceled || !res.filePaths?.length) return getDropShareServer().getFiles();
+  cacheDropFileIcons(res.filePaths);
+  const srv = getDropShareServer();
+  srv.addFiles(res.filePaths, 'pc');
+  return srv.getFiles();
+});
+
+ipcMain.handle('remove-drop-file', async (_event, id) => {
+  const srv = getDropShareServer();
+  srv.removeFile(id);
+  return srv.getFiles();
+});
+
+ipcMain.handle('clear-drop-shelf', async () => {
+  const srv = getDropShareServer();
+  srv.clearFiles();
+  return [];
+});
+
+ipcMain.handle('get-drop-share-status', async () => getDropShareServer().getStatus());
+
+ipcMain.handle('toggle-drop-share-server', async (_event, enabled) => {
+  const srv = getDropShareServer();
+  if (enabled) return srv.start();
+  return srv.stop();
+});
+
+ipcMain.handle('open-drop-file', async (_event, filePath) => {
+  if (!filePath || !fs.existsSync(filePath)) return false;
+  shell.showItemInFolder(filePath);
+  return true;
+});
+
+ipcMain.handle('save-all-drop-files', async () => {
+  const srv = getDropShareServer();
+  const files = srv.getFiles();
+  if (!files.length) return { ok: false, canceled: false, count: 0 };
+
+  const res = await dialog.showOpenDialog(mainWindow || undefined, {
+    title: 'Toplu İndir — Hedef Klasör Seç',
+    defaultPath: app.getPath('desktop'),
+    properties: ['openDirectory', 'createDirectory'],
+  });
+  if (res.canceled || !res.filePaths?.[0]) {
+    return { ok: false, canceled: true, count: 0 };
+  }
+
+  const targetDir = res.filePaths[0];
+  let savedCount = 0;
+
+  for (const item of files) {
+    const srcPath = item?.path;
+    if (!srcPath || !fs.existsSync(srcPath)) continue;
+    const baseName = path.basename(item.name || srcPath);
+    const ext = path.extname(baseName);
+    const stem = ext ? baseName.slice(0, -ext.length) : baseName;
+    let destPath = path.join(targetDir, baseName);
+    let idx = 1;
+    while (fs.existsSync(destPath)) {
+      destPath = path.join(targetDir, `${stem} (${idx})${ext}`);
+      idx += 1;
+    }
+    try {
+      fs.copyFileSync(srcPath, destPath);
+      savedCount += 1;
+      srv.removeFile(item.id);
+    } catch {}
+  }
+
+  return { ok: savedCount > 0, canceled: false, count: savedCount, targetDir };
+});
+
+const FALLBACK_DRAG_ICON = nativeImage.createFromDataURL(
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAQAAAC1+jfqAAAAE0lEQVR42mP8/5+hngELGJUYEQAAB88PAf0J+5UAAAAASUVORK5CYII='
+);
+
+ipcMain.on('start-drop-drag', (event, filePathOrList) => {
+  const rawList = Array.isArray(filePathOrList) ? filePathOrList : [filePathOrList];
+  const validPaths = rawList
+    .filter((p) => typeof p === 'string' && p && fs.existsSync(p))
+    .map((p) => path.resolve(p));
+  if (!validPaths.length) {
+    event.returnValue = false;
+    return;
+  }
+  const icon = dropIconCache.get(validPaths[0]) || FALLBACK_DRAG_ICON;
+  try {
+    if (validPaths.length === 1) {
+      event.sender.startDrag({ file: validPaths[0], icon });
+    } else {
+      event.sender.startDrag({ file: validPaths[0], files: validPaths, icon });
+    }
+    const srv = getDropShareServer();
+    const draggedSet = new Set(validPaths.map((p) => p.toLowerCase()));
+    for (const item of srv.getFiles()) {
+      if (item?.path && draggedSet.has(path.resolve(item.path).toLowerCase())) {
+        srv.removeFile(item.id);
+      }
+    }
+    event.returnValue = true;
+  } catch {
+    event.returnValue = false;
+  }
 });
 
 ipcMain.handle('resolve-agent-approval', (_event, { id, approved }) => {
