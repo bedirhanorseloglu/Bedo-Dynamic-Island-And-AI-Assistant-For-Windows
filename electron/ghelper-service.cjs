@@ -38,9 +38,9 @@ function resolveGHelperToast(text) {
   if (category === 'generic') {
     if (/%$/.test(raw) || /parlakl|bright/i.test(raw)) category = 'brightness';
     else if (/backlight|klavye|yüksek|düşük|orta/i.test(raw)) category = 'backlight';
-    else if (/mic|sessiz|mute|unmute|ses/i.test(raw)) category = /unmute|açık/i.test(raw) ? 'mic' : 'micMute';
-    else if (/touchpad|touchscreen/i.test(raw)) category = 'touchpad';
     else if (/mode|mod|silent|turbo|balanced|dengeli|sessiz/i.test(raw)) category = 'mode';
+    else if (/mic|mikrofon|mute|unmute/i.test(raw)) category = /unmute|açık/i.test(raw) ? 'mic' : 'micMute';
+    else if (/touchpad|touchscreen/i.test(raw)) category = 'touchpad';
     else if (/fn.?lock/i.test(raw)) category = 'fnlock';
     else if (/fps|limit/i.test(raw)) category = 'fps';
     else if (/gamepad|mouse|controller/i.test(raw)) category = 'controller';
@@ -122,6 +122,12 @@ function resolveGHelperToast(text) {
     res.gpuIndex = gpuIndex;
     res.color = colors[gpuIndex] || '#00b874';
     res.iconName = icons[gpuIndex] || 'leaf';
+  } else if (category === 'micMute' || category === 'mic') {
+    const isMuted = category === 'micMute' || (/mute|susturul|kapal|off/i.test(raw) && !/unmute|açık|on\b/i.test(raw));
+    res.category = 'mic';
+    res.isMuted = isMuted;
+    res.icon = isMuted ? 'mic-mute' : 'mic';
+    res.valueText = isMuted ? 'Susturuldu' : 'Ses Açık';
   }
 
   return res;
@@ -185,10 +191,62 @@ class GHelperBridgeClient {
     this.lastGHelperInitAt = 0;
     this.lastDispatchedModeId = null;
     this.lastDispatchedModeAt = 0;
+    this.lastMicKeyAt = 0;
+    this.lastMicLogAt = 0;
+    this.lastDispatchedMicMuted = null;
+    this.lastDispatchedMicAt = 0;
+  }
+
+  hasRecentMicToast(windowMs = 1000) {
+    return Date.now() - (this.lastDispatchedMicAt || 0) < windowMs;
+  }
+
+  dispatchMicToast(isMuted, { now = Date.now(), isFromOsd = false, eventAt = 0 } = {}) {
+    if (this.isRecentPowerChange()) return false;
+    const muted = Boolean(isMuted);
+
+    if (isFromOsd) {
+      // Log lines ("Mikrofon ...:True/False") are synchronous and authoritative;
+      // ignore delayed pipe OSD events if log already reported recently or if eventAt is older.
+      if (this.lastMicLogAt > 0 && now - this.lastMicLogAt < 800) {
+        return false;
+      }
+      if (eventAt > 0 && this.lastDispatchedMicAt > 0 && eventAt < this.lastDispatchedMicAt) {
+        return false;
+      }
+    }
+
+    // Deduplicate identical consecutive mic states (G-Helper logs 3 device lines per toggle)
+    // while still allowing rapid alternating toggles (True -> False -> True).
+    if (this.lastDispatchedMicMuted === muted && now - this.lastDispatchedMicAt < 350) {
+      return false;
+    }
+
+    this.currentMicMuted = muted;
+    this.lastDispatchedMicMuted = muted;
+    this.lastDispatchedMicAt = now;
+    this.lastDispatchedToastAt = now;
+
+    const val = muted ? 'Susturuldu' : 'Ses Açık';
+    if (typeof this.onToast === 'function') {
+      this.onToast({
+        raw: val,
+        label: 'Mikrofon',
+        icon: muted ? 'mic-mute' : 'mic',
+        valueText: val,
+        category: 'mic',
+        isMuted: muted,
+      });
+    }
+    return true;
   }
 
   notifyPowerChange() {
     this.lastPowerChangeAt = Date.now();
+  }
+
+  isRecentPowerChange() {
+    return Date.now() - (this.lastPowerChangeAt || 0) < 4500;
   }
 
   shouldSuppressAuraToast() {
@@ -448,17 +506,9 @@ class GHelperBridgeClient {
     }
 
     if (/Key:\s*124\b/i.test(line)) {
-      this.currentMicMuted = !this.currentMicMuted;
-      const val = this.currentMicMuted ? 'Susturuldu' : 'Ses Açık';
-      this.lastDispatchedToastAt = Date.now();
-      this.onToast({
-        raw: val,
-        label: 'Mikrofon',
-        icon: this.currentMicMuted ? 'mic-mute' : 'mic',
-        valueText: val,
-        category: 'mic',
-        isMuted: this.currentMicMuted,
-      });
+      // Do not optimistically flip currentMicMuted here: G-Helper immediately logs
+      // the authoritative endpoint mute state (and/or OSD triggers with IsMicMuted()).
+      this.lastMicKeyAt = Date.now();
       return;
     }
 
@@ -642,17 +692,8 @@ class GHelperBridgeClient {
     const micMatch = line.match(/(?:Mikrofon|Microphone|Mic)[^:]*:\s*(True|False)/i);
     if (micMatch) {
       const isMuted = micMatch[1].toLowerCase() === 'true';
-      this.currentMicMuted = isMuted;
-      const val = isMuted ? 'Susturuldu' : 'Ses Açık';
-      this.lastDispatchedToastAt = Date.now();
-      this.onToast({
-        raw: val,
-        label: 'Mikrofon',
-        icon: isMuted ? 'mic-mute' : 'mic',
-        valueText: val,
-        category: 'mic',
-        isMuted: isMuted,
-      });
+      this.lastMicLogAt = Date.now();
+      this.dispatchMicToast(isMuted);
       return;
     }
 
@@ -807,15 +848,9 @@ class GHelperBridgeClient {
             const data = JSON.parse(trimmed);
             if (data.type === 'osd-trigger') {
               if (data.micToggled) {
-                const val = data.micMuted ? 'Susturuldu' : 'Ses Açık';
-                this.lastDispatchedToastAt = Date.now();
-                this.onToast({
-                  raw: val,
-                  label: 'Mikrofon',
-                  icon: data.micMuted ? 'mic-mute' : 'mic',
-                  valueText: val,
-                  category: 'mic',
-                  isMuted: data.micMuted,
+                this.dispatchMicToast(Boolean(data.micMuted), {
+                  isFromOsd: true,
+                  eventAt: typeof data.at === 'number' ? data.at : 0,
                 });
               } else {
                 if (typeof this.pollLogNow === 'function') {
@@ -825,7 +860,14 @@ class GHelperBridgeClient {
             } else if (data.type === 'toast' && data.text) {
               const parsed = resolveGHelperToast(data.text);
               if (parsed) {
+                if (this.isRecentPowerChange() && parsed.category !== 'mode') {
+                  continue;
+                }
                 if (parsed.category === 'aura' && this.shouldSuppressAuraToast()) {
+                  continue;
+                }
+                if (parsed.category === 'mic') {
+                  this.dispatchMicToast(Boolean(parsed.isMuted), { isFromOsd: true });
                   continue;
                 }
                 this.lastDispatchedToastAt = Date.now();

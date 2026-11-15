@@ -47,10 +47,8 @@ app.commandLine.appendSwitch('disable-print-preview');
 app.commandLine.appendSwitch('disable-speech-api');
 app.commandLine.appendSwitch('disable-speech-synthesis-api');
 app.commandLine.appendSwitch('disable-extensions');
-app.commandLine.appendSwitch('num-raster-threads', '1');
 app.commandLine.appendSwitch('disk-cache-size', '10485760');
 app.commandLine.appendSwitch('media-cache-size', '10485760');
-app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
 app.commandLine.appendSwitch('enable-features', 'TrimOnMemoryPressure');
 app.commandLine.appendSwitch(
   'disable-features',
@@ -221,19 +219,17 @@ let lastMediaState = {
 
 let clipboardHistory = [];
 let lastClipboardText = '';
+let lastClipboardImageKey = '';
 const pendingApprovals = new Map();
 
 let currentModeKey = 'idle';
 let isHoveringNotch = false;
+let isIgnoringMouse = true;
 let leaveTimer = null;
+let trimGcTimer = null;
 
-// Current animated shape state for 60fps morphing
+// Current logical shape bounds for cursor hit-testing (visual morphing is GPU-composited in renderer)
 let currentShape = { ...MODE_DIMENSIONS.idle };
-let animStartShape = { ...MODE_DIMENSIONS.idle };
-let animTargetShape = { ...MODE_DIMENSIONS.idle };
-let animStartTime = 0;
-let animDuration = 260;
-let animTimer = null;
 
 // Persistent settings state shared between Dynamic Island & TwoCode Settings window
 let userSettings = {
@@ -1421,17 +1417,16 @@ function buildNotchShapeRects(bodyWidth, height, earRadius, bottomRadius, drople
   return { rects, totalWidth, height: h, offsetX };
 }
 
-function applyShapeImmediate(shapeObj) {
+function updateWindowMouseIgnore(shouldIgnore) {
   if (!mainWindow || mainWindow.isDestroyed()) return;
-  const { rects } = buildNotchShapeRects(
-    shapeObj.bodyWidth,
-    shapeObj.height,
-    shapeObj.earRadius,
-    shapeObj.bottomRadius,
-    shapeObj.droplet || 0
-  );
+  if (isIgnoringMouse === shouldIgnore) return;
+  isIgnoringMouse = shouldIgnore;
   try {
-    mainWindow.setShape(rects);
+    if (shouldIgnore) {
+      mainWindow.setIgnoreMouseEvents(true, { forward: true });
+    } else {
+      mainWindow.setIgnoreMouseEvents(false);
+    }
   } catch {}
 }
 
@@ -1446,7 +1441,7 @@ function animateWindowShapeToMode(modeOrExpanded, customBodyWidth) {
 
   currentModeKey = modeKey;
   const baseTarget = MODE_DIMENSIONS[modeKey];
-  const target = {
+  currentShape = {
     ...baseTarget,
     bodyWidth:
       modeKey === 'music-bar' && typeof customBodyWidth === 'number' && customBodyWidth >= 200
@@ -1455,58 +1450,24 @@ function animateWindowShapeToMode(modeOrExpanded, customBodyWidth) {
         ? Math.min(460, Math.max(210, Math.round(customBodyWidth)))
         : baseTarget.bodyWidth,
   };
-
-  animStartShape = { ...currentShape };
-  animTargetShape = { ...target };
-  animStartTime = Date.now();
-  animDuration = modeKey === 'expanded' ? 270 : 240;
-
-  if (animTimer) clearInterval(animTimer);
-
-  animTimer = setInterval(() => {
-    if (!mainWindow || mainWindow.isDestroyed()) {
-      clearInterval(animTimer);
-      animTimer = null;
-      return;
-    }
-    const elapsed = Date.now() - animStartTime;
-    const t = Math.min(1, elapsed / animDuration);
-    const ease = 1 - Math.pow(1 - t, 3.2);
-
-    currentShape = {
-      bodyWidth: animStartShape.bodyWidth + (animTargetShape.bodyWidth - animStartShape.bodyWidth) * ease,
-      height: animStartShape.height + (animTargetShape.height - animStartShape.height) * ease,
-      earRadius: animStartShape.earRadius + (animTargetShape.earRadius - animStartShape.earRadius) * ease,
-      bottomRadius:
-        animStartShape.bottomRadius + (animTargetShape.bottomRadius - animStartShape.bottomRadius) * ease,
-      droplet:
-        (animStartShape.droplet || 0) + ((animTargetShape.droplet || 0) - (animStartShape.droplet || 0)) * ease,
-    };
-
-    applyShapeImmediate(currentShape);
-
-    if (t >= 1) {
-      clearInterval(animTimer);
-      animTimer = null;
-    }
-  }, 16);
 }
 
 function startCursorHoverWatcher() {
+  let cachedBounds = null;
   setInterval(() => {
     if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible()) return;
     if (gameModeActive) {
       isHoveringNotch = false;
       if (leaveTimer) clearTimeout(leaveTimer);
       leaveTimer = null;
+      updateWindowMouseIgnore(true);
       return;
     }
-    if (userSettings.islandOpenMode === 'On click' && currentModeKey !== 'expanded') return;
     try {
+      if (!cachedBounds) cachedBounds = mainWindow.getBounds();
       const pt = screen.getCursorScreenPoint();
-      const winBounds = mainWindow.getBounds();
-      const relX = pt.x - winBounds.x;
-      const relY = pt.y - winBounds.y;
+      const relX = pt.x - cachedBounds.x;
+      const relY = pt.y - cachedBounds.y;
 
       const activeTotalWidth = currentShape.bodyWidth + currentShape.earRadius * 2;
       const leftEdge = (CANVAS_WIDTH - activeTotalWidth) / 2;
@@ -1521,6 +1482,10 @@ function startCursorHoverWatcher() {
         relY <= currentShape.height + padY &&
         relX >= leftEdge - padX &&
         relX <= rightEdge + dropletExtra + padX;
+
+      updateWindowMouseIgnore(!insideActiveNotch);
+
+      if (userSettings.islandOpenMode === 'On click' && currentModeKey !== 'expanded') return;
 
       if (insideActiveNotch && !isHoveringNotch) {
         isHoveringNotch = true;
@@ -1539,7 +1504,7 @@ function startCursorHoverWatcher() {
         }, 180);
       }
     } catch {}
-  }, 100);
+  }, 60);
 }
 
 function createWindow() {
@@ -1555,8 +1520,8 @@ function createWindow() {
     show: false,
     frame: false,
     thickFrame: false,
-    transparent: false,
-    backgroundColor: '#000000',
+    transparent: true,
+    backgroundColor: '#00000000',
     resizable: false,
     movable: false,
     minimizable: false,
@@ -1576,7 +1541,10 @@ function createWindow() {
 
   mainWindow.setSkipTaskbar(true);
 
-  applyShapeImmediate(currentShape);
+  isIgnoringMouse = true;
+  try {
+    mainWindow.setIgnoreMouseEvents(true, { forward: true });
+  } catch {}
 
   mainWindow.setAlwaysOnTop(true, 'screen-saver');
   mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
@@ -1688,23 +1656,58 @@ function startBackgroundPolling() {
     try { lastClipboardText = clipboard.readText() || ''; } catch {}
     clipboardPollTimer = setInterval(() => {
       try {
-        const txt = clipboard.readText();
-        if (txt && txt.trim() && txt !== lastClipboardText) {
-          lastClipboardText = txt;
-          clipboardHistory = [
-            {
-              id: Date.now(),
-              text: txt.slice(0, 300),
-              time: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
-            },
-            ...clipboardHistory.filter((item) => item.text !== txt),
-          ].slice(0, 15);
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('clipboard-update', clipboardHistory);
+        const formats = clipboard.availableFormats();
+        if (formats.some((f) => f.startsWith('text/'))) {
+          const txt = clipboard.readText();
+          if (txt && txt.trim() && txt !== lastClipboardText) {
+            lastClipboardText = txt;
+            clipboardHistory = [
+              {
+                id: Date.now(),
+                kind: 'text',
+                text: txt.slice(0, 400),
+                time: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
+              },
+              ...clipboardHistory.filter((item) => item.kind !== 'text' || item.text !== txt),
+            ].slice(0, 15);
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('clipboard-update', clipboardHistory);
+            }
+            return;
+          }
+        }
+        if (formats.some((f) => f.startsWith('image/'))) {
+          const img = clipboard.readImage();
+          if (img && !img.isEmpty()) {
+            const size = img.getSize();
+            const bmp = img.toBitmap();
+            const imgKey = `${size.width}x${size.height}:${bmp.subarray(0, 256).toString('base64')}`;
+            if (imgKey !== lastClipboardImageKey) {
+              lastClipboardImageKey = imgKey;
+              const maxDim = 480;
+              const scale = Math.min(1, maxDim / Math.max(size.width || 1, size.height || 1));
+              const resized = scale < 1
+                ? img.resize({ width: Math.max(1, Math.round(size.width * scale)), quality: 'good' })
+                : img;
+              const thumb = resized.toDataURL();
+              clipboardHistory = [
+                {
+                  id: Date.now(),
+                  kind: 'image',
+                  thumb,
+                  dims: `${size.width}×${size.height}`,
+                  time: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
+                },
+                ...clipboardHistory,
+              ].slice(0, 15);
+              if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('clipboard-update', clipboardHistory);
+              }
+            }
           }
         }
       } catch {}
-    }, 2000);
+    }, 3000);
   }
 }
 
@@ -1778,6 +1781,9 @@ function startSystemWatcher() {
               continue;
             }
             if (parsed?.category === 'aura' && ghelperBridgeClient?.shouldSuppressAuraToast()) {
+              continue;
+            }
+            if (parsed?.category === 'mic' && ghelperBridgeClient?.hasRecentMicToast()) {
               continue;
             }
             if (mainWindow && !mainWindow.isDestroyed()) {
@@ -1903,6 +1909,11 @@ app.on('will-quit', () => {
 });
 
 app.whenReady().then(() => {
+  try {
+    session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
+      callback(permission === 'media');
+    });
+  } catch {}
   loadSettingsFromDisk();
   applyStartWithWindows(userSettings.startWithWindows !== false);
   loadSavedGoogleSession();
@@ -1958,6 +1969,7 @@ app.whenReady().then(() => {
   // Periodic RAM trimming, Garbage Collection & bridge health check (every 60s)
   setInterval(async () => {
     trimWorkingSetAndGC();
+    if (ghelperBridgeClient?.connected) return;
     try {
       const taskStatus = await checkGHelperTaskStatus();
       if (taskStatus.installed && !taskStatus.running) {
@@ -1972,24 +1984,44 @@ app.whenReady().then(() => {
   startBackgroundPolling();
 });
 
-ipcMain.on('set-ignore-mouse-events', (_event, _ignore) => {});
+function scheduleTrimWorkingSetAndGC() {
+  if (trimGcTimer) clearTimeout(trimGcTimer);
+  trimGcTimer = setTimeout(() => {
+    trimGcTimer = null;
+    if (currentModeKey === 'idle') {
+      trimWorkingSetAndGC();
+    }
+  }, 1500);
+}
+
+ipcMain.on('set-ignore-mouse-events', (_event, ignore) => {
+  updateWindowMouseIgnore(Boolean(ignore));
+});
 
 ipcMain.on('set-expanded', (_event, expanded) => {
   const isExp = Boolean(expanded);
+  if (isExp && trimGcTimer) {
+    clearTimeout(trimGcTimer);
+    trimGcTimer = null;
+  }
   animateWindowShapeToMode(isExp);
   if (isExp) {
     scheduleNextMediaPoll(50);
   } else {
-    trimWorkingSetAndGC();
+    scheduleTrimWorkingSetAndGC();
   }
 });
 
 ipcMain.on('set-island-mode', (_event, mode, customWidth) => {
+  if (mode !== 'idle' && trimGcTimer) {
+    clearTimeout(trimGcTimer);
+    trimGcTimer = null;
+  }
   animateWindowShapeToMode(mode, customWidth);
   if (mode === 'expanded' || mode === 'music-bar') {
     scheduleNextMediaPoll(50);
   } else if (mode === 'idle') {
-    trimWorkingSetAndGC();
+    scheduleTrimWorkingSetAndGC();
   }
 });
 
@@ -2245,6 +2277,201 @@ ipcMain.handle('copy-text', (_event, text) => {
   return true;
 });
 
+ipcMain.handle('copy-clip', (_event, clip = {}) => {
+  try {
+    if (clip.kind === 'image' && typeof clip.thumb === 'string' && clip.thumb.startsWith('data:image/')) {
+      const img = nativeImage.createFromDataURL(clip.thumb);
+      if (img && !img.isEmpty()) {
+        const size = img.getSize();
+        const bmp = img.toBitmap();
+        lastClipboardImageKey = `${size.width}x${size.height}:${bmp.subarray(0, 256).toString('base64')}`;
+        clipboard.writeImage(img);
+        return true;
+      }
+    }
+    if (typeof clip.text === 'string' && clip.text) {
+      lastClipboardText = clip.text;
+      clipboard.writeText(clip.text);
+      return true;
+    }
+  } catch (error) {
+    console.warn('Could not copy clip:', error.message);
+  }
+  return false;
+});
+
+ipcMain.handle('clear-clips', () => {
+  clipboardHistory = [];
+  return true;
+});
+
+ipcMain.handle('open-note-attachment', async (_event, payload = {}) => {
+  try {
+    if (typeof payload.path === 'string' && payload.path && fs.existsSync(payload.path)) {
+      const err = await shell.openPath(payload.path);
+      return !err;
+    }
+    if (typeof payload.thumb === 'string' && payload.thumb.startsWith('data:image/')) {
+      const match = payload.thumb.match(/^data:image\/([a-zA-Z0-9+]+);base64,(.+)$/);
+      if (match) {
+        const ext = match[1] === 'jpeg' ? 'jpg' : match[1].replace(/[^a-z0-9]/gi, '') || 'png';
+        const tmpFile = path.join(os.tmpdir(), `twocode-note-${Date.now()}.${ext}`);
+        fs.writeFileSync(tmpFile, Buffer.from(match[2], 'base64'));
+        const err = await shell.openPath(tmpFile);
+        return !err;
+      }
+    }
+  } catch (error) {
+    console.warn('Could not open note attachment:', error.message);
+  }
+  return false;
+});
+
+ipcMain.handle('copy-note-attachment', (_event, payload = {}) => {
+  try {
+    if (payload.isImage) {
+      let img = null;
+      if (typeof payload.path === 'string' && payload.path && fs.existsSync(payload.path)) {
+        img = nativeImage.createFromPath(payload.path);
+      }
+      if ((!img || img.isEmpty()) && typeof payload.thumb === 'string' && payload.thumb.startsWith('data:image/')) {
+        img = nativeImage.createFromDataURL(payload.thumb);
+      }
+      if (img && !img.isEmpty()) {
+        clipboard.writeImage(img);
+        return true;
+      }
+    }
+    const textVal = (typeof payload.path === 'string' && payload.path) || payload.name || '';
+    if (textVal) {
+      lastClipboardText = textVal;
+      clipboard.writeText(textVal);
+      return true;
+    }
+  } catch (error) {
+    console.warn('Could not copy note attachment:', error.message);
+  }
+  return false;
+});
+
+let speechWorkerProc = null;
+let speechWorkerQueue = [];
+let speechWorkerBuffer = '';
+
+function transcribeWithWarmPythonWorker(wavPath, lang) {
+  return new Promise((resolve) => {
+    if (!speechWorkerProc || speechWorkerProc.killed) {
+      const workerCode = [
+        'import sys, json, speech_recognition as sr',
+        'r = sr.Recognizer()',
+        'for line in sys.stdin:',
+        '    line = line.strip()',
+        '    if not line:',
+        '        continue',
+        '    parts = line.split("|", 1)',
+        '    wav_path = parts[0]',
+        '    lang = parts[1] if len(parts) > 1 else "tr-TR"',
+        '    try:',
+        '        with sr.AudioFile(wav_path) as src:',
+        '            audio = r.record(src)',
+        '        txt = r.recognize_google(audio, language=lang)',
+        '        print(json.dumps({"ok": True, "text": txt}, ensure_ascii=False), flush=True)',
+        '    except sr.UnknownValueError:',
+        '        print(json.dumps({"ok": False, "error": "Konuşma algılanamadı."}), flush=True)',
+        '    except Exception as e:',
+        '        print(json.dumps({"ok": False, "error": str(e)}), flush=True)',
+      ].join('\n');
+
+      speechWorkerProc = spawn('python', ['-u', '-c', workerCode], {
+        windowsHide: true,
+        stdio: ['pipe', 'pipe', 'ignore'],
+      });
+      speechWorkerBuffer = '';
+      speechWorkerProc.stdout.setEncoding('utf8');
+      speechWorkerProc.stdout.on('data', (chunk) => {
+        speechWorkerBuffer += chunk;
+        const lines = speechWorkerBuffer.split('\n');
+        speechWorkerBuffer = lines.pop() || '';
+        for (const raw of lines) {
+          const item = speechWorkerQueue.shift();
+          if (!item) continue;
+          try {
+            item.resolve(JSON.parse(raw));
+          } catch {
+            item.resolve({ ok: false, error: 'Ses yazıya dökülemedi.' });
+          }
+        }
+      });
+      speechWorkerProc.on('exit', () => {
+        speechWorkerProc = null;
+        while (speechWorkerQueue.length) {
+          const item = speechWorkerQueue.shift();
+          item?.resolve({ ok: false, error: 'Ses çalışanı kapandı.' });
+        }
+      });
+    }
+
+    speechWorkerQueue.push({ resolve });
+    try {
+      speechWorkerProc.stdin.write(`${wavPath}|${lang}\n`);
+    } catch {
+      const item = speechWorkerQueue.pop();
+      item?.resolve({ ok: false, error: 'Ses yazıya dökülemedi.' });
+    }
+  });
+}
+
+ipcMain.handle('transcribe-audio', async (_event, payload = {}) => {
+  const wavBase64 = typeof payload.wavBase64 === 'string' ? payload.wavBase64 : '';
+  const lang = typeof payload.lang === 'string' && payload.lang ? payload.lang : 'tr-TR';
+  if (!wavBase64) return { ok: false, error: 'Ses verisi boş.' };
+
+  const geminiKey = userSettings.geminiApiKey || process.env.GEMINI_API_KEY;
+  if (geminiKey) {
+    for (const modelId of ['gemini-3.8-flash', 'gemini-flash-latest']) {
+      try {
+        const resp = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-goog-api-key': geminiKey,
+            },
+            body: JSON.stringify({
+              contents: [{
+                parts: [
+                  { text: 'Bu ses kaydını Türkçe (veya konuşulan dilde) doğru noktalama ile yazıya dök. Sadece dökülen metni döndür, tırnak veya ek açıklama yazma.' },
+                  { inline_data: { mime_type: 'audio/wav', data: wavBase64 } },
+                ],
+              }],
+            }),
+          }
+        );
+        if (resp.ok) {
+          const data = await resp.json();
+          const text = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+          if (text) return { ok: true, text, provider: modelId };
+        }
+      } catch (error) {
+        console.warn(`${modelId} audio transcription failed, trying fallback:`, error.message);
+      }
+    }
+  }
+
+  const tmpWav = path.join(os.tmpdir(), `twocode-voice-${Date.now()}-${Math.random().toString(36).slice(2, 6)}.wav`);
+  try {
+    fs.writeFileSync(tmpWav, Buffer.from(wavBase64, 'base64'));
+    const res = await transcribeWithWarmPythonWorker(tmpWav, lang);
+    if (res?.ok && res.text) return { ok: true, text: res.text.trim(), provider: 'speech_recognition' };
+    return { ok: false, error: res?.error || 'Konuşma algılanamadı.' };
+  } catch {
+    return { ok: false, error: 'Ses yazıya dökülemedi.' };
+  } finally {
+    try { if (fs.existsSync(tmpWav)) fs.unlinkSync(tmpWav); } catch {}
+  }
+});
+
 ipcMain.handle('open-external', (_event, url) => {
   if (url && /^https?:\/\//i.test(url)) {
     shell.openExternal(url);
@@ -2276,15 +2503,23 @@ ipcMain.handle('open-app', async (_event, target = {}) => {
 
 ipcMain.handle('open-notification-target', async (_event, target = {}) => {
   try {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.blur();
+    }
     if (typeof target.url === 'string' && target.url) {
       const parsed = new URL(target.url);
       if (!['https:', 'http:'].includes(parsed.protocol)) return false;
       await shell.openExternal(parsed.toString());
       return true;
     }
-    if (typeof target.appId === 'string' && /^[\w.!-]+$/.test(target.appId)) {
-      const { execFile } = require('node:child_process');
-      await new Promise((resolve, reject) => execFile('explorer.exe', [`shell:AppsFolder\\${target.appId}`], (error) => error ? reject(error) : resolve()));
+    const cleanAppId = typeof target.appId === 'string' ? target.appId.trim() : '';
+    if (cleanAppId && !/[\r\n\0"<>|&^;]/.test(cleanAppId)) {
+      const child = spawn('explorer.exe', [`shell:AppsFolder\\${cleanAppId}`], {
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true,
+      });
+      child.unref();
       return true;
     }
   } catch (error) {
@@ -2294,9 +2529,8 @@ ipcMain.handle('open-notification-target', async (_event, target = {}) => {
       setTimeout(() => {
         if (mainWindow && !mainWindow.isDestroyed() && !gameModeActive) {
           mainWindow.setAlwaysOnTop(true, 'screen-saver');
-          mainWindow.moveTop();
         }
-      }, 250);
+      }, 300);
     }
   }
   return false;
