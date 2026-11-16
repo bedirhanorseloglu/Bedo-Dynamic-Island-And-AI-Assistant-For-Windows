@@ -4620,14 +4620,14 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
   margin: -0.08em -0.1em;
   background: linear-gradient(
     180deg,
-    color-mix(in srgb, var(--clock-glass-color, #ffffff) 92%, #ffffff 8%) 0%,
-    var(--clock-glass-color, #ffffff) 52%,
-    color-mix(in srgb, var(--clock-glass-color, #ffffff) 68%, rgba(18, 22, 32, 0.85)) 100%
+    color-mix(in srgb, var(--clock-glass-color, #ffffff) 96%, #ffffff 4%) 0%,
+    color-mix(in srgb, var(--clock-glass-color, #ffffff) 84%, rgba(255, 255, 255, 0.78)) 52%,
+    color-mix(in srgb, var(--clock-glass-color, #ffffff) 58%, rgba(180, 196, 224, 0.48)) 100%
   );
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-  filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.36));
+  filter: drop-shadow(0 8px 20px rgba(0, 0, 0, 0.44));
 }
 
 .hero-clock-colon {
@@ -4650,10 +4650,13 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
   border-radius: 50%;
   background: linear-gradient(
     180deg,
-    color-mix(in srgb, var(--clock-glass-color, #ffffff) 92%, #ffffff 8%) 0%,
-    color-mix(in srgb, var(--clock-glass-color, #ffffff) 68%, rgba(18, 22, 32, 0.85)) 100%
+    color-mix(in srgb, var(--clock-glass-color, #ffffff) 90%, #ffffff 10%) 0%,
+    color-mix(in srgb, var(--clock-glass-color, #ffffff) 56%, rgba(180, 196, 224, 0.44)) 100%
   );
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    0 5px 12px rgba(0, 0, 0, 0.34);
 }
 
 .hero-clock.focus-size .hero-clock-colon i {
@@ -4670,12 +4673,13 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
   letter-spacing: 0.08em;
   background: linear-gradient(
     180deg,
-    color-mix(in srgb, var(--clock-glass-color, #ffffff) 92%, #ffffff 8%) 0%,
-    color-mix(in srgb, var(--clock-glass-color, #ffffff) 68%, rgba(18, 22, 32, 0.85)) 100%
+    color-mix(in srgb, var(--clock-glass-color, #ffffff) 94%, #ffffff 6%) 0%,
+    color-mix(in srgb, var(--clock-glass-color, #ffffff) 58%, rgba(180, 196, 224, 0.48)) 100%
   );
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.35));
 }
 
 .clock-customizer-panel {
@@ -9640,16 +9644,32 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
   margin: auto;
 }
 
-/* Music page: compact album-led player, adapted from the supplied reference. */
+/* Music page: Apple Music-inspired fluid ambient player. */
+.notch-morph-shell.state-expanded.mode-music.has-cover-color {
+  background:
+    radial-gradient(ellipse 68% 84% at 20% 52%,
+      rgba(var(--music-accent-rgb, 110, 142, 185), 0.24) 0%,
+      rgba(var(--music-accent-rgb, 110, 142, 185), 0.08) 46%,
+      transparent 76%),
+    radial-gradient(ellipse 88% 46% at 50% 106%,
+      rgba(var(--music-accent-rgb, 110, 142, 185), 0.22) 0%,
+      rgba(var(--music-accent-rgb, 110, 142, 185), 0.07) 48%,
+      transparent 76%),
+    linear-gradient(180deg, #000000 0%, #10121a 16%, #0b0d12 100%);
+}
+
 .notch-morph-shell.state-expanded.mode-music .music-view {
+  position: relative;
   align-items: center;
-  gap: clamp(16px, 3.2vw, 26px);
-  padding: 2px 5px 3px;
+  gap: clamp(16px, 3.2vw, 24px);
+  padding: 2px 6px 3px;
   box-sizing: border-box;
 }
 
 .music-art-column {
-  flex: 0 0 clamp(112px, 25%, 148px);
+  position: relative;
+  z-index: 2;
+  flex: 0 0 clamp(114px, 25%, 144px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -9657,21 +9677,32 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
 }
 
 .music-cover-art {
-  width: min(100%, 142px);
+  width: min(100%, 140px);
   aspect-ratio: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  border-radius: 20px;
+  border-radius: 14px;
   color: rgba(255, 255, 255, 0.36);
-  background: #101012;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+  background: rgba(18, 18, 22, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.45),
+    0 4px 18px rgba(var(--music-accent-rgb, 255, 255, 255), 0.14);
+  transition:
+    transform 0.38s cubic-bezier(0.32, 0.72, 0, 1),
+    box-shadow 0.38s cubic-bezier(0.32, 0.72, 0, 1),
+    border-color 0.3s ease;
+}
+
+.music-view.is-paused .music-cover-art {
+  transform: scale(0.96);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.34);
 }
 
 .music-cover-art.has-art {
-  border-color: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.15);
 }
 
 .music-cover-art img {
@@ -9682,6 +9713,8 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
 }
 
 .notch-morph-shell.state-expanded.mode-music .music-right-panel {
+  position: relative;
+  z-index: 2;
   flex: 1 1 0;
   width: auto;
   height: 100%;
@@ -9694,12 +9727,24 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
 .notch-morph-shell.state-expanded.mode-music .music-track-header {
   display: flex;
   align-items: center;
-  gap: 7px;
-  color: rgba(255, 255, 255, 0.9);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.075em;
+  gap: 6px;
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+
+.music-track-title-inline {
+  color: rgba(255, 255, 255, 0.94);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-transform: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 58%;
 }
 
 .music-status-dot {
@@ -9711,13 +9756,13 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
 }
 
 .music-status-dot.is-playing {
-  background: #75ffb0;
-  box-shadow: 0 0 9px rgba(117, 255, 176, 0.72);
+  background: #fa2d48;
+  box-shadow: 0 0 10px rgba(250, 45, 72, 0.78);
 }
 
 .notch-morph-shell.state-expanded.mode-music .music-track-dot,
 .notch-morph-shell.state-expanded.mode-music .music-track-artist {
-  color: rgba(255, 255, 255, 0.52);
+  color: rgba(255, 255, 255, 0.54);
 }
 
 .notch-morph-shell.state-expanded.mode-music .music-track-artist {
@@ -9725,7 +9770,8 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 500;
   letter-spacing: 0;
   text-transform: none;
 }
@@ -9733,19 +9779,29 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
 .notch-morph-shell.state-expanded.mode-music .music-lyrics-box {
   flex: 1 1 auto;
   min-height: 0;
-  margin: 7px 0 9px;
-  gap: 3px;
+  margin: 5px 0 7px;
+  gap: 4px;
 }
 
 .notch-morph-shell.state-expanded.mode-music .lyric-line-active {
-  font-size: clamp(20px, 3.7vw, 27px);
-  line-height: 1.12;
-  letter-spacing: -0.04em;
+  font-size: clamp(19px, 3.4vw, 24px);
+  font-weight: 700;
+  line-height: 1.18;
+  letter-spacing: -0.02em;
+  color: #ffffff;
+  text-shadow: 0 2px 16px rgba(255, 255, 255, 0.12);
   -webkit-line-clamp: 2;
 }
 
 .notch-morph-shell.state-expanded.mode-music .lyric-line-next {
-  font-size: 12px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.45);
+  transition: color 0.2s ease;
+}
+
+.notch-morph-shell.state-expanded.mode-music .music-lyrics-box:hover .lyric-line-next {
+  color: rgba(255, 255, 255, 0.65);
 }
 
 .notch-morph-shell.state-expanded.mode-music .music-progress-row {
@@ -9754,16 +9810,19 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
 
 .notch-morph-shell.state-expanded.mode-music .music-time-label {
   min-width: 34px;
-  color: rgba(255, 255, 255, 0.92);
-  font-size: 10px;
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 10.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 .notch-morph-shell.state-expanded.mode-music .music-scrubber-track {
   box-sizing: content-box;
   height: 4px;
-  background: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.2);
   padding: 6px 0;
   background-clip: content-box;
+  transition: height 0.18s ease;
 }
 
 .notch-morph-shell.state-expanded.mode-music .music-scrubber-track:hover,
@@ -9772,25 +9831,112 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
 }
 
 .notch-morph-shell.state-expanded.mode-music .music-scrubber-fill {
-  background: #ffffff;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.35);
 }
 
 .notch-morph-shell.state-expanded.mode-music .music-controls-row {
-  margin-top: 7px;
+  margin-top: 6px;
+  justify-content: space-between;
+}
+
+.notch-morph-shell.state-expanded.mode-music .music-controls-row:has(.music-transport-center)::before {
+  content: '';
+  width: 34px;
+  flex-shrink: 0;
 }
 
 .notch-morph-shell.state-expanded.mode-music .music-transport-center {
-  gap: clamp(18px, 3.5vw, 30px);
+  flex: 0 0 auto;
+  gap: 8px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: linear-gradient(
+    155deg,
+    rgba(255, 255, 255, 0.18) 0%,
+    rgba(var(--music-accent-rgb, 110, 142, 185), 0.2) 50%,
+    rgba(255, 255, 255, 0.07) 100%
+  );
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  backdrop-filter: blur(18px) saturate(155%);
+  -webkit-backdrop-filter: blur(18px) saturate(155%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.38),
+    inset 0 -1px 4px rgba(var(--music-accent-rgb, 110, 142, 185), 0.2),
+    0 8px 20px rgba(0, 0, 0, 0.34);
 }
 
 .notch-morph-shell.state-expanded.mode-music .transport-play-circle {
-  width: 44px;
-  height: 44px;
+  width: 38px;
+  height: 36px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  transition: background 0.18s ease, transform 0.16s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.notch-morph-shell.state-expanded.mode-music .transport-play-circle:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: scale(1.06);
+}
+
+.notch-morph-shell.state-expanded.mode-music .transport-play-circle:active {
+  transform: scale(0.88);
 }
 
 .notch-morph-shell.state-expanded.mode-music .transport-icon-btn {
-  padding: 6px;
-  color: rgba(255, 255, 255, 0.88);
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  justify-content: center;
+  padding: 0;
+  color: rgba(255, 255, 255, 0.9);
+  transition: background 0.18s ease, transform 0.16s cubic-bezier(0.32, 0.72, 0, 1), color 0.18s ease;
+}
+
+.notch-morph-shell.state-expanded.mode-music .transport-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+  transform: scale(1.06);
+}
+
+.notch-morph-shell.state-expanded.mode-music .transport-icon-btn:active {
+  transform: scale(0.88);
+}
+
+.notch-morph-shell.state-expanded.mode-music .music-device-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: linear-gradient(
+    155deg,
+    rgba(255, 255, 255, 0.18) 0%,
+    rgba(var(--music-accent-rgb, 110, 142, 185), 0.18) 52%,
+    rgba(255, 255, 255, 0.06) 100%
+  );
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  backdrop-filter: blur(16px) saturate(145%);
+  -webkit-backdrop-filter: blur(16px) saturate(145%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.36),
+    inset 0 -1px 4px rgba(var(--music-accent-rgb, 110, 142, 185), 0.18),
+    0 6px 16px rgba(0, 0, 0, 0.28);
+  transition: background 0.18s ease, transform 0.16s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.notch-morph-shell.state-expanded.mode-music .music-device-btn:hover {
+  background: linear-gradient(
+    155deg,
+    rgba(255, 255, 255, 0.26) 0%,
+    rgba(var(--music-accent-rgb, 110, 142, 185), 0.24) 52%,
+    rgba(255, 255, 255, 0.1) 100%
+  );
+  transform: scale(1.06);
+}
+
+.notch-morph-shell.state-expanded.mode-music .music-device-btn:active {
+  transform: scale(0.9);
 }
 
 @media (max-width: 540px) {
@@ -9822,13 +9968,13 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
 /* Home: calm contrast, clearer clock hierarchy, and lighter touch cards. */
 .notch-morph-shell.state-expanded.mode-home .home-view:not(.is-clock-customizing) {
   justify-content: flex-end;
-  gap: 10px;
+  gap: 6px;
   padding-top: 0;
-  padding-bottom: 2px;
+  padding-bottom: 1px;
 }
 
 .notch-morph-shell.state-expanded.mode-home .hero-clock:not(.focus-size) {
-  margin: 0;
+  margin: 4px 0 -2px;
   font-weight: 650;
   letter-spacing: -0.055em;
   text-shadow: 0 8px 30px rgba(255, 255, 255, 0.08);
@@ -10758,39 +10904,80 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
   position: relative;
 }
 
+@keyframes playOnPopIn {
+  0% {
+    opacity: 0;
+    transform: translateY(6px) scale(0.94);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 .play-on-popover {
   position: absolute;
   right: 0;
-  bottom: 38px;
-  width: 196px;
-  border-radius: 14px;
-  background: #141418;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.8);
-  padding: 10px 12px;
+  bottom: 42px;
+  width: 204px;
+  border-radius: 18px;
+  background: linear-gradient(
+    155deg,
+    rgba(255, 255, 255, 0.18) 0%,
+    rgba(var(--music-accent-rgb, 110, 142, 185), 0.22) 52%,
+    rgba(16, 18, 24, 0.72) 100%
+  );
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  backdrop-filter: blur(22px) saturate(165%);
+  -webkit-backdrop-filter: blur(22px) saturate(165%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.38),
+    inset 0 -1px 6px rgba(var(--music-accent-rgb, 110, 142, 185), 0.2),
+    0 16px 36px rgba(0, 0, 0, 0.54);
+  padding: 10px 11px;
   z-index: 40;
+  transform-origin: bottom right;
+  animation: playOnPopIn 0.2s cubic-bezier(0.32, 0.72, 0, 1) both;
 }
 
 .play-on-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 12.5px;
-  color: #ffffff;
+  padding: 0 3px;
+  font-size: 11.5px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  color: rgba(255, 255, 255, 0.88);
 }
 
 .play-on-close {
-  background: transparent;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
   border: none;
-  color: rgba(255, 255, 255, 0.55);
+  color: rgba(255, 255, 255, 0.68);
   cursor: pointer;
   display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.16s ease, color 0.16s ease, transform 0.16s ease;
+}
+
+.play-on-close:hover {
+  background: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+}
+
+.play-on-close:active {
+  transform: scale(0.88);
 }
 
 .play-on-divider {
   height: 1px;
-  background: rgba(255, 255, 255, 0.08);
-  margin: 7px 0;
+  background: rgba(255, 255, 255, 0.12);
+  margin: 8px 0;
 }
 
 .play-on-row {
@@ -10798,9 +10985,13 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
   align-items: center;
   justify-content: space-between;
   font-size: 12.5px;
-  font-weight: 700;
+  font-weight: 600;
   color: #ffffff;
-  padding: 2px 0;
+  padding: 7px 9px;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
 .play-on-left {

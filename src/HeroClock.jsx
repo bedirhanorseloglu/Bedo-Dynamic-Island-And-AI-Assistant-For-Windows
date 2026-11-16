@@ -35,7 +35,7 @@ export default function HeroClock({
         fontFamily,
         color,
         '--clock-glass-color': color,
-        fontSize: size === 'focus' ? undefined : `clamp(${Math.round(92 * scale)}px, ${(16.2 * scale).toFixed(2)}vw, ${Math.round(148 * scale)}px)`,
+        fontSize: size === 'focus' ? undefined : `clamp(${Math.round(104 * scale)}px, ${(18.2 * scale).toFixed(2)}vw, ${Math.round(166 * scale)}px)`,
       }}
     >
       {chars.map((ch, idx) => {

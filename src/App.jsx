@@ -2031,6 +2031,7 @@ export default function App() {
   const isShowingNotifToastRef = useRef(false);
   const hoverExpandTimerRef = useRef(null);
   const suppressHoverExpandUntilRef = useRef(0);
+  const suppressHoverCollapseUntilRef = useRef(0);
   const suppressGHelperHudUntilRef = useRef(0);
 
   // Live Windows System HUD (Volume & Screen Brightness) and Windows Notification Toast state
@@ -2697,6 +2698,7 @@ export default function App() {
           setIslandMode('expanded');
         }
       } else {
+        if (Date.now() < suppressHoverCollapseUntilRef.current) return;
         setShowMenu(false);
         setShowMusicServicePicker(false);
         setIsDraggingRuler(false);
@@ -2723,18 +2725,26 @@ export default function App() {
     window.addEventListener('drop', handleWindowDrop);
 
     const handleGameModeChange = (active) => {
-      setGameModeActive(Boolean(active));
-      if (active) {
+      const nextActive = Boolean(active);
+      setGameModeActive(nextActive);
+      if (nextActive) {
         setIslandMode('idle');
         setShowMenu(false);
         setNotificationHistoryOpen(false);
         setShowMusicServicePicker(false);
       } else {
-        setIslandMode(resolvedCollapsedModeRef.current);
+        setIslandMode((curr) =>
+          curr === 'expanded' || curr === 'notif-toast' || curr === 'hud' || curr === 'battery'
+            ? curr
+            : resolvedCollapsedModeRef.current
+        );
       }
     };
     const unsubGameMode = window.twocode.onGameModeChange?.(handleGameModeChange);
-    window.twocode.isGameModeActive?.().then(handleGameModeChange).catch(() => { });
+    window.twocode.isGameModeActive?.().then((active) => {
+      setGameModeActive(Boolean(active));
+      if (active) handleGameModeChange(true);
+    }).catch(() => { });
 
     const unsubMedia = window.twocode.onMediaUpdate((data) => {
       const nextMedia = data || { hasSession: false, isPlaying: false };
@@ -2985,6 +2995,7 @@ export default function App() {
   // Media transport controls
   const handlePlayPause = (e) => {
     if (e) e.stopPropagation();
+    suppressHoverCollapseUntilRef.current = Date.now() + 1500;
     playRoboSound('tap', islandSettings.soundEffects !== false);
     if (!currentMedia.hasSession) {
       setShowMusicServicePicker((prev) => !prev);
@@ -3018,12 +3029,14 @@ export default function App() {
 
   const handleNext = (e) => {
     if (e) e.stopPropagation();
+    suppressHoverCollapseUntilRef.current = Date.now() + 1500;
     playRoboSound('tap', islandSettings.soundEffects !== false);
     window.twocode?.mediaControl('next');
   };
 
   const handlePrev = (e) => {
     if (e) e.stopPropagation();
+    suppressHoverCollapseUntilRef.current = Date.now() + 1500;
     playRoboSound('tap', islandSettings.soundEffects !== false);
     window.twocode?.mediaControl('prev');
   };
@@ -3380,7 +3393,20 @@ export default function App() {
             }, 160);
           }
         }}
-        onMouseLeave={() => {
+        onMouseLeave={(e) => {
+          if (window.twocode?.onNotchHoverChange) return;
+          if (Date.now() < suppressHoverCollapseUntilRef.current) return;
+          if (e.clientX === 0 && e.clientY === 0) return;
+          const rect = morphShellRef.current?.getBoundingClientRect();
+          if (
+            rect &&
+            e.clientX >= rect.left &&
+            e.clientX <= rect.right &&
+            e.clientY >= rect.top &&
+            e.clientY <= rect.bottom
+          ) {
+            return;
+          }
           if (hoverExpandTimerRef.current) {
             clearTimeout(hoverExpandTimerRef.current);
             hoverExpandTimerRef.current = null;
@@ -5228,7 +5254,7 @@ export default function App() {
                         3. MUSIC TAB (Live Cover Art + Karaoke Lyrics + Dynamic Color)
                         ============================================================ */}
                     {activeTab === 'music' && (
-                      <div className="music-view">
+                      <div className={`music-view ${currentMedia.isPlaying ? 'is-playing' : 'is-paused'}`}>
                         <div className="music-art-column">
                           <div
                             className={`music-cover-art ${currentMedia.thumbnail ? 'has-art' : ''}`}
@@ -5251,12 +5277,26 @@ export default function App() {
                             title={currentMedia.hasSession ? 'Çaldığı sekmeyi / uygulamayı aç' : undefined}
                             style={currentMedia.hasSession ? { cursor: 'pointer' } : undefined}
                           >
-                            <span className={`music-status-dot ${currentMedia.isPlaying ? 'is-playing' : ''}`} />
-                            <span>{currentMedia.hasSession ? 'NOW PLAYING' : 'Nothing playing'}</span>
-                            <span className="music-track-dot">·</span>
-                            <span className="music-track-artist">
-                              {currentMedia.hasSession ? (currentMedia.artist || currentMedia.album || 'Playing on this PC') : 'Play music or a video'}
-                            </span>
+                            {hasSyncedLyrics && currentMedia.hasSession ? (
+                              <>
+                                <span className="music-track-title-inline">{currentMedia.title}</span>
+                                {currentMedia.artist && (
+                                  <>
+                                    <span className="music-track-dot">·</span>
+                                    <span className="music-track-artist">{currentMedia.artist}</span>
+                                  </>
+                                )}
+                              </>
+                            ) : (
+                              <>
+                                <span className={`music-status-dot ${currentMedia.isPlaying ? 'is-playing' : ''}`} />
+                                <span>{currentMedia.hasSession ? 'NOW PLAYING' : 'Nothing playing'}</span>
+                                <span className="music-track-dot">·</span>
+                                <span className="music-track-artist">
+                                  {currentMedia.hasSession ? (currentMedia.artist || currentMedia.album || 'Playing on this PC') : 'Play music or a video'}
+                                </span>
+                              </>
+                            )}
                           </div>
 
                           <div className="music-lyrics-box">
@@ -5322,7 +5362,12 @@ export default function App() {
                                 </button>
                               </div>
                             ) : (
-                              <div className="music-transport-center">
+                              <div
+                                className="music-transport-center"
+                                onPointerDown={() => {
+                                  suppressHoverCollapseUntilRef.current = Date.now() + 2000;
+                                }}
+                              >
                                 <button
                                   type="button"
                                   className="transport-icon-btn"
@@ -5330,7 +5375,7 @@ export default function App() {
                                   aria-label="Önceki parça"
                                   title="Önceki parça"
                                 >
-                                  <SkipBack size={18} fill="#ffffff" />
+                                  <SkipBack size={20} fill="currentColor" strokeWidth={1.6} />
                                 </button>
                                 <button
                                   type="button"
@@ -5340,12 +5385,12 @@ export default function App() {
                                   title={currentMedia.isPlaying ? 'Duraklat' : currentMedia.hasSession ? 'Oynat' : 'Müzik uygulaması seç'}
                                 >
                                   {currentMedia.isPlaying ? (
-                                    <Pause size={18} fill="#050506" strokeWidth={2.5} />
+                                    <Pause size={24} fill="currentColor" strokeWidth={1.6} />
                                   ) : (
                                     <Play
-                                      size={18}
-                                      fill="#050506"
-                                      strokeWidth={2.5}
+                                      size={24}
+                                      fill="currentColor"
+                                      strokeWidth={1.6}
                                       style={{ marginLeft: 2 }}
                                     />
                                   )}
@@ -5357,7 +5402,7 @@ export default function App() {
                                   aria-label="Sonraki parça"
                                   title="Sonraki parça"
                                 >
-                                  <SkipForward size={18} fill="#ffffff" />
+                                  <SkipForward size={20} fill="currentColor" strokeWidth={1.6} />
                                 </button>
                               </div>
                             )}
