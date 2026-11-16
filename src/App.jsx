@@ -2700,6 +2700,7 @@ export default function App() {
       } else {
         if (Date.now() < suppressHoverCollapseUntilRef.current) return;
         setShowMenu(false);
+        setNotificationHistoryOpen(false);
         setShowMusicServicePicker(false);
         setIsDraggingRuler(false);
         setIsDraggingVolume(false);
@@ -4055,7 +4056,6 @@ export default function App() {
 
                 <div className="cc-list-rows">
                   <button
-                    ref={notificationHistoryTriggerRef}
                     type="button"
                     className="cc-list-row"
                     onClick={scanWifiNetworks}
@@ -4159,6 +4159,7 @@ export default function App() {
                     <ActiveModeIcon size={16} strokeWidth={2.2} />
                   </button>
                   <button
+                    ref={notificationHistoryTriggerRef}
                     type="button"
                     className={`topbar-notifications-btn ${notificationHistoryOpen ? 'is-open' : ''} ${unreadNotificationCount ? 'has-unread' : ''}`}
                     onClick={(event) => {
