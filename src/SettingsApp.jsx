@@ -835,99 +835,111 @@ export default function SettingsApp() {
             transition={{ type: 'spring', stiffness: 420, damping: 34, mass: 0.85 }}
           >
         {/* ============================================================
-            PAGE 1: HOME
+            PAGE 1: HOME (Liquid Glass Bento Redesign)
             ============================================================ */}
         {activePage === 'home' && (
-          <div className="settings-page-body">
-            <div className="home-greeting-bar">
-              <div>
-                <h2 className="greeting-heading">
+          <div className="settings-page-body home-lg-page">
+            {/* Hero Welcome + Agent Pills */}
+            <motion.section
+              className="home-lg-hero"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ type: 'spring', stiffness: 400, damping: 32 }}
+            >
+              <div className="home-lg-hero-glow" aria-hidden="true" />
+              <div className="home-lg-hero-copy">
+                <h2 className="home-lg-greeting">
                   {greetingTimeOfDay}, {settings.userName}
                 </h2>
-                <p className="greeting-sub">
+                <p className="home-lg-sub">
                   {t('settings.home.sub')}
                 </p>
               </div>
-              <div className="greeting-ai-pills">
-                <div className="ai-status-pill" onClick={() => setActivePage('connections')}>
+              <div className="home-lg-agents">
+                <button type="button" className="home-lg-agent-pill" onClick={() => setActivePage('connections')}>
                   <span className="ai-badge-icon claude">
-                    <ProviderSymbol provider="claude" size={16} />
+                    <ProviderSymbol provider="claude" size={15} />
                   </span>
                   <strong>Claude Code</strong>
-                  <span>{t('settings.home.idle')}</span>
-                </div>
-                <div className="ai-status-pill" onClick={() => setActivePage('connections')}>
+                  <span className="home-lg-agent-state">{t('settings.home.idle')}</span>
+                </button>
+                <button type="button" className="home-lg-agent-pill" onClick={() => setActivePage('connections')}>
                   <span className="ai-badge-icon codex">
-                    <ProviderSymbol provider="codex" size={16} />
+                    <ProviderSymbol provider="codex" size={15} />
                   </span>
                   <strong>Codex</strong>
-                  <span>{t('settings.home.idle')}</span>
-                </div>
-                <div className="ai-status-pill" onClick={() => setActivePage('connections')}>
+                  <span className="home-lg-agent-state">{t('settings.home.idle')}</span>
+                </button>
+                <button type="button" className="home-lg-agent-pill is-live" onClick={() => setActivePage('connections')}>
                   <span className="ai-badge-icon gemini">
-                    <RealAppIcon sc={{ id: 'settings-pill-gemini', type: 'gemini' }} size={15} />
+                    <RealAppIcon sc={{ id: 'settings-pill-gemini', type: 'gemini' }} size={14} />
                   </span>
                   <strong>Gemini</strong>
-                  <span>{t('settings.home.active')}</span>
-                </div>
-                <div className="ai-status-pill" onClick={() => setActivePage('connections')}>
+                  <span className="home-lg-agent-state is-active">{t('settings.home.active')}</span>
+                </button>
+                <button type="button" className="home-lg-agent-pill is-live" onClick={() => setActivePage('connections')}>
                   <span className="ai-badge-icon antigravity">
-                    <ProviderSymbol provider="antigravity" size={15} />
+                    <ProviderSymbol provider="antigravity" size={14} />
                   </span>
                   <strong>Antigravity</strong>
-                  <span>{t('settings.home.active')}</span>
-                </div>
+                  <span className="home-lg-agent-state is-active">{t('settings.home.active')}</span>
+                </button>
               </div>
-            </div>
+            </motion.section>
 
-            <div className="home-stats-grid">
-              <div className="stat-box-card">
+            {/* 3-Column Liquid Glass Metrics */}
+            <div className="home-lg-stats">
+              <div className="home-lg-stat-card">
                 <div className="stat-icon-sq green">
                   <Check size={16} strokeWidth={2.5} />
                 </div>
-                <div className="stat-meta">
+                <div className="home-lg-stat-meta">
                   <strong>{aiHistory.jobsToday || 0}</strong>
                   <span>{t('settings.home.tasksDone')}</span>
                 </div>
               </div>
 
-              <div className="stat-box-card">
+              <div className="home-lg-stat-card">
                 <div className="stat-icon-sq blue">
                   <Calendar size={16} />
                 </div>
-                <div className="stat-meta">
+                <div className="home-lg-stat-meta">
                   <strong>{aiHistory.jobsToday || 0}</strong>
                   <span>{t('settings.home.today')}</span>
                 </div>
               </div>
 
-              <div className="stat-box-card">
+              <div className="home-lg-stat-card">
                 <div className="stat-icon-sq amber">
                   <Flame size={16} />
                 </div>
-                <div className="stat-meta">
+                <div className="home-lg-stat-meta">
                   <strong>1</strong>
                   <span>{t('settings.home.daysStreak')}</span>
                 </div>
               </div>
             </div>
 
-            <div className="home-two-col">
-              <div className="home-activity-col">
-                <div className="activity-header-row">
+            {/* 2-Column Bento: Activity + Quick Links */}
+            <div className="home-lg-bento">
+              <div className="home-lg-activity-col">
+                <div className="home-lg-activity-head">
                   <h3>{t('settings.home.activity')}</h3>
-                  <input
-                    type="text"
-                    className="activity-search-input"
-                    placeholder={t('settings.home.searchActivity')}
-                    value={activitySearch}
-                    onChange={(e) => setActivitySearch(e.target.value)}
-                  />
+                  <div className="home-lg-search-wrap">
+                    <Search size={13} aria-hidden="true" />
+                    <input
+                      type="text"
+                      className="home-lg-search-input"
+                      placeholder={t('settings.home.searchActivity')}
+                      value={activitySearch}
+                      onChange={(e) => setActivitySearch(e.target.value)}
+                    />
+                  </div>
                 </div>
 
-                <div className="settings-card activity-list-card">
-                  <span className="activity-day-label">{t('common.today')}</span>
-                  <div className="activity-items-wrap">
+                <div className="home-lg-glass-card home-lg-activity-card">
+                  <span className="home-lg-day-label">{t('common.today')}</span>
+                  <div className="home-lg-activity-list">
                     {filteredActivities.slice(0, 8).map((job, idx) => {
                       const agent = (job.agent || '').toLowerCase();
                       const badgeClass = agent.includes('claude')
@@ -939,33 +951,43 @@ export default function SettingsApp() {
                         : 'codex';
                       const agentLabel = job.agent || (badgeClass === 'claude' ? 'Claude Code' : badgeClass === 'gemini' ? 'Gemini CLI' : badgeClass === 'antigravity' ? 'Antigravity' : 'Codex');
                       return (
-                        <div key={job.id || idx} className="activity-item-row">
+                        <button
+                          key={job.id || idx}
+                          type="button"
+                          className="home-lg-activity-row"
+                          onClick={() => window.twocode?.focusAgentWindow?.({
+                            agent: agentLabel,
+                            file: job.file || '',
+                            title: job.title || '',
+                            conversationId: job.conversationId || job.threadId || '',
+                          })}
+                        >
                           <span className={`ai-badge-icon ${badgeClass}`}>
                             {badgeClass === 'gemini' ? (
-                              <RealAppIcon sc={{ id: `activity-gemini-${idx}`, type: 'gemini' }} size={15} />
+                              <RealAppIcon sc={{ id: `activity-gemini-${idx}`, type: 'gemini' }} size={14} />
                             ) : (
-                              <ProviderSymbol provider={badgeClass} size={15} />
+                              <ProviderSymbol provider={badgeClass} size={14} />
                             )}
                           </span>
-                          <div className="activity-item-center">
+                          <div className="home-lg-activity-center">
                             <strong>{job.title}</strong>
                             <span>
-                              {job.time} · {agentLabel} · {idx === 0 ? '2 s' : '1 s'}
+                              {job.time} — {agentLabel} ({idx === 0 ? '2 s' : '1 s'})
                             </span>
                           </div>
-                          <span className="activity-done-tag">{t('settings.home.done')}</span>
-                        </div>
+                          <span className="home-lg-done-pill">{t('settings.home.done')}</span>
+                        </button>
                       );
                     })}
                   </div>
                 </div>
               </div>
 
-              <div className="home-side-col">
-                <div className="settings-card quick-links-card">
+              <div className="home-lg-side-col">
+                <div className="home-lg-glass-card home-lg-links-card">
                   <button
                     type="button"
-                    className="quick-link-row"
+                    className="home-lg-link-row"
                     onClick={() => setActivePage('wardrobe')}
                   >
                     <div className="ql-left">
@@ -979,7 +1001,7 @@ export default function SettingsApp() {
 
                   <button
                     type="button"
-                    className="quick-link-row"
+                    className="home-lg-link-row"
                     onClick={() => setActivePage('connections')}
                   >
                     <div className="ql-left">
@@ -993,7 +1015,7 @@ export default function SettingsApp() {
 
                   <button
                     type="button"
-                    className="quick-link-row"
+                    className="home-lg-link-row"
                     onClick={() => setActivePage('general')}
                   >
                     <div className="ql-left">
@@ -1006,7 +1028,7 @@ export default function SettingsApp() {
                   </button>
                 </div>
 
-                <div className="settings-card tip-card">
+                <div className="home-lg-glass-card home-lg-tip-card">
                   <div className="tip-header">
                     <Hand size={15} />
                     <strong>{t('settings.home.tipTitle')}</strong>
@@ -1021,64 +1043,180 @@ export default function SettingsApp() {
         )}
 
         {/* ============================================================
-            PAGE 2: CONNECTIONS
+            PAGE 2: CONNECTIONS (Liquid Glass Redesign)
             ============================================================ */}
         {activePage === 'connections' && (
-          <div className="settings-page-body">
-            <section className="agents-hero">
-              <div className="agents-hero-orbit agents-hero-orbit-one" />
-              <div className="agents-hero-orbit agents-hero-orbit-two" />
-              <div className="agents-hero-copy">
-                <span className="agents-eyebrow"><Sparkles size={12} /> {langCode === 'tr' ? 'YEREL AJAN MASANIZ' : 'YOUR LOCAL AGENT DESK'}</span>
+          <div className="settings-page-body agents-lg-page">
+            <motion.section
+              className="agents-lg-hero"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ type: 'spring', stiffness: 400, damping: 32 }}
+            >
+              <div className="agents-lg-hero-glow" aria-hidden="true" />
+              <div className="agents-lg-hero-copy">
+                <span className="agents-lg-eyebrow">{langCode === 'tr' ? 'YEREL AJAN MASANIZ' : 'YOUR LOCAL AGENT DESK'}</span>
                 <h2>{langCode === 'tr' ? (<>Tüm ajanların,<br /><span>tek sessiz sinyal.</span></>) : (<>All your agents,<br /><span>one quiet signal.</span></>)}</h2>
                 <p>{langCode === 'tr' ? 'Codex veya Antigravity düşünmeye başladığında ve yanıtı hazır olduğunda görün. Etkinlik bu PC’de kalır ve Ada’da görünür.' : 'See when Codex or Antigravity starts thinking and when its answer is ready. Activity stays on this PC and appears in the Island.'}</p>
               </div>
-              <div className="agents-hero-action">
-                <span className={`agents-bridge-status ${agentIntegration.codexConnected || agentIntegration.antigravityConnected ? 'is-ready' : ''}`}><i />{agentIntegration.codexConnected || agentIntegration.antigravityConnected ? (langCode === 'tr' ? 'Köprü hazır' : 'Bridge ready') : (langCode === 'tr' ? 'Köprü bağlı değil' : 'Bridge not connected')}</span>
-                <button type="button" className="agent-connect-button" onClick={connectAgentTools} disabled={agentIntegrationBusy}>
+              <div className="agents-lg-hero-action">
+                <span className={`agents-lg-bridge-pill ${agentIntegration.codexConnected || agentIntegration.antigravityConnected ? 'is-ready' : ''}`}>
+                  {agentIntegration.codexConnected || agentIntegration.antigravityConnected ? <Check size={12} strokeWidth={2.5} /> : <Plug size={12} />}
+                  {agentIntegration.codexConnected || agentIntegration.antigravityConnected ? (langCode === 'tr' ? 'Köprü hazır' : 'Bridge ready') : (langCode === 'tr' ? 'Köprü bağlı değil' : 'Bridge not connected')}
+                </span>
+                <button type="button" className="agents-lg-connect-btn" onClick={connectAgentTools} disabled={agentIntegrationBusy}>
                   {agentIntegrationBusy ? <RefreshCw size={14} className="agent-spin-icon" /> : <Link2 size={14} />}
                   {agentIntegrationBusy ? (langCode === 'tr' ? 'Bağlanıyor…' : 'Connecting…') : agentIntegration.codexConnected && agentIntegration.antigravityConnected ? (langCode === 'tr' ? 'Kurulumu yenile' : 'Refresh setup') : (langCode === 'tr' ? 'Ajanları bağla' : 'Connect agents')}
                 </button>
               </div>
-            </section>
-            {agentIntegrationMessage && <div className={`agent-integration-message ${/could not|not responding|yanıt vermiyor|bulunamad|kurulamad|başarısız/i.test(agentIntegrationMessage) ? 'error' : 'success'}`} role="status">{agentIntegrationMessage}</div>}
+            </motion.section>
 
-            <div className="agents-summary-strip">
-              <div><span className="agents-summary-icon blue"><Link2 size={14} /></span><span><strong>{Number(agentIntegration.codexConnected) + Number(agentIntegration.antigravityConnected)}<small> / 2</small></strong><small>{langCode === 'tr' ? 'kanca kurulu' : 'hooks installed'}</small></span></div>
-              <div><span className="agents-summary-icon mint"><Check size={14} /></span><span><strong>{aiHistory.jobsToday || 0}</strong><small>{langCode === 'tr' ? 'bugünkü görev' : 'tasks today'}</small></span></div>
-              <div><span className="agents-summary-icon violet"><Bell size={14} /></span><span><strong>{recentAgentJobs.length ? recentAgentJobs[0].agent : t('common.ready')}</strong><small>{recentAgentJobs.length ? (langCode === 'tr' ? `son aktif · ${recentAgentJobs[0].time}` : `last active · ${recentAgentJobs[0].time}`) : (langCode === 'tr' ? 'etkinlik bekleniyor' : 'waiting for activity')}</small></span></div>
+            {agentIntegrationMessage && (
+              <div className={`agent-integration-message ${/could not|not responding|yanıt vermiyor|bulunamad|kurulamad|başarısız/i.test(agentIntegrationMessage) ? 'error' : 'success'}`} role="status">
+                {agentIntegrationMessage}
+              </div>
+            )}
+
+            <div className="agents-lg-stats">
+              <div className="home-lg-stat-card">
+                <div className="stat-icon-sq blue">
+                  <Link2 size={15} />
+                </div>
+                <div className="home-lg-stat-meta">
+                  <strong>{Number(agentIntegration.codexConnected) + Number(agentIntegration.antigravityConnected)}<small> / 2</small></strong>
+                  <span>{langCode === 'tr' ? 'kanca kurulu' : 'hooks installed'}</span>
+                </div>
+              </div>
+
+              <div className="home-lg-stat-card">
+                <div className="stat-icon-sq green">
+                  <Check size={16} strokeWidth={2.5} />
+                </div>
+                <div className="home-lg-stat-meta">
+                  <strong>{aiHistory.jobsToday || 0}</strong>
+                  <span>{langCode === 'tr' ? 'bugünkü görev' : 'tasks today'}</span>
+                </div>
+              </div>
+
+              <div className="home-lg-stat-card">
+                <div className="stat-icon-sq pink">
+                  <Bell size={15} />
+                </div>
+                <div className="home-lg-stat-meta">
+                  <strong className="agents-lg-stat-text">{recentAgentJobs.length ? recentAgentJobs[0].agent : t('common.ready')}</strong>
+                  <span>{recentAgentJobs.length ? (langCode === 'tr' ? `son aktif — ${recentAgentJobs[0].time}` : `last active — ${recentAgentJobs[0].time}`) : (langCode === 'tr' ? 'etkinlik bekleniyor' : 'waiting for activity')}</span>
+                </div>
+              </div>
             </div>
 
-            <div className="agent-connection-grid">
-              <section className="agent-connection-card codex" style={{ '--agent-rgb': '97, 152, 255', '--agent-hex': '#6198ff' }}>
-                <div className="agent-card-heading"><span className="ai-badge-icon lg codex"><ProviderSymbol provider="codex" size={20} /></span><div><strong>Codex</strong><span>App · CLI · VS Code</span></div><span className={`agent-status-pill ${agentIntegration.codexConnected ? 'connected' : ''}`}><i />{agentIntegration.codexConnected ? (langCode === 'tr' ? 'Kanca hazır' : 'Hook ready') : (langCode === 'tr' ? 'Bağlı değil' : 'Not connected')}</span></div>
-                <p className="agent-card-description">{langCode === 'tr' ? 'Codex başladığında ve yanıt verdiğinde Ada’dan sinyal alın.' : 'Get an Island signal when Codex starts and replies.'}</p>
-                <div className="agent-card-detail"><span>{langCode === 'tr' ? 'Yerel kanca' : 'Local hook'}</span><code>{agentIntegration.codexConnected ? (langCode === 'tr' ? 'Kuruldu · Codex’i yeniden başlatın' : 'Installed · restart Codex') : '~/.codex/hooks.json'}</code></div>
-                <button type="button" className="agent-test-button" onClick={() => testAgentTool('Codex')} disabled={agentIntegrationBusy}><Play size={13} /> {langCode === 'tr' ? 'Bildirimi önizle' : 'Preview notification'}</button>
+            <div className="agents-lg-grid">
+              <section className="agents-lg-card">
+                <div className="agents-lg-card-head">
+                  <span className="ai-badge-icon lg codex"><ProviderSymbol provider="codex" size={20} /></span>
+                  <div className="agents-lg-card-title">
+                    <strong>Codex</strong>
+                    <span>App / CLI / VS Code</span>
+                  </div>
+                  <span className={`agents-lg-status-pill ${agentIntegration.codexConnected ? 'is-ready' : ''}`}>
+                    {agentIntegration.codexConnected && <Check size={11} strokeWidth={2.5} />}
+                    {agentIntegration.codexConnected ? (langCode === 'tr' ? 'Kanca hazır' : 'Hook ready') : (langCode === 'tr' ? 'Bağlı değil' : 'Not connected')}
+                  </span>
+                </div>
+                <p className="agents-lg-card-desc">
+                  {langCode === 'tr' ? 'Codex başladığında ve yanıt verdiğinde Ada’dan sinyal alın.' : 'Get an Island signal when Codex starts and replies.'}
+                </p>
+                <div className="agents-lg-card-detail">
+                  <span>{langCode === 'tr' ? 'Yerel kanca' : 'Local hook'}</span>
+                  <code>{agentIntegration.codexConnected ? (langCode === 'tr' ? 'Kuruldu — Codex’i yeniden başlatın' : 'Installed — restart Codex') : '~/.codex/hooks.json'}</code>
+                </div>
               </section>
-              <section className="agent-connection-card antigravity" style={{ '--agent-rgb': '73, 218, 202', '--agent-hex': '#49daca' }}>
-                <div className="agent-card-heading"><span className="ai-badge-icon lg antigravity"><ProviderSymbol provider="antigravity" size={20} /></span><div><strong>Antigravity</strong><span>{langCode === 'tr' ? 'Uygulama · bağımsız IDE' : 'App · standalone IDE'}</span></div><span className={`agent-status-pill ${agentIntegration.antigravityConnected ? 'connected' : ''}`}><i />{agentIntegration.antigravityConnected ? (langCode === 'tr' ? 'Kanca hazır' : 'Hook ready') : (langCode === 'tr' ? 'Bağlı değil' : 'Not connected')}</span></div>
-                <p className="agent-card-description">{langCode === 'tr' ? 'Uygulama ve IDE’deki düşünme ve tamamlanan yanıtları takip edin.' : 'Follow thinking and finished replies in the app and IDE.'}</p>
-                <div className="agent-card-detail"><span>{langCode === 'tr' ? 'Genel kanca' : 'Global hook'}</span><code>{agentIntegration.antigravityConnected ? (langCode === 'tr' ? 'Kuruldu · Antigravity’yi yeniden başlatın' : 'Installed · restart Antigravity') : '~/.gemini/config/hooks.json'}</code></div>
-                <div className="agent-card-actions">
-                  <button type="button" className="agent-test-button" onClick={() => testAgentTool('Antigravity IDE')} disabled={agentIntegrationBusy}><Play size={13} /> {langCode === 'tr' ? 'Bildirimi önizle' : 'Preview notification'}</button>
-                  <button type="button" className="agent-secondary-button" onClick={chooseAntigravityIde}><Monitor size={13} /> {agentIntegration.antigravityIdePath ? (langCode === 'tr' ? 'IDE’yi değiştir' : 'Change IDE') : (langCode === 'tr' ? 'IDE’yi bul' : 'Locate IDE')}</button>
-                  {agentIntegration.antigravityIdePath && <button type="button" className="agent-secondary-button" onClick={() => window.twocode?.openApp?.({ type: 'native-app', path: agentIntegration.antigravityIdePath })}><ExternalLink size={13} /> {langCode === 'tr' ? 'IDE’yi aç' : 'Open IDE'}</button>}
+
+              <section className="agents-lg-card">
+                <div className="agents-lg-card-head">
+                  <span className="ai-badge-icon lg antigravity"><ProviderSymbol provider="antigravity" size={20} /></span>
+                  <div className="agents-lg-card-title">
+                    <strong>Antigravity</strong>
+                    <span>{langCode === 'tr' ? 'Uygulama / Bağımsız IDE' : 'App / Standalone IDE'}</span>
+                  </div>
+                  <span className={`agents-lg-status-pill ${agentIntegration.antigravityConnected ? 'is-ready' : ''}`}>
+                    {agentIntegration.antigravityConnected && <Check size={11} strokeWidth={2.5} />}
+                    {agentIntegration.antigravityConnected ? (langCode === 'tr' ? 'Kanca hazır' : 'Hook ready') : (langCode === 'tr' ? 'Bağlı değil' : 'Not connected')}
+                  </span>
+                </div>
+                <p className="agents-lg-card-desc">
+                  {langCode === 'tr' ? 'Uygulama ve IDE’deki düşünme ve tamamlanan yanıtları takip edin.' : 'Follow thinking and finished replies in the app and IDE.'}
+                </p>
+                <div className="agents-lg-card-detail">
+                  <span>{langCode === 'tr' ? 'Genel kanca' : 'Global hook'}</span>
+                  <code>{agentIntegration.antigravityConnected ? (langCode === 'tr' ? 'Kuruldu — Antigravity’yi yeniden başlatın' : 'Installed — restart Antigravity') : '~/.gemini/config/hooks.json'}</code>
+                </div>
+                <div className="agents-lg-card-actions">
+                  <button type="button" className="agents-lg-btn-primary" onClick={chooseAntigravityIde}>
+                    <Monitor size={13} /> {agentIntegration.antigravityIdePath ? (langCode === 'tr' ? 'IDE’yi değiştir' : 'Change IDE') : (langCode === 'tr' ? 'IDE’yi bul' : 'Locate IDE')}
+                  </button>
+                  {agentIntegration.antigravityIdePath && (
+                    <button type="button" className="agents-lg-btn-ghost" onClick={() => window.twocode?.openApp?.({ type: 'native-app', path: agentIntegration.antigravityIdePath })}>
+                      <ExternalLink size={13} /> {langCode === 'tr' ? 'IDE’yi aç' : 'Open IDE'}
+                    </button>
+                  )}
                 </div>
               </section>
             </div>
-            <div className="agent-connection-footnote"><RefreshCw size={12} /> {langCode === 'tr' ? 'Mevcut kanca ayarları korunur. Codex yeni kancayı bir kez incelemenizi ister.' : 'Existing hook settings are preserved. Codex asks you to review the new hook once.'}</div>
 
-            <section className="agent-activity-panel">
-              <div className="agent-activity-heading"><div><span className="agents-eyebrow"><Sparkles size={11} /> {langCode === 'tr' ? 'CANLI ETKİNLİK' : 'LIVE ACTIVITY'}</span><strong>{langCode === 'tr' ? 'Son ajan çalışmaları' : 'Recent agent work'}</strong></div><span>{langCode === 'tr' ? `${recentAgentJobs.length} son` : `${recentAgentJobs.length} recent`}</span></div>
-              {recentAgentJobs.length ? <div className="agent-activity-list">{recentAgentJobs.slice(0, 4).map((job, index) => {
-                const antigravityJob = (job.agent || '').toLowerCase().includes('antigravity');
-                return <div className="agent-activity-row" key={job.id || `${job.time}-${index}`} style={{ '--agent-rgb': antigravityJob ? '73, 218, 202' : '97, 152, 255' }}><span className={`agent-activity-marker ${antigravityJob ? 'antigravity' : ''}`}><i /></span><div><strong>{job.title}</strong><span>{job.agent || 'Agent'} · {job.time || (langCode === 'tr' ? 'Yakın zamanda' : 'Recently')}</span></div><span className="agent-activity-state"><Check size={11} /> {t('common.done')}</span></div>;
-              })}</div> : <div className="agent-activity-empty"><span><Bot size={16} /></span><div><strong>{langCode === 'tr' ? 'Henüz ajan etkinliği yok' : 'No agent activity yet'}</strong><small>{langCode === 'tr' ? 'Bir ajan bağladığınızda tamamlanan görevleri burada görünür.' : 'Connect an agent and its finished tasks will show up here.'}</small></div></div>}
+            <div className="agents-lg-footnote">
+              <RefreshCw size={12} /> {langCode === 'tr' ? 'Mevcut kanca ayarları korunur. Codex yeni kancayı bir kez incelemenizi ister.' : 'Existing hook settings are preserved. Codex asks you to review the new hook once.'}
+            </div>
+
+            <section className="home-lg-glass-card agents-lg-activity">
+              <div className="agents-lg-activity-head">
+                <div>
+                  <span className="agents-lg-eyebrow">{langCode === 'tr' ? 'CANLI ETKİNLİK' : 'LIVE ACTIVITY'}</span>
+                  <strong>{langCode === 'tr' ? 'Son ajan çalışmaları' : 'Recent agent work'}</strong>
+                </div>
+                <span className="home-lg-done-pill">{langCode === 'tr' ? `${recentAgentJobs.length} kayıt` : `${recentAgentJobs.length} recent`}</span>
+              </div>
+              {recentAgentJobs.length ? (
+                <div className="home-lg-activity-list">
+                  {recentAgentJobs.slice(0, 4).map((job, index) => {
+                    const antigravityJob = (job.agent || '').toLowerCase().includes('antigravity');
+                    const providerKey = antigravityJob ? 'antigravity' : 'codex';
+                    return (
+                      <button
+                        type="button"
+                        className="home-lg-activity-row"
+                        key={job.id || `${job.time}-${index}`}
+                        onClick={() => window.twocode?.focusAgentWindow?.({
+                          agent: job.agent || 'Agent',
+                          file: job.file || '',
+                          title: job.title || '',
+                          conversationId: job.conversationId || job.threadId || '',
+                        })}
+                      >
+                        <span className={`ai-badge-icon ${providerKey}`}>
+                          <ProviderSymbol provider={providerKey} size={14} />
+                        </span>
+                        <div className="home-lg-activity-center">
+                          <strong>{job.title}</strong>
+                          <span>{job.agent || 'Agent'} — {job.time || (langCode === 'tr' ? 'Yakın zamanda' : 'Recently')}</span>
+                        </div>
+                        <span className="home-lg-done-pill">{t('common.done')}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="agent-activity-empty">
+                  <span><Bot size={16} /></span>
+                  <div>
+                    <strong>{langCode === 'tr' ? 'Henüz ajan etkinliği yok' : 'No agent activity yet'}</strong>
+                    <small>{langCode === 'tr' ? 'Bir ajan bağladığınızda tamamlanan görevleri burada görünür.' : 'Connect an agent and its finished tasks will show up here.'}</small>
+                  </div>
+                </div>
+              )}
             </section>
 
             <span className="section-eyebrow">{langCode === 'tr' ? 'BAĞLI HESAPLAR' : 'LINKED'}</span>
-            <div className="settings-card">
+            <div className="home-lg-glass-card settings-card">
               <div className="settings-row">
                 <div className="row-left-with-icon">
                   <span className="google-g-circle">
@@ -1220,31 +1358,6 @@ export default function SettingsApp() {
                   <i />
                 </button>
               </div>
-
-              <div className="settings-row" style={{ background: 'rgba(255, 255, 255, 0.02)' }}>
-                <div className="row-text-col">
-                  <strong>{langCode === 'tr' ? 'Bildirim Testi' : 'Notification Test'}</strong>
-                  <span>{langCode === 'tr' ? 'Adada Mail ve Takvim bildirimini anında test edin' : 'Instantly test Mail and Calendar notifications on the Island'}</span>
-                </div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button
-                    type="button"
-                    className="dark-pill-btn"
-                    onClick={() => window.twocode?.testMailNotif?.()}
-                    title={langCode === 'tr' ? 'Adada canlı Mail bildirimi göster' : 'Show live Mail notification on the Island'}
-                  >
-                    {langCode === 'tr' ? 'Postayı Test Et' : 'Test Mail'}
-                  </button>
-                  <button
-                    type="button"
-                    className="dark-pill-btn"
-                    onClick={() => window.twocode?.testAgendaNotif?.()}
-                    title={langCode === 'tr' ? 'Adada canlı Ajanda bildirimi göster' : 'Show live Agenda notification on the Island'}
-                  >
-                    {langCode === 'tr' ? 'Ajandayı Test Et' : 'Test Agenda'}
-                  </button>
-                </div>
-              </div>
             </div>
 
             <span className="section-eyebrow" style={{ marginTop: 22 }}>
@@ -1257,7 +1370,7 @@ export default function SettingsApp() {
                   <span className="ai-badge-icon lg claude">
                     <ProviderSymbol provider="claude" size={22} />
                   </span>
-                  <div className="row-text-col" style={{ width: '100%' }}>
+                  <div className="row-text-col" style={{ flex: 1, minWidth: 0 }}>
                     <strong>Claude Code</strong>
                     <span>
                       {langCode === 'tr'
@@ -1327,7 +1440,7 @@ export default function SettingsApp() {
                   <span className="ai-badge-icon lg codex">
                     <ProviderSymbol provider="codex" size={22} />
                   </span>
-                  <div className="row-text-col" style={{ width: '100%' }}>
+                  <div className="row-text-col" style={{ flex: 1, minWidth: 0 }}>
                     <strong>Codex</strong>
                     <span>
                       {langCode === 'tr'
@@ -1392,7 +1505,7 @@ export default function SettingsApp() {
                   <span className="ai-badge-icon lg gemini">
                     <RealAppIcon sc={{ id: 'settings-cli-gemini', type: 'gemini' }} size={22} />
                   </span>
-                  <div className="row-text-col" style={{ width: '100%' }}>
+                  <div className="row-text-col" style={{ flex: 1, minWidth: 0 }}>
                     <strong>Gemini CLI</strong>
                     <span>
                       {langCode === 'tr' ? 'Terminal ve VS Code oturumlarında Google Gemini CLI’ı takip eder.' : 'Follows Google Gemini CLI in the terminal and VS Code sessions.'}
@@ -1459,7 +1572,7 @@ export default function SettingsApp() {
                   <span className="ai-badge-icon lg antigravity">
                     <ProviderSymbol provider="antigravity" size={20} />
                   </span>
-                  <div className="row-text-col" style={{ width: '100%' }}>
+                  <div className="row-text-col" style={{ flex: 1, minWidth: 0 }}>
                     <strong>Antigravity</strong>
                     <span>
                       {langCode === 'tr'
@@ -2449,30 +2562,6 @@ export default function SettingsApp() {
                     {ghelperMessage}
                   </div>
                 )}
-                <div className="gh-bridge-tests-row">
-                  <span className="gh-bridge-tests-label">TEST</span>
-                  <button
-                    type="button"
-                    className="gh-bridge-chip"
-                    onClick={() => testGHelperHud(langCode === 'tr' ? 'Yüksek' : 'High')}
-                  >
-                    {langCode === 'tr' ? 'Klavye' : 'Keyboard'}
-                  </button>
-                  <button
-                    type="button"
-                    className="gh-bridge-chip"
-                    onClick={() => testGHelperHud(langCode === 'tr' ? 'Ses açık' : 'Mic on')}
-                  >
-                    Mic
-                  </button>
-                  <button
-                    type="button"
-                    className="gh-bridge-chip"
-                    onClick={() => testGHelperHud('Zone Test')}
-                  >
-                    Aura
-                  </button>
-                </div>
               </div>
 
               {NOTIFICATION_ITEMS.map((grp) => {

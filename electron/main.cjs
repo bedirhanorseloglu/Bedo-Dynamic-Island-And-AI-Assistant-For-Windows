@@ -698,6 +698,7 @@ function loadLocalAiHistory() {
             seenPrompts.add(text);
             codexJobs.push({
               id: `codex_${threadId}_${i}`,
+              threadId,
               agent: 'Codex',
               title: text,
               time: timeStr,
@@ -803,6 +804,7 @@ function loadLocalAiHistory() {
                   if (dt.toDateString() === todayStr) todayCount++;
                   antigravityJobs.push({
                     id: `ag_${d.name}_${antigravityJobs.length}`,
+                    conversationId: d.name,
                     agent: brain.agent,
                     title: reqText,
                     time: formatHHMMFromDate(dt),
