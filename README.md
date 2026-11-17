@@ -1,8 +1,8 @@
 <div align="center">
 
-# Bedo
+<img src="assets/readme/hero-liquid-glass.svg" alt="Bedo Liquid Glass Dynamic Island Hero" width="100%" />
 
-### The Liquid Glass Dynamic Island & AI Command Center for Windows
+<br/>
 
 [![Electron](https://img.shields.io/badge/Electron-35-47848F?style=for-the-badge&logo=electron&logoColor=white)](https://www.electronjs.org/)
 [![React](https://img.shields.io/badge/React-19-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev/)
@@ -27,6 +27,10 @@ Desktop utilities usually feel static, cluttered, or bolted on. Bedo is engineer
 ---
 
 ## Visual & Animated Craftsmanship
+
+<div align="center">
+  <img src="assets/readme/showcase-liquid-glass.svg" alt="Bedo Liquid Glass Showcase" width="100%" />
+</div>
 
 Every surface in Bedo is designed as layered **Liquid Glass** with physical depth, specular top highlights, and reactive motion:
 

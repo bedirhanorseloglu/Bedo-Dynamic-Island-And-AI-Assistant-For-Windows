@@ -1,0 +1,152 @@
+<svg width="1200" height="440" viewBox="0 0 1200 440" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Deep ambient backdrop (never flat black) -->
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="1200" y2="440" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#080d1a"/>
+      <stop offset="50%" stop-color="#0b1326"/>
+      <stop offset="100%" stop-color="#090e1c"/>
+    </linearGradient>
+
+    <!-- Ambient Liquid Glass Glows -->
+    <radialGradient id="glowCyan" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(260 100) rotate(25) scale(420 260)">
+      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.28"/>
+      <stop offset="100%" stop-color="#38BDF8" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowIndigo" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(940 120) rotate(-20) scale(400 260)">
+      <stop offset="0%" stop-color="#818CF8" stop-opacity="0.26"/>
+      <stop offset="100%" stop-color="#818CF8" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowViolet" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(600 390) scale(460 180)">
+      <stop offset="0%" stop-color="#A855F7" stop-opacity="0.22"/>
+      <stop offset="100%" stop-color="#A855F7" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Liquid Glass Card Surface -->
+    <linearGradient id="glassCard" x1="120" y1="36" x2="1080" y2="404" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.11"/>
+      <stop offset="45%" stop-color="#FFFFFF" stop-opacity="0.045"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0.02"/>
+    </linearGradient>
+
+    <!-- Specular Rim Stroke -->
+    <linearGradient id="glassRim" x1="600" y1="36" x2="600" y2="404" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.38"/>
+      <stop offset="35%" stop-color="#FFFFFF" stop-opacity="0.14"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0.06"/>
+    </linearGradient>
+
+    <!-- Dynamic Island Pill Surface -->
+    <linearGradient id="islandFill" x1="360" y1="78" x2="840" y2="150" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1E293B" stop-opacity="0.78"/>
+      <stop offset="50%" stop-color="#0F172A" stop-opacity="0.86"/>
+      <stop offset="100%" stop-color="#1E1B4B" stop-opacity="0.78"/>
+    </linearGradient>
+    <linearGradient id="islandRim" x1="600" y1="78" x2="600" y2="150" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="#38BDF8" stop-opacity="0.18"/>
+    </linearGradient>
+
+    <!-- Title Gradient -->
+    <linearGradient id="titleGrad" x1="400" y1="190" x2="800" y2="270" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="55%" stop-color="#E0F2FE"/>
+      <stop offset="100%" stop-color="#C7D2FE"/>
+    </linearGradient>
+
+    <!-- Badge Glass -->
+    <linearGradient id="pillGlass" x1="0" y1="0" x2="0" y2="34" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.13"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0.04"/>
+    </linearGradient>
+
+    <filter id="softGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Canvas -->
+  <rect width="1200" height="440" rx="24" fill="url(#bgGrad)"/>
+
+  <!-- Animated Ambient Orbs -->
+  <rect width="1200" height="440" rx="24" fill="url(#glowCyan)">
+    <animate attributeName="opacity" values="0.75;1;0.75" dur="7s" repeatCount="indefinite"/>
+  </rect>
+  <rect width="1200" height="440" rx="24" fill="url(#glowIndigo)">
+    <animate attributeName="opacity" values="1;0.7;1" dur="8s" repeatCount="indefinite"/>
+  </rect>
+  <rect width="1200" height="440" rx="24" fill="url(#glowViolet)"/>
+
+  <!-- Outer Liquid Glass Stage -->
+  <rect x="44" y="32" width="1112" height="376" rx="28" fill="url(#glassCard)" stroke="url(#glassRim)" stroke-width="1.25"/>
+  <!-- Top Specular Highlight Line -->
+  <line x1="90" y1="33.5" x2="1110" y2="33.5" stroke="#FFFFFF" stroke-opacity="0.32" stroke-width="1"/>
+
+  <!-- Live Dynamic Island Pill -->
+  <g>
+    <rect x="340" y="72" width="520" height="68" rx="34" fill="url(#islandFill)" stroke="url(#islandRim)" stroke-width="1.2"/>
+    <line x1="382" y1="73.5" x2="818" y2="73.5" stroke="#FFFFFF" stroke-opacity="0.36" stroke-width="1"/>
+
+    <!-- RoboEyes Container -->
+    <circle cx="384" cy="106" r="21" fill="#0B1220" stroke="#FFFFFF" stroke-opacity="0.16" stroke-width="1"/>
+    <!-- Left & Right Synchronized Blinking RoboEyes -->
+    <g filter="url(#softGlow)">
+      <rect x="374" y="97" width="7" height="17" rx="3.5" fill="#67E8F9">
+        <animate attributeName="height" values="17;17;2;17;17" keyTimes="0;0.88;0.92;0.96;1" dur="4.2s" repeatCount="indefinite"/>
+        <animate attributeName="y" values="97;97;104.5;97;97" keyTimes="0;0.88;0.92;0.96;1" dur="4.2s" repeatCount="indefinite"/>
+      </rect>
+      <rect x="387" y="97" width="7" height="17" rx="3.5" fill="#67E8F9">
+        <animate attributeName="height" values="17;17;2;17;17" keyTimes="0;0.88;0.92;0.96;1" dur="4.2s" repeatCount="indefinite"/>
+        <animate attributeName="y" values="97;97;104.5;97;97" keyTimes="0;0.88;0.92;0.96;1" dur="4.2s" repeatCount="indefinite"/>
+      </rect>
+    </g>
+
+    <!-- Island Copy -->
+    <text x="422" y="101" fill="#FFFFFF" font-family="Segoe UI, Inter, system-ui, sans-serif" font-size="14" font-weight="700">Bedo Dynamic Island</text>
+    <text x="422" y="120" fill="#94A3B8" font-family="Segoe UI, Inter, system-ui, sans-serif" font-size="12" font-weight="500">Antigravity IDE · Liquid Glass UI</text>
+
+    <!-- Animated Waveform Bars -->
+    <g transform="translate(788, 96)">
+      <rect x="0" y="6" width="3.5" height="10" rx="1.75" fill="#38BDF8">
+        <animate attributeName="height" values="8;18;6;14;8" dur="1.2s" repeatCount="indefinite"/>
+        <animate attributeName="y" values="6;1;7;3;6" dur="1.2s" repeatCount="indefinite"/>
+      </rect>
+      <rect x="7" y="2" width="3.5" height="18" rx="1.75" fill="#818CF8">
+        <animate attributeName="height" values="16;6;20;9;16" dur="1.1s" repeatCount="indefinite"/>
+        <animate attributeName="y" values="2;7;0;5.5;2" dur="1.1s" repeatCount="indefinite"/>
+      </rect>
+      <rect x="14" y="5" width="3.5" height="12" rx="1.75" fill="#C084FC">
+        <animate attributeName="height" values="10;19;7;15;10" dur="1.3s" repeatCount="indefinite"/>
+        <animate attributeName="y" values="5;0.5;6.5;2.5;5" dur="1.3s" repeatCount="indefinite"/>
+      </rect>
+      <rect x="21" y="7" width="3.5" height="8" rx="1.75" fill="#38BDF8">
+        <animate attributeName="height" values="7;15;5;12;7" dur="1.0s" repeatCount="indefinite"/>
+        <animate attributeName="y" values="6.5;2.5;7.5;4;6.5" dur="1.0s" repeatCount="indefinite"/>
+      </rect>
+    </g>
+  </g>
+
+  <!-- Hero Title & Subtitle -->
+  <text x="600" y="222" text-anchor="middle" fill="url(#titleGrad)" font-family="Segoe UI, Inter, system-ui, sans-serif" font-size="62" font-weight="800" letter-spacing="-1.5">Bedo</text>
+  <text x="600" y="262" text-anchor="middle" fill="#CBD5E1" font-family="Segoe UI, Inter, system-ui, sans-serif" font-size="19" font-weight="500">
+    The Liquid Glass Dynamic Island &amp; AI Command Center for Windows
+  </text>
+
+  <!-- Liquid Glass Feature Pills -->
+  <g transform="translate(226, 304)">
+    <rect x="0" y="0" width="170" height="36" rx="18" fill="url(#pillGlass)" stroke="#FFFFFF" stroke-opacity="0.18"/>
+    <text x="85" y="22" text-anchor="middle" fill="#E2E8F0" font-family="Segoe UI, Inter, system-ui, sans-serif" font-size="12.5" font-weight="600">Liquid Glass UI</text>
+
+    <rect x="186" y="0" width="184" height="36" rx="18" fill="url(#pillGlass)" stroke="#FFFFFF" stroke-opacity="0.18"/>
+    <text x="278" y="22" text-anchor="middle" fill="#E2E8F0" font-family="Segoe UI, Inter, system-ui, sans-serif" font-size="12.5" font-weight="600">Synced RoboEyes</text>
+
+    <rect x="386" y="0" width="176" height="36" rx="18" fill="url(#pillGlass)" stroke="#FFFFFF" stroke-opacity="0.18"/>
+    <text x="474" y="22" text-anchor="middle" fill="#E2E8F0" font-family="Segoe UI, Inter, system-ui, sans-serif" font-size="12.5" font-weight="600">Spring Physics</text>
+
+    <rect x="578" y="0" width="170" height="36" rx="18" fill="url(#pillGlass)" stroke="#FFFFFF" stroke-opacity="0.18"/>
+    <text x="663" y="22" text-anchor="middle" fill="#E2E8F0" font-family="Segoe UI, Inter, system-ui, sans-serif" font-size="12.5" font-weight="600">4 AI Agent Hooks</text>
+  </g>
+</svg>
