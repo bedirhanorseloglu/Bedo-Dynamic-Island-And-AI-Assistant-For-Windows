@@ -342,10 +342,7 @@ export default function MusicTabView({
               </button>
             </div>
           ) : (
-            <div
-              className="music-transport-center"
-              onPointerDown={() => onInteractionStart?.()}
-            >
+            <div className="music-transport-center">
               <button
                 type="button"
                 className="transport-icon-btn"
@@ -427,7 +424,6 @@ export default function MusicTabView({
               className={`music-device-btn ${showPlayOnPopover ? 'is-open' : ''}`}
               onClick={(e) => {
                 e.stopPropagation();
-                onInteractionStart?.();
                 playRoboSound('tap', soundEffectsEnabled);
                 setShowPlayOnPopover((p) => !p);
               }}

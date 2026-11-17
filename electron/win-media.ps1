@@ -1,6 +1,7 @@
 param(
     [string]$Action = "status",
     [string]$LastTitle = "",
+    [string]$LastSourceApp = "",
     [double]$Position = -1
 )
 
@@ -65,6 +66,22 @@ try {
                 }
             } catch {}
         }
+        if ($null -eq $session -and -not [string]::IsNullOrWhiteSpace($LastSourceApp)) {
+            foreach ($s in $sessions) {
+                try {
+                    if ([string]$s.SourceAppUserModelId -eq $LastSourceApp) {
+                        $pb = $s.GetPlaybackInfo()
+                        if (
+                            $pb.PlaybackStatus -ne [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionPlaybackStatus]::Closed -and
+                            $pb.PlaybackStatus -ne [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionPlaybackStatus]::Stopped
+                        ) {
+                            $session = $s
+                            break
+                        }
+                    }
+                } catch {}
+            }
+        }
     }
     if ($null -eq $session) {
         $session = $manager.GetCurrentSession()
@@ -84,12 +101,24 @@ try {
             try { [WinMediaKey]::SendNext() } catch {}
         }
         Start-Sleep -Milliseconds 180
+        for ($i = 0; $i -lt 4; $i++) {
+            try {
+                if ($session.GetPlaybackInfo().PlaybackStatus -ne [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionPlaybackStatus]::Changing) { break }
+            } catch { break }
+            Start-Sleep -Milliseconds 50
+        }
     } elseif ($Action -eq "prev") {
         $res = Await-WinRT ($session.TrySkipPreviousAsync()) ([bool])
         if (-not $res) {
             try { [WinMediaKey]::SendPrev() } catch {}
         }
         Start-Sleep -Milliseconds 180
+        for ($i = 0; $i -lt 4; $i++) {
+            try {
+                if ($session.GetPlaybackInfo().PlaybackStatus -ne [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionPlaybackStatus]::Changing) { break }
+            } catch { break }
+            Start-Sleep -Milliseconds 50
+        }
     } elseif ($Action -eq "seek" -and $Position -ge 0) {
         $ticks = [long]($Position * 10000000)
         $null = Await-WinRT ($session.TryChangePlaybackPositionAsync($ticks)) ([bool])

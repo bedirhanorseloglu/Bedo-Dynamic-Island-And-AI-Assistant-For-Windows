@@ -2195,6 +2195,8 @@ export default function App() {
   const notifPrevModeRef = useRef('idle');
   const isShowingNotifToastRef = useRef(false);
   const hoverExpandTimerRef = useRef(null);
+  const deferredCollapseTimerRef = useRef(null);
+  const isNotchHoveredRef = useRef(false);
   const suppressHoverExpandUntilRef = useRef(0);
   const suppressHoverCollapseUntilRef = useRef(0);
   const suppressGHelperHudUntilRef = useRef(0);
@@ -2909,21 +2911,41 @@ export default function App() {
       if (gameModeActive) return;
       if (isShowingNotifToastRef.current) return;
       if (islandModeRef.current === 'bedo-live') return;
-      if (hovering) {
-        if (Date.now() < suppressHoverExpandUntilRef.current) return;
-        if (!isMiniProgressBar) {
-          setIslandMode('expanded');
-        }
-      } else {
-        if (Date.now() < suppressHoverCollapseUntilRef.current) return;
+      const collapseNow = () => {
         setShowMenu(false);
         setNotificationHistoryOpen(false);
         setShowMusicServicePicker(false);
         setIsDraggingRuler(false);
         setIsDraggingVolume(false);
         if (!pendingApproval) {
-          setIslandMode(resolvedCollapsedMode);
+          setIslandMode(resolvedCollapsedModeRef.current);
         }
+      };
+
+      if (hovering) {
+        isNotchHoveredRef.current = true;
+        if (deferredCollapseTimerRef.current) {
+          clearTimeout(deferredCollapseTimerRef.current);
+          deferredCollapseTimerRef.current = null;
+        }
+        if (Date.now() < suppressHoverExpandUntilRef.current) return;
+        if (!isMiniProgressBar) {
+          setIslandMode('expanded');
+        }
+      } else {
+        isNotchHoveredRef.current = false;
+        const remainingSuppressMs = suppressHoverCollapseUntilRef.current - Date.now();
+        if (remainingSuppressMs > 0) {
+          if (deferredCollapseTimerRef.current) clearTimeout(deferredCollapseTimerRef.current);
+          deferredCollapseTimerRef.current = setTimeout(() => {
+            deferredCollapseTimerRef.current = null;
+            if (!isNotchHoveredRef.current && Date.now() >= suppressHoverCollapseUntilRef.current) {
+              collapseNow();
+            }
+          }, remainingSuppressMs + 30);
+          return;
+        }
+        collapseNow();
       }
     });
 
@@ -3095,6 +3117,7 @@ export default function App() {
     const unsubWinNotif = window.twocode.onWindowsNotification?.(showIslandNotification);
 
     return () => {
+      if (deferredCollapseTimerRef.current) clearTimeout(deferredCollapseTimerRef.current);
       if (unsubSettings) unsubSettings();
       if (unsubEmotion) unsubEmotion();
       if (unsubAiHist) unsubAiHist();
@@ -3220,7 +3243,6 @@ export default function App() {
   // Media transport controls
   const handlePlayPause = (e) => {
     if (e) e.stopPropagation();
-    suppressHoverCollapseUntilRef.current = Date.now() + 1500;
     playRoboSound('tap', islandSettings.soundEffects !== false);
     if (!currentMedia.hasSession) {
       setShowMusicServicePicker((prev) => !prev);

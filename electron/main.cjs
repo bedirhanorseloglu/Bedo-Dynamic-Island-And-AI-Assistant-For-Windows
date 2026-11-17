@@ -124,6 +124,9 @@ let notificationTargetFocusTimer = null;
 let ghelperBridgeClient = null;
 let lastMediaTitle = '';
 let lastMediaArtist = '';
+let lastMediaSourceApp = '';
+let pendingPausedTrackKey = '';
+let pendingPausedTrackSince = 0;
 let cachedThumbnail = '';
 let cachedLyrics = [];
 let lyricsCacheMap = new Map();
@@ -1070,6 +1073,8 @@ function pollWindowsMedia(action = 'status', value = null) {
       action,
       '-LastTitle',
       cachedThumbnail ? lastMediaTitle || '' : '',
+      '-LastSourceApp',
+      lastMediaSourceApp || '',
     ];
     if (action === 'seek' && typeof value === 'number') {
       args.push('-Position', String(Math.max(0, value)));
@@ -1096,6 +1101,22 @@ function pollWindowsMedia(action = 'status', value = null) {
         }
         if (sessionActive) {
           const titleChanged = data.title !== lastMediaTitle || data.artist !== lastMediaArtist;
+          if (titleChanged && !data.isPlaying && lastMediaState.hasSession && lastMediaState.isPlaying) {
+            const candidateKey = `${data.sourceApp || ''}__${data.title || ''}__${data.artist || ''}`;
+            if (pendingPausedTrackKey !== candidateKey) {
+              pendingPausedTrackKey = candidateKey;
+              pendingPausedTrackSince = Date.now();
+              scheduleNextMediaPoll(220);
+              return resolve(lastMediaState);
+            }
+            if (Date.now() - pendingPausedTrackSince < 900) {
+              scheduleNextMediaPoll(220);
+              return resolve(lastMediaState);
+            }
+          }
+          pendingPausedTrackKey = '';
+          pendingPausedTrackSince = 0;
+          lastMediaSourceApp = data.sourceApp || '';
           if (titleChanged) {
             lastMediaTitle = data.title;
             lastMediaArtist = data.artist || '';
@@ -1154,6 +1175,9 @@ function pollWindowsMedia(action = 'status', value = null) {
         } else {
           lastMediaTitle = '';
           lastMediaArtist = '';
+          lastMediaSourceApp = '';
+          pendingPausedTrackKey = '';
+          pendingPausedTrackSince = 0;
           cachedThumbnail = '';
           cachedLyrics = [];
           lyricsLookupKey = '';
