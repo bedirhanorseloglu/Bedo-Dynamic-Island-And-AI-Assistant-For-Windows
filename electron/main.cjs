@@ -125,8 +125,6 @@ let ghelperBridgeClient = null;
 let lastMediaTitle = '';
 let lastMediaArtist = '';
 let lastMediaSourceApp = '';
-let pendingPausedTrackKey = '';
-let pendingPausedTrackSince = 0;
 let cachedThumbnail = '';
 let cachedLyrics = [];
 let lyricsCacheMap = new Map();
@@ -1101,21 +1099,14 @@ function pollWindowsMedia(action = 'status', value = null) {
         }
         if (sessionActive) {
           const titleChanged = data.title !== lastMediaTitle || data.artist !== lastMediaArtist;
-          if (titleChanged && !data.isPlaying && lastMediaState.hasSession && lastMediaState.isPlaying) {
-            const candidateKey = `${data.sourceApp || ''}__${data.title || ''}__${data.artist || ''}`;
-            if (pendingPausedTrackKey !== candidateKey) {
-              pendingPausedTrackKey = candidateKey;
-              pendingPausedTrackSince = Date.now();
-              scheduleNextMediaPoll(220);
-              return resolve(lastMediaState);
-            }
-            if (Date.now() - pendingPausedTrackSince < 900) {
-              scheduleNextMediaPoll(220);
-              return resolve(lastMediaState);
-            }
+          if (
+            action === 'status' &&
+            titleChanged &&
+            !data.isPlaying &&
+            lastMediaState.hasSession
+          ) {
+            return resolve(lastMediaState);
           }
-          pendingPausedTrackKey = '';
-          pendingPausedTrackSince = 0;
           lastMediaSourceApp = data.sourceApp || '';
           if (titleChanged) {
             lastMediaTitle = data.title;
@@ -1176,8 +1167,6 @@ function pollWindowsMedia(action = 'status', value = null) {
           lastMediaTitle = '';
           lastMediaArtist = '';
           lastMediaSourceApp = '';
-          pendingPausedTrackKey = '';
-          pendingPausedTrackSince = 0;
           cachedThumbnail = '';
           cachedLyrics = [];
           lyricsLookupKey = '';

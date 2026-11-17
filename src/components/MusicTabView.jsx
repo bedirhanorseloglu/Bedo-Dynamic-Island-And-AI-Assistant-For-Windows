@@ -215,6 +215,9 @@ export default function MusicTabView({
   }, [showPlayOnPopover, setShowPlayOnPopover]);
 
   const subtitleText = currentMedia.artist || currentMedia.album || '';
+  const showTitleInHeader = Boolean(
+    currentMedia.hasSession && hasSyncedLyrics && activeLyricIndex >= 0
+  );
 
   return (
     <div className={`music-view ${currentMedia.isPlaying ? 'is-playing' : 'is-paused'}`}>
@@ -242,29 +245,49 @@ export default function MusicTabView({
       {/* Right: Header + Lyrics/Title + Scrubber + Transport & Device */}
       <div className="music-right-panel">
         <div
-          className="music-track-header"
-          aria-live="polite"
+          className="music-track-header-row"
           onClick={currentMedia.hasSession ? onOpenMediaSource : undefined}
           title={currentMedia.hasSession ? t('home.openMediaSource') : undefined}
           style={currentMedia.hasSession ? { cursor: 'pointer' } : undefined}
         >
-          {currentMedia.hasSession ? (
-            <>
-              <span className="music-track-title-inline">{currentMedia.title}</span>
-              {subtitleText && (
-                <>
-                  <span className="music-track-dot">·</span>
-                  <span className="music-track-artist">{subtitleText}</span>
-                </>
-              )}
-            </>
-          ) : (
-            <>
-              <span className="music-status-dot" />
-              <span className="music-track-title-inline">{t('music.nothingPlaying')}</span>
-              <span className="music-track-dot">·</span>
-              <span className="music-track-artist">{t('music.playPrompt')}</span>
-            </>
+          <div className="music-track-header" aria-live="polite">
+            {showTitleInHeader ? (
+              <>
+                <span className="music-track-title-inline">{currentMedia.title}</span>
+                {subtitleText && (
+                  <>
+                    <span className="music-track-dot">·</span>
+                    <span className="music-track-artist">{subtitleText}</span>
+                  </>
+                )}
+              </>
+            ) : currentMedia.hasSession ? (
+              <>
+                <span className={`music-status-dot ${currentMedia.isPlaying ? 'is-playing' : ''}`} />
+                <span>{t('music.nowPlaying')}</span>
+                {hasSyncedLyrics && subtitleText && (
+                  <>
+                    <span className="music-track-dot">·</span>
+                    <span className="music-track-artist">{subtitleText}</span>
+                  </>
+                )}
+              </>
+            ) : (
+              <>
+                <span className="music-status-dot" />
+                <span className="music-track-title-inline">{t('music.nothingPlaying')}</span>
+                <span className="music-track-dot">·</span>
+                <span className="music-track-artist">{t('music.playPrompt')}</span>
+              </>
+            )}
+          </div>
+          {currentMedia.hasSession && (
+            <span
+              className={`music-header-eq ${currentMedia.isPlaying ? 'is-playing' : ''}`}
+              aria-hidden="true"
+            >
+              <i /><i /><i /><i />
+            </span>
           )}
         </div>
 
@@ -351,7 +374,7 @@ export default function MusicTabView({
                 aria-label={t('music.prevTrack')}
                 title={t('music.prevTrack')}
               >
-                <SkipBack size={19} fill="currentColor" strokeWidth={1.6} />
+                <SkipBack size={17} fill="currentColor" strokeWidth={1.6} />
               </button>
               <button
                 type="button"
@@ -373,13 +396,13 @@ export default function MusicTabView({
                 }
               >
                 {currentMedia.isPlaying ? (
-                  <Pause size={22} fill="currentColor" strokeWidth={1.6} />
+                  <Pause size={18} fill="currentColor" strokeWidth={1.6} />
                 ) : (
                   <Play
-                    size={22}
+                    size={18}
                     fill="currentColor"
                     strokeWidth={1.6}
-                    style={{ marginLeft: 2 }}
+                    style={{ marginLeft: 1.5 }}
                   />
                 )}
               </button>
@@ -391,7 +414,7 @@ export default function MusicTabView({
                 aria-label={t('music.nextTrack')}
                 title={t('music.nextTrack')}
               >
-                <SkipForward size={19} fill="currentColor" strokeWidth={1.6} />
+                <SkipForward size={17} fill="currentColor" strokeWidth={1.6} />
               </button>
             </div>
           )}
@@ -431,8 +454,8 @@ export default function MusicTabView({
               aria-label={t('music.playOn')}
             >
               <svg
-                width="16"
-                height="16"
+                width="15"
+                height="15"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"

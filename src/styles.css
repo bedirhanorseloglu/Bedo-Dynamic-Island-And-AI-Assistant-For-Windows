@@ -99,9 +99,21 @@ select {
   position: relative;
   overflow: hidden;
   --shell-border-tint: 255, 255, 255;
-  background: linear-gradient(180deg, #000000 0%, #11141d 22%, #0b0d13 100%);
+  --shell-liquid-sheen: linear-gradient(
+    172deg,
+    rgba(255, 255, 255, 0.095) 0%,
+    rgba(255, 255, 255, 0.025) 22%,
+    transparent 52%
+  );
+  --shell-liquid-body: linear-gradient(
+    180deg,
+    rgba(5, 7, 11, 0.98) 0%,
+    rgba(10, 13, 20, 0.96) 26%,
+    rgba(7, 9, 15, 0.97) 100%
+  );
+  background: var(--shell-liquid-sheen), var(--shell-liquid-body);
   border: none;
-  box-shadow: inset 0 10px 14px -8px #000000, 0 10px 24px rgba(0, 0, 0, 0.48);
+  box-shadow: inset 0 10px 14px -8px rgba(0, 0, 0, 0.88), 0 10px 24px rgba(0, 0, 0, 0.44);
   transform: translateZ(0);
   contain: layout style;
   transition:
@@ -440,11 +452,45 @@ select {
       rgba(var(--music-accent-rgb, 110, 142, 185), 0.21) 0%,
       rgba(var(--music-accent-rgb, 110, 142, 185), 0.07) 48%,
       transparent 76%),
-    linear-gradient(180deg, #000000 0%, #12151f 16%, #0c0e14 100%);
+    var(--shell-liquid-sheen),
+    var(--shell-liquid-body);
+  backdrop-filter: blur(36px) saturate(190%) brightness(0.92);
+  -webkit-backdrop-filter: blur(36px) saturate(190%) brightness(0.92);
   box-shadow:
-    inset 0 10px 14px -8px #000000,
-    inset 0 -1px 8px rgba(var(--music-accent-rgb, 110, 142, 185), 0.13),
-    0 12px 26px rgba(0, 0, 0, 0.48);
+    inset 0 10px 14px -8px rgba(0, 0, 0, 0.88),
+    inset 0 -1px 10px rgba(var(--music-accent-rgb, 110, 142, 185), 0.14),
+    0 16px 40px rgba(0, 0, 0, 0.48),
+    0 2px 10px rgba(0, 0, 0, 0.24);
+}
+
+.notch-morph-shell.state-expanded::before {
+  border-color: rgba(var(--shell-border-tint), 0.18);
+  box-shadow:
+    inset 0 -1px 2px rgba(255, 255, 255, 0.16),
+    inset 1px 0 0 rgba(255, 255, 255, 0.07),
+    inset -1px 0 0 rgba(255, 255, 255, 0.07),
+    inset 0 0 24px rgba(255, 255, 255, 0.035);
+}
+
+.notch-morph-shell.state-expanded::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 8%;
+  right: 8%;
+  height: 1px;
+  border-radius: 99px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.24) 24%,
+    rgba(255, 255, 255, 0.46) 50%,
+    rgba(255, 255, 255, 0.24) 76%,
+    transparent 100%
+  );
+  opacity: 0.72;
+  pointer-events: none;
+  z-index: 41;
 }
 
 /* Ambient cover-photo / idle glow on all Expanded tabs */
@@ -464,11 +510,13 @@ select {
       rgba(var(--music-accent-rgb, 110, 142, 185), 0.22) 0%,
       rgba(var(--music-accent-rgb, 110, 142, 185), 0.075) 48%,
       transparent 76%),
-    linear-gradient(180deg, #000000 0%, #12151f 16%, #0c0e14 100%);
+    var(--shell-liquid-sheen),
+    var(--shell-liquid-body);
   box-shadow:
-    inset 0 10px 14px -8px #000000,
-    inset 0 -1px 8px rgba(var(--music-accent-rgb, 110, 142, 185), 0.14),
-    0 18px 42px rgba(0, 0, 0, 0.56);
+    inset 0 10px 14px -8px rgba(0, 0, 0, 0.88),
+    inset 0 -1px 10px rgba(var(--music-accent-rgb, 110, 142, 185), 0.15),
+    0 18px 42px rgba(0, 0, 0, 0.50),
+    0 2px 10px rgba(0, 0, 0, 0.24);
 }
 
 .notch-morph-shell.state-expanded.mode-robo.is-bedo-thinking {
@@ -477,18 +525,19 @@ select {
       rgba(var(--music-accent-rgb, 110, 142, 185), 0.28) 0%,
       rgba(var(--music-accent-rgb, 110, 142, 185), 0.1) 46%,
       transparent 76%),
-    linear-gradient(180deg, #000000 0%, #12151f 16%, #0c0e14 100%);
-  background-size: 170% 100%, 100% 100%;
-  background-position: 100% 0%, 0% 0%;
+    var(--shell-liquid-sheen),
+    var(--shell-liquid-body);
+  background-size: 170% 100%, 100% 100%, 100% 100%;
+  background-position: 100% 0%, 0% 0%, 0% 0%;
   animation: bedoBottomAmbientSweep 2.4s ease-in-out infinite alternate;
 }
 
 @keyframes bedoBottomAmbientSweep {
   0% {
-    background-position: 100% 0%, 0% 0%;
+    background-position: 100% 0%, 0% 0%, 0% 0%;
   }
   100% {
-    background-position: 0% 0%, 0% 0%;
+    background-position: 0% 0%, 0% 0%, 0% 0%;
   }
 }
 
@@ -499,7 +548,8 @@ select {
       rgba(145, 22, 42, 0.28) 0%,
       rgba(65, 10, 20, 0.14) 52%,
       transparent 78%),
-    linear-gradient(180deg, #000000 0%, #12151f 16%, #0c0e14 100%);
+    var(--shell-liquid-sheen),
+    var(--shell-liquid-body);
 }
 
 /* Pure black background when dragging files over the island */
@@ -6301,7 +6351,8 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
       rgba(var(--music-accent-rgb, 110, 142, 185), 0.22) 0%,
       rgba(var(--music-accent-rgb, 110, 142, 185), 0.07) 48%,
       transparent 76%),
-    linear-gradient(180deg, #000000 0%, #10121a 16%, #0b0d12 100%);
+    var(--shell-liquid-sheen),
+    var(--shell-liquid-body);
 }
 
 .music-view {
@@ -6311,15 +6362,15 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
   width: 100%;
   height: 100%;
   min-height: 0;
-  gap: clamp(16px, 3.2vw, 24px);
-  padding: 2px 6px 3px;
+  gap: 20px;
+  padding: 4px 6px;
   box-sizing: border-box;
 }
 
 .music-art-column {
   position: relative;
   z-index: 2;
-  flex: 0 0 clamp(114px, 25%, 146px);
+  flex: 0 0 152px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -6328,7 +6379,8 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
 
 .music-cover-art {
   position: relative;
-  width: min(100%, 146px);
+  width: 152px;
+  height: 152px;
   aspect-ratio: 1;
   display: flex;
   align-items: center;
@@ -6345,6 +6397,13 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
     transform 0.38s cubic-bezier(0.22, 1, 0.36, 1),
     box-shadow 0.38s cubic-bezier(0.22, 1, 0.36, 1),
     border-color 0.28s ease;
+}
+
+.music-view.is-playing .music-cover-art.has-art {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    0 14px 30px rgba(0, 0, 0, 0.52),
+    0 0 26px rgba(var(--music-accent-rgb, 110, 142, 185), 0.16);
 }
 
 .music-cover-art:hover {
@@ -6383,26 +6442,82 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
   z-index: 2;
   flex: 1 1 0;
   min-width: 0;
-  height: 100%;
+  height: 152px;
   min-height: 0;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  padding: 2px 4px 2px 0;
+  padding: 0;
   overflow: visible;
+}
+
+.music-track-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
 }
 
 .music-track-header {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex: 1 1 auto;
   min-width: 0;
-  max-width: 100%;
   white-space: nowrap;
   overflow: hidden;
-  font-size: 12.5px;
+  font-size: 12px;
   line-height: 1.3;
   color: rgba(255, 255, 255, 0.72);
+}
+
+.music-header-eq {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 12px;
+  flex: 0 0 auto;
+  opacity: 0.75;
+}
+
+.music-header-eq i {
+  display: block;
+  width: 2px;
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(var(--music-accent-rgb, 255, 255, 255), 0.9);
+  transition: height 0.2s ease;
+}
+
+.music-header-eq.is-playing i {
+  animation: musicHeaderEqBar 0.8s ease-in-out infinite alternate;
+}
+
+.music-header-eq.is-playing i:nth-child(2) {
+  animation-delay: 0.16s;
+  animation-duration: 0.68s;
+}
+
+.music-header-eq.is-playing i:nth-child(3) {
+  animation-delay: 0.32s;
+  animation-duration: 0.9s;
+}
+
+.music-header-eq.is-playing i:nth-child(4) {
+  animation-delay: 0.1s;
+  animation-duration: 0.74s;
+}
+
+@keyframes musicHeaderEqBar {
+  0% {
+    height: 3px;
+    opacity: 0.45;
+  }
+  100% {
+    height: 11px;
+    opacity: 1;
+  }
 }
 
 .music-track-title-inline {
@@ -6441,15 +6556,15 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
 .music-lyrics-box {
   flex: 1 1 auto;
   min-height: 0;
-  margin: 4px 0 6px;
+  margin: 2px 0 4px;
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 4px;
+  gap: 3px;
 }
 
 .lyric-line-active {
-  font-size: clamp(19px, 3.4vw, 23px);
+  font-size: clamp(18px, 3vw, 21px);
   font-weight: 700;
   line-height: 1.18;
   color: #ffffff;
@@ -6464,7 +6579,7 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
 .lyric-line-next {
   font-size: 12.5px;
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.46);
+  color: rgba(255, 255, 255, 0.56);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -6472,7 +6587,7 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
 }
 
 .music-lyrics-box:hover .lyric-line-next {
-  color: rgba(255, 255, 255, 0.64);
+  color: rgba(255, 255, 255, 0.74);
 }
 
 @keyframes appleLyricEnter {
@@ -6624,12 +6739,12 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  margin-top: 6px;
+  margin-top: 2px;
 }
 
 .music-controls-row:has(.music-transport-center)::before {
   content: '';
-  width: 36px;
+  width: 32px;
   flex-shrink: 0;
 }
 
@@ -6638,27 +6753,27 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  padding: 4px 10px;
+  gap: 6px;
+  padding: 3px 8px;
   border-radius: 999px;
   background: linear-gradient(
     155deg,
-    rgba(255, 255, 255, 0.18) 0%,
-    rgba(var(--music-accent-rgb, 110, 142, 185), 0.2) 50%,
-    rgba(255, 255, 255, 0.07) 100%
+    rgba(255, 255, 255, 0.16) 0%,
+    rgba(var(--music-accent-rgb, 110, 142, 185), 0.18) 50%,
+    rgba(255, 255, 255, 0.06) 100%
   );
-  border: 1px solid rgba(255, 255, 255, 0.24);
+  border: 1px solid rgba(255, 255, 255, 0.22);
   backdrop-filter: blur(18px) saturate(155%);
   -webkit-backdrop-filter: blur(18px) saturate(155%);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.38),
-    inset 0 -1px 4px rgba(var(--music-accent-rgb, 110, 142, 185), 0.2),
-    0 8px 20px rgba(0, 0, 0, 0.34);
+    inset 0 1px 0 rgba(255, 255, 255, 0.34),
+    inset 0 -1px 4px rgba(var(--music-accent-rgb, 110, 142, 185), 0.18),
+    0 6px 16px rgba(0, 0, 0, 0.3);
 }
 
 .transport-icon-btn {
-  width: 34px;
-  height: 34px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   background: transparent;
   border: none;
@@ -6677,7 +6792,7 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
 }
 
 .transport-icon-btn:not(:disabled):hover {
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.14);
   color: #ffffff;
   transform: scale(1.06);
 }
@@ -6687,8 +6802,8 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
 }
 
 .transport-play-circle {
-  width: 38px;
-  height: 36px;
+  width: 34px;
+  height: 32px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.14);
   color: #ffffff;
@@ -6711,16 +6826,16 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
 }
 
 .music-device-btn {
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   background: linear-gradient(
     155deg,
-    rgba(255, 255, 255, 0.18) 0%,
-    rgba(var(--music-accent-rgb, 110, 142, 185), 0.18) 52%,
+    rgba(255, 255, 255, 0.16) 0%,
+    rgba(var(--music-accent-rgb, 110, 142, 185), 0.16) 52%,
     rgba(255, 255, 255, 0.06) 100%
   );
-  border: 1px solid rgba(255, 255, 255, 0.24);
+  border: 1px solid rgba(255, 255, 255, 0.22);
   color: rgba(255, 255, 255, 0.9);
   display: flex;
   align-items: center;
@@ -6729,9 +6844,9 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
   backdrop-filter: blur(16px) saturate(145%);
   -webkit-backdrop-filter: blur(16px) saturate(145%);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.36),
-    inset 0 -1px 4px rgba(var(--music-accent-rgb, 110, 142, 185), 0.18),
-    0 6px 16px rgba(0, 0, 0, 0.28);
+    inset 0 1px 0 rgba(255, 255, 255, 0.34),
+    inset 0 -1px 4px rgba(var(--music-accent-rgb, 110, 142, 185), 0.16),
+    0 6px 14px rgba(0, 0, 0, 0.26);
   transition: background 0.18s ease, transform 0.16s cubic-bezier(0.32, 0.72, 0, 1);
 }
 
@@ -6782,6 +6897,11 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
 
   .music-cover-art {
     width: 104px;
+    height: 104px;
+  }
+
+  .music-right-panel {
+    height: 112px;
   }
 
   .music-track-header {
