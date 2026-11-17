@@ -1,7 +1,8 @@
 {
-  "name": "twocode-island",
+  "name": "bedo",
+  "productName": "Bedo",
   "version": "1.0.0",
-  "description": "TwoCode - The Dynamic Island for Windows",
+  "description": "Bedo - The Dynamic Island & AI Assistant for Windows",
   "main": "electron/main.cjs",
   "scripts": {
     "dev:vite": "vite",

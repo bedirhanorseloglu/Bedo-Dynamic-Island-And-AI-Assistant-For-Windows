@@ -152,6 +152,7 @@ contextBridge.exposeInMainWorld('twocode', {
   simulateAgentTask: (type) => ipcRenderer.invoke('simulate-agent-task', type),
   adjustVolume: (direction) => ipcRenderer.invoke('adjust-volume', direction),
   setVolume: (percent) => ipcRenderer.invoke('set-volume', percent),
+  getSystemMicMuted: () => ipcRenderer.invoke('get-system-mic-muted'),
   onSystemHud: (cb) => {
     const listener = (_event, data) => cb(data);
     ipcRenderer.on('system-hud', listener);

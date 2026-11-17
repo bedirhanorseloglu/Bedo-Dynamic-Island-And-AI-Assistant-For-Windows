@@ -174,7 +174,10 @@ foreach ($procName in $candidateNames) {
     } catch {}
 }
 
-$appWindows = @($allWindows | Where-Object { $targetPids.Contains($_.Pid) })
+$appWindows = @($allWindows | Where-Object { $targetPids.Contains($_.Pid) -and -not $_.IsToolWindow })
+if ($appWindows.Count -eq 0) {
+    $appWindows = @($allWindows | Where-Object { $targetPids.Contains($_.Pid) })
+}
 
 if ($CheckOnly -and $appWindows.Count -eq 0) {
     Write-Output '{"exists":false,"reason":"no-window"}'
@@ -202,7 +205,10 @@ foreach ($w in $appWindows) {
 }
 
 # 2. Search browser tabs via UI Automation in candidate app windows (skipping web page DOM)
-if ($appWindows.Count -gt 0) {
+# Skip UIA tab selection for Comet because UIA SelectionItemPattern.Select() can crash Comet's browser process;
+# read-only tab enumeration in CheckOnly mode is safe.
+$skipUiaTabWalk = (-not $CheckOnly) -and ($SourceApp -match 'comet')
+if ($appWindows.Count -gt 0 -and -not $skipUiaTabWalk) {
     try {
         Add-Type -AssemblyName UIAutomationClient
         Add-Type -AssemblyName UIAutomationTypes
@@ -308,7 +314,7 @@ public static class WinTabWalker {
             if ($totalTabs -gt 0) {
                 Write-Output '{"exists":false,"reason":"tab-closed"}'
             } else {
-                Write-Output '{"exists":true,"reason":"unknown"}'
+                Write-Output '{"exists":false,"reason":"no-tabs-found"}'
             }
             exit 0
         }
@@ -316,7 +322,7 @@ public static class WinTabWalker {
 }
 
 if ($CheckOnly) {
-    Write-Output '{"exists":true,"reason":"fallback"}'
+    Write-Output '{"exists":false,"reason":"fallback-no-match"}'
     exit 0
 }
 

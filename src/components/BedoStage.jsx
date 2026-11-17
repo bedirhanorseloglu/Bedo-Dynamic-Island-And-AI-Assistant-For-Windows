@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
+import React, { useEffect, useRef, useState } from 'react';
+import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
 import {
   ArrowUp,
   Check,
@@ -23,16 +23,15 @@ const STATE_LABELS = {
   ERROR: 'Bağlantı Hatası',
 };
 
-const QUICK_PROMPTS = [
-  'Şarkıyı devam ettir',
-  'Bugün hava nasıl?',
-  'Odak sayacını başlat',
-];
+const EQ_WEIGHTS = [0.42, 0.72, 0.94, 1, 0.94, 0.72, 0.42];
+const EQ_THRESHOLDS = [0.1, 0.2, 0.35, 0.5, 0.35, 0.2, 0.1];
 
-const SPRING = { type: 'spring', stiffness: 400, damping: 32, mass: 0.85 };
+const SPRING = { type: 'spring', stiffness: 420, damping: 32, mass: 0.82 };
+const LAYOUT_SPRING = { type: 'spring', stiffness: 360, damping: 32, mass: 0.88 };
 
 export default function BedoStage({
   status,
+  systemMicMuted = false,
   webcamFrame,
   micLevel = 0,
   roboMood,
@@ -53,10 +52,24 @@ export default function BedoStage({
 }) {
   const paused = Boolean(status?.paused);
   const muted = Boolean(status?.muted);
+  const effectiveMicMuted = Boolean(systemMicMuted || muted);
   const webcamActive = Boolean(status?.webcamActive);
   const running = Boolean(status?.running);
   const jarvisState = status?.jarvisState || 'INITIALISING';
   const [copied, setCopied] = useState(false);
+  const [inputFocused, setInputFocused] = useState(false);
+  const [wakeSeq, setWakeSeq] = useState(0);
+  const prevPausedRef = useRef(paused);
+
+  useEffect(() => {
+    if (prevPausedRef.current && !paused) {
+      setWakeSeq((s) => s + 1);
+    }
+    prevPausedRef.current = paused;
+  }, [paused]);
+
+  const hasContent = Boolean(webcamActive || loading || reply || userTranscript || question.trim());
+  const isTop = !paused || inputFocused || hasContent;
 
   const auraMode = paused
     ? 'sleeping'
@@ -75,6 +88,7 @@ export default function BedoStage({
       : STATE_LABELS[jarvisState] || jarvisState;
 
   const eyeMood = paused ? 'sleepy' : roboMood;
+  const clampedMic = Math.min(1, Math.max(0, micLevel));
 
   const handleCopy = () => {
     onCopyReply?.();
@@ -82,149 +96,218 @@ export default function BedoStage({
     setTimeout(() => setCopied(false), 1400);
   };
 
-  const handleQuickPrompt = (text) => {
-    onQuestionChange(text);
-  };
-
   return (
-    <motion.div
-      className="bedo-v2-shell"
-      data-aura={auraMode}
-      initial={{ opacity: 0, scale: 0.96, y: -4 }}
-      animate={{ opacity: 1, scale: 1, y: 0 }}
-      transition={SPRING}
-    >
-      {/* Sol Sütun: Canlı Apple Intelligence / Siri Orb */}
-      <div className="bedo-v2-orb-col">
-        <motion.button
-          type="button"
-          className={`bedo-v2-orb ${auraMode}`}
-          onClick={onTogglePause}
-          whileHover={{ scale: 1.04 }}
-          whileTap={{ scale: 0.94 }}
-          transition={SPRING}
-          title={paused ? 'Bedo’yu Uyandır' : 'Uyku Moduna Al'}
-          style={{ '--bedo-mic': Math.min(1, Math.max(0, micLevel)) }}
-        >
-          <span className="bedo-v2-orb-ring" aria-hidden="true" />
-          <span className="bedo-v2-orb-core" aria-hidden="true" />
-          <div className="bedo-v2-orb-face">
-            <RoboEyes
-              mood={eyeMood}
-              size="medium"
-              reaction={roboReaction}
-              micLevel={micLevel}
-              showMouth={true}
-              active={documentVisible}
-            />
-          </div>
-        </motion.button>
-
-        <div className="bedo-v2-orb-meta">
-          <span className={`bedo-v2-dot is-${auraMode}`} />
-          <span className="bedo-v2-state-label">{statusText}</span>
-        </div>
-
-        {!paused && !muted && running && (
-          <div className="bedo-v2-eq" aria-hidden="true">
-            {[0.08, 0.18, 0.34, 0.52, 0.72].map((thresh, idx) => (
-              <i
-                key={idx}
-                className={micLevel >= thresh ? 'is-lit' : ''}
-                style={{
-                  height: `${Math.min(14, Math.max(3, Math.round(3 + micLevel * (8 + (idx % 3) * 3))))}px`,
-                }}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Sağ Sütun: Üst Kontroller + Sohbet/Kamera + Komut Çubuğu */}
-      <div className="bedo-v2-main-col">
-        <div className="bedo-v2-header">
-          <div className="bedo-v2-title-group">
-            <span className="bedo-v2-brand">Bedo</span>
-            <span className="bedo-v2-sub">
-              {paused ? '"Hey Bedo" de veya küreye dokun' : 'Sesli & yazılı asistan hazır'}
-            </span>
-          </div>
-
-          <div className="bedo-v2-controls">
-            {reply && !webcamActive && (
-              <>
-                <button
-                  type="button"
-                  className="bedo-v2-ctrl-btn"
-                  onClick={handleCopy}
-                  title="Yanıtı Kopyala"
-                >
-                  {copied ? <Check size={12} /> : <Copy size={12} />}
-                </button>
-                <button
-                  type="button"
-                  className="bedo-v2-ctrl-btn"
-                  onClick={onClearReply}
-                  title="Temizle"
-                >
-                  <X size={13} />
-                </button>
-              </>
-            )}
-            <button
-              type="button"
-              className={`bedo-v2-ctrl-btn ${webcamActive ? 'is-active' : ''}`}
-              onClick={onToggleWebcam}
-              title={webcamActive ? 'Kamerayı Kapat' : 'Kamerayı Aç'}
+    <LayoutGroup id="bedo-stage-layout">
+      <motion.div
+        className={`bedo-v2-shell ${isTop ? 'is-top' : 'is-centered'} ${webcamActive ? 'has-cam' : ''}`}
+        data-aura={auraMode}
+        initial={{ opacity: 0, scale: 0.98, y: -2 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={SPRING}
+      >
+        {/* Sol Kamera Alanı (Sadece kamera açıkken animasyonla solda açılır) */}
+        <AnimatePresence>
+          {webcamActive && (
+            <motion.div
+              key="v2-cam-left"
+              className="bedo-v2-cam-panel"
+              initial={{ opacity: 0, x: -18, scale: 0.95 }}
+              animate={{ opacity: 1, x: 0, scale: 1 }}
+              exit={{ opacity: 0, x: -18, scale: 0.95 }}
+              transition={LAYOUT_SPRING}
             >
-              {webcamActive ? <Video size={13} /> : <VideoOff size={13} />}
-            </button>
-            <button
-              type="button"
-              className={`bedo-v2-ctrl-btn ${muted ? 'is-danger' : !paused ? 'is-live' : ''}`}
-              onClick={() => (paused ? onTogglePause() : onToggleMute())}
-              title={paused ? 'Bedo’yu Uyandır' : muted ? 'Mikrofonu Aç' : 'Mikrofonu Sustur'}
-            >
-              {muted ? <MicOff size={13} /> : <Mic size={13} />}
-            </button>
-            <button
-              type="button"
-              className={`bedo-v2-ctrl-btn ${!paused ? 'is-active' : ''}`}
-              onClick={onTogglePause}
-              title={paused ? 'Başlat' : 'Uyku Modu'}
-            >
-              {paused ? <Play size={12} /> : <Pause size={12} />}
-            </button>
-          </div>
-        </div>
-
-        {/* Orta Alan: Kamera VEYA Canlı Sohbet/Yanıt VEYA Hızlı Öneriler */}
-        <div className="bedo-v2-body">
-          <AnimatePresence mode="wait">
-            {webcamActive ? (
-              <motion.div
-                key="v2-cam"
-                className="bedo-v2-cam-wrap"
-                initial={{ opacity: 0, scale: 0.97 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.97 }}
-                transition={SPRING}
-              >
+              <div className="bedo-v2-cam-frame">
                 {webcamFrame ? (
                   <img src={webcamFrame} alt="Kamera Önizleme" className="bedo-v2-cam-img" decoding="async" />
                 ) : (
                   <div className="bedo-v2-cam-loading">Kamera başlatılıyor...</div>
                 )}
-                <span className="bedo-v2-cam-badge">CANLI</span>
+                <span className="bedo-v2-cam-vignette" aria-hidden="true" />
+                <span className="bedo-v2-cam-badge">
+                  <i aria-hidden="true" />
+                  CANLI
+                </span>
+                <button
+                  type="button"
+                  className="bedo-v2-cam-close"
+                  onClick={onToggleWebcam}
+                  aria-label="Kamerayı Kapat"
+                >
+                  <X size={11} strokeWidth={2.5} />
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Ana Sahne (Merkezde küre + alt input; aktifken üstte Bedo şeridi + orta sohbet + alt input) */}
+        <div className="bedo-v2-stage-main">
+          {/* Üst Satır: Küre + Durum + Sağ Kontroller */}
+          <div className={`bedo-v2-top-row ${isTop ? 'is-top' : 'is-centered'}`}>
+            {/* Bedo Küre + Durum (Uyurken ortada, uyanınca/yazınca üstte) */}
+            <motion.div
+              layout
+              transition={LAYOUT_SPRING}
+              className={`bedo-v2-orb-bar ${isTop ? 'is-top' : 'is-centered'}`}
+            >
+              <motion.div layout transition={LAYOUT_SPRING} className={`bedo-v2-orb-stage ${isTop ? 'is-top' : ''}`}>
+                <motion.button
+                  type="button"
+                  layout
+                  className={`bedo-v2-orb ${auraMode} ${isTop ? 'is-top' : ''}`}
+                  onClick={onTogglePause}
+                  animate={
+                    wakeSeq > 0 && !paused && auraMode === 'listening'
+                      ? { scale: [0.9, 1.08, 0.98, 1] }
+                      : auraMode === 'speaking'
+                        ? { scale: [1, 1.035, 1] }
+                        : auraMode === 'thinking'
+                          ? { scale: [1, 1.022, 1] }
+                          : { scale: 1 }
+                  }
+                  transition={
+                    auraMode === 'speaking' || auraMode === 'thinking'
+                      ? { repeat: Infinity, duration: auraMode === 'speaking' ? 1.15 : 1.65, ease: 'easeInOut' }
+                      : wakeSeq > 0 && !paused
+                        ? { duration: 0.56, ease: [0.22, 1, 0.36, 1] }
+                        : LAYOUT_SPRING
+                  }
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.93 }}
+                  aria-label={paused ? 'Bedo’yu Uyandır' : 'Uyku Moduna Al'}
+                  style={{ '--bedo-mic': clampedMic }}
+                >
+                  <div className="bedo-v2-orb-face">
+                    <RoboEyes
+                      mood={eyeMood}
+                      size={isTop ? 'small' : 'large'}
+                      reaction={roboReaction}
+                      micLevel={micLevel}
+                      showMouth={false}
+                      active={documentVisible}
+                    />
+                  </div>
+                </motion.button>
               </motion.div>
-            ) : reply || userTranscript || loading ? (
+
+              <motion.div layout="position" transition={LAYOUT_SPRING} className={`bedo-v2-orb-info ${isTop ? 'is-top' : ''}`}>
+                {isTop && (
+                  <div className="bedo-v2-title-group">
+                    <span className="bedo-v2-brand">Bedo</span>
+                  </div>
+                )}
+                <div className={`bedo-v2-status-row ${isTop ? 'is-top' : ''}`}>
+                  {auraMode !== 'sleeping' && (
+                    <div className={`bedo-v2-orb-meta is-${auraMode}`}>
+                      <AnimatePresence mode="wait">
+                        <motion.span
+                          key={statusText}
+                          className="bedo-v2-state-label"
+                          initial={{ opacity: 0, y: 4, filter: 'blur(3px)' }}
+                          animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                          exit={{ opacity: 0, y: -4, filter: 'blur(3px)' }}
+                          transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                        >
+                          {statusText}
+                        </motion.span>
+                      </AnimatePresence>
+                    </div>
+                  )}
+                  {isTop && !webcamActive && (
+                    <div
+                      className={`bedo-v2-eq is-${auraMode} ${!paused && !muted && running ? 'is-active' : 'is-idle'}`}
+                      aria-hidden="true"
+                    >
+                      {EQ_WEIGHTS.map((weight, idx) => {
+                        const active = !paused && !muted && running;
+                        const lit = active && clampedMic >= EQ_THRESHOLDS[idx];
+                        const barHeight = active
+                          ? Math.min(11, Math.max(3, Math.round(3 + clampedMic * 8 * weight)))
+                          : 3;
+                        return (
+                          <i
+                            key={idx}
+                            className={lit ? 'is-lit' : ''}
+                            style={{ height: `${barHeight}px` }}
+                          />
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            </motion.div>
+
+            {/* Sağ Üst Kontroller (Üst modda flex hizalı, merkez modda sağ üstte) */}
+            <div className={`bedo-v2-controls-anchor ${isTop ? 'is-top' : 'is-centered'}`}>
+              <div className="bedo-v2-controls">
+                {reply && !webcamActive && (
+                  <>
+                    <button
+                      type="button"
+                      className="bedo-v2-ctrl-btn"
+                      onClick={handleCopy}
+                      aria-label="Yanıtı Kopyala"
+                    >
+                      {copied ? <Check size={12} /> : <Copy size={12} />}
+                    </button>
+                    <button
+                      type="button"
+                      className="bedo-v2-ctrl-btn"
+                      onClick={onClearReply}
+                      aria-label="Temizle"
+                    >
+                      <X size={13} />
+                    </button>
+                    <span className="bedo-v2-ctrl-divider" aria-hidden="true" />
+                  </>
+                )}
+                <button
+                  type="button"
+                  className={`bedo-v2-ctrl-btn ${webcamActive ? 'is-active' : ''}`}
+                  onClick={onToggleWebcam}
+                  aria-label={webcamActive ? 'Kamerayı Kapat' : 'Kamerayı Aç'}
+                >
+                  {webcamActive ? <Video size={13} /> : <VideoOff size={13} />}
+                </button>
+                <button
+                  type="button"
+                  className={`bedo-v2-ctrl-btn ${effectiveMicMuted ? 'is-danger' : !paused ? 'is-live' : ''}`}
+                  onClick={() => (paused ? onTogglePause() : onToggleMute())}
+                  aria-label={
+                    systemMicMuted
+                      ? 'Sistem Mikrofonu Kapalı'
+                      : paused
+                        ? 'Bedo’yu Uyandır'
+                        : muted
+                          ? 'Mikrofonu Aç'
+                          : 'Mikrofonu Sustur'
+                  }
+                >
+                  {effectiveMicMuted ? <MicOff size={13} /> : <Mic size={13} />}
+                </button>
+                <button
+                  type="button"
+                  className={`bedo-v2-ctrl-btn ${!paused ? 'is-active' : ''}`}
+                  onClick={onTogglePause}
+                  aria-label={paused ? 'Başlat' : 'Uyku Modu'}
+                >
+                  {paused ? <Play size={12} /> : <Pause size={12} />}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Orta Alan: Canlı Sohbet / Yanıt (Üst modda görünür) */}
+          <AnimatePresence>
+            {isTop && (reply || userTranscript || loading) && (
               <motion.div
                 key="v2-feed"
                 className="bedo-v2-feed"
-                initial={{ opacity: 0, y: 6 }}
+                initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -6 }}
-                transition={{ duration: 0.18 }}
+                transition={{ duration: 0.2 }}
               >
                 {userTranscript && (
                   <div className="bedo-v2-user-pill">
@@ -233,60 +316,59 @@ export default function BedoStage({
                   </div>
                 )}
                 <div className="bedo-v2-reply-scroll">
-                  {reply ? (
+                  {loading && !reply ? (
+                    <div className="bedo-v2-thinking-line">
+                      <span className="bedo-v2-thinking-dots" aria-hidden="true">
+                        <i /><i /><i />
+                      </span>
+                      <span>Yanıt hazırlanıyor...</span>
+                    </div>
+                  ) : reply ? (
                     <RoboMarkdown content={reply} />
                   ) : (
                     <div className="bedo-v2-thinking-line">
+                      <span className="bedo-v2-thinking-dots" aria-hidden="true">
+                        <i /><i /><i />
+                      </span>
                       <span>Yanıt hazırlanıyor...</span>
                     </div>
                   )}
                 </div>
               </motion.div>
-            ) : (
-              <motion.div
-                key="v2-idle"
-                className="bedo-v2-suggestions"
-                initial={{ opacity: 0, y: 4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -4 }}
-                transition={{ duration: 0.18 }}
-              >
-                {QUICK_PROMPTS.map((item) => (
-                  <button
-                    key={item}
-                    type="button"
-                    className="bedo-v2-chip"
-                    onClick={() => handleQuickPrompt(item)}
-                  >
-                    <span>{item}</span>
-                  </button>
-                ))}
-              </motion.div>
             )}
           </AnimatePresence>
-        </div>
 
-        {/* Alt Komut Çubuğu */}
-        <div className={`bedo-v2-input-bar ${loading ? 'is-thinking' : ''}`}>
-          <input
-            type="text"
-            placeholder={loading ? 'Bedo yanıtlıyor...' : "Bedo'ya konuş veya yaz..."}
-            value={question}
-            onChange={(e) => onQuestionChange(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && !loading && onSubmit()}
-            aria-label="Bedo komutu"
-          />
-          <button
-            type="button"
-            className={`bedo-v2-send ${question.trim() && !loading ? 'is-ready' : ''}`}
-            onClick={onSubmit}
-            disabled={loading || !question.trim()}
-            aria-label="Gönder"
+          {/* Alt Komut Çubuğu */}
+          <motion.div
+            layout
+            transition={LAYOUT_SPRING}
+            className={`bedo-v2-input-bar ${loading || jarvisState === 'THINKING' ? 'is-thinking' : ''} ${isTop ? 'is-top' : 'is-centered'}`}
           >
-            <ArrowUp size={14} strokeWidth={2.5} />
-          </button>
+            <input
+              type="text"
+              placeholder={loading ? 'Bedo yanıtlıyor...' : "Bedo'ya konuş veya yaz..."}
+              value={question}
+              onFocus={() => {
+                setInputFocused(true);
+                if (paused) onTogglePause?.();
+              }}
+              onBlur={() => setInputFocused(false)}
+              onChange={(e) => onQuestionChange(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && !loading && onSubmit()}
+              aria-label="Bedo komutu"
+            />
+            <button
+              type="button"
+              className={`bedo-v2-send ${question.trim() && !loading ? 'is-ready' : ''}`}
+              onClick={onSubmit}
+              disabled={loading || !question.trim()}
+              aria-label="Gönder"
+            >
+              <ArrowUp size={14} strokeWidth={2.5} />
+            </button>
+          </motion.div>
         </div>
-      </div>
-    </motion.div>
+      </motion.div>
+    </LayoutGroup>
   );
 }

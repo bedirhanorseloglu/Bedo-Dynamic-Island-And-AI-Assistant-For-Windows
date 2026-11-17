@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import RealAppIcon from './RealAppIcon';
 import {
   Home,
@@ -44,8 +45,63 @@ import { playRoboSound, playNotifSound } from './sounds';
 import { applyTypographyTokens, CLOCK_FONT_OPTIONS, CLOCK_STORAGE_KEY, normalizeFontIndex, readTypographyPreferences, TEXT_FONT_OPTIONS, TYPOGRAPHY_STORAGE_KEY } from './typography';
 import { LanguageProvider, createTranslator, getLocale, languageLabel, normalizeLanguage } from './i18n';
 
+function ProviderSymbol({ provider, size = 16 }) {
+  if (provider === 'claude') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path
+          d="M12 1.8L13.55 7.95L18.1 3.45L15.6 9.3L21.7 8.1L16.35 11.4L22.2 13.75L16.05 13.95L19.45 19.15L14.2 15.65L13.95 21.8L11.9 16.0L8.85 21.45L9.95 15.35L4.35 18.2L8.45 13.5L2.25 12.75L8.05 10.65L3.1 6.75L9.15 8.55L7.65 2.45L11.2 7.75L12 1.8Z"
+          fill="#D97757"
+        />
+      </svg>
+    );
+  }
+  if (provider === 'codex') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path
+          d="M6.8 18.5C4.1 18.5 2 16.4 2 13.8C2 11.5 3.65 9.6 5.85 9.2C6.65 6.2 9.4 4 12.65 4C16.35 4 19.4 6.8 19.65 10.4C21.05 10.95 22 12.3 22 13.9C22 16.45 19.9 18.5 17.3 18.5H6.8Z"
+          fill="#F8FAFC"
+        />
+        <path d="M7.5 10.8L10.3 12.8L7.5 14.8" stroke="#0F172A" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
+        <line x1="12.2" y1="15.2" x2="15.6" y2="15.2" stroke="#0F172A" strokeWidth="1.9" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  if (provider === 'antigravity') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <defs>
+          <linearGradient id="agGradTop" x1="12" y1="2" x2="12" y2="22" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stopColor="#F59E0B" />
+            <stop offset="28%" stopColor="#EF4444" />
+            <stop offset="56%" stopColor="#3B82F6" />
+            <stop offset="100%" stopColor="#2563EB" />
+          </linearGradient>
+          <linearGradient id="agGradLeft" x1="4" y1="16" x2="13" y2="5" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stopColor="#1D4ED8" />
+            <stop offset="55%" stopColor="#22C55E" />
+            <stop offset="100%" stopColor="#F59E0B" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <path
+          d="M12 2.4C14.3 2.4 16.05 6.25 18.2 12.1C19.6 15.9 21.15 18.95 21.65 20.15C22.05 21.1 21.25 22 20.15 21.7C18.05 21.1 16.4 18.75 15.1 15.85C14.1 13.65 13.15 12.5 12 12.5C10.85 12.5 9.9 13.65 8.9 15.85C7.6 18.75 5.95 21.1 3.85 21.7C2.75 22 1.95 21.1 2.35 20.15C2.85 18.95 4.4 15.9 5.8 12.1C7.95 6.25 9.7 2.4 12 2.4Z"
+          fill="url(#agGradTop)"
+        />
+        <path
+          d="M12 2.4C9.7 2.4 7.95 6.25 5.8 12.1C4.4 15.9 2.85 18.95 2.35 20.15C1.95 21.1 2.75 22 3.85 21.7C5.95 21.1 7.6 18.75 8.9 15.85C9.9 13.65 10.85 12.5 12 12.5V2.4Z"
+          fill="url(#agGradLeft)"
+          opacity="0.78"
+        />
+      </svg>
+    );
+  }
+  return null;
+}
+
 const DEFAULT_SETTINGS = {
-  userName: 'Bedirhan',
+  userName: '',
+  onboardingCompleted: false,
   googleEmail: '',
   googleConnected: false,
   calEnabled: false,
@@ -225,6 +281,9 @@ function RoboCrownAvatar({ outfit = 'Best', size = 64, eyeHex = '#ffffff' }) {
 export default function SettingsApp() {
   const [activePage, setActivePage] = useState('home');
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [onboardingStep, setOnboardingStep] = useState(1);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const [textFontIndex, setTextFontIndex] = useState(() => readTypographyPreferences().textFontIndex);
   const [numberFontIndex, setNumberFontIndex] = useState(() => {
     try { return normalizeFontIndex(JSON.parse(localStorage.getItem(CLOCK_STORAGE_KEY) || '{}').fontIndex, CLOCK_FONT_OPTIONS.length, 3); }
@@ -233,17 +292,9 @@ export default function SettingsApp() {
   const [now, setNow] = useState(new Date());
   const [liveMedia, setLiveMedia] = useState({ hasSession: false });
   const [aiHistory, setAiHistory] = useState({
-    codexJobs: [
-      {
-        id: 'c1',
-        agent: 'Codex',
-        title: 'ne kadar limitim kaldığını görebiliyor muyum',
-        time: '02:49',
-      },
-      { id: 'c2', agent: 'Codex', title: 'naber', time: '02:48' },
-    ],
+    codexJobs: [],
     claudeJobs: [],
-    jobsToday: 2,
+    jobsToday: 0,
   });
   const [agentIntegration, setAgentIntegration] = useState({ codexConnected: false, antigravityConnected: false, antigravityIdePath: '' });
   const [agentIntegrationBusy, setAgentIntegrationBusy] = useState(false);
@@ -312,7 +363,8 @@ export default function SettingsApp() {
         try { localStorage.setItem('twocode_lang', normalizeLanguage(normalized.language)); } catch {}
         if (saved.roboName) setRoboNameDraft(saved.roboName);
       }
-    });
+      setSettingsLoaded(true);
+    }).catch(() => setSettingsLoaded(true));
 
     const unsubSettings = window.twocode.onSettingsUpdated?.((updated) => {
       if (updated && typeof updated === 'object') {
@@ -590,11 +642,11 @@ export default function SettingsApp() {
               <i className="brand-gear-badge">⚙</i>
             </div>
             <div className="brand-text-col">
-              <strong>TwoCode</strong>
+              <strong>Bedo</strong>
               <span>{t('settings.subtitle')}</span>
             </div>
           </div>
-          <span className="beta-pill">BETA</span>
+          <span className="beta-pill">v1.0</span>
         </div>
 
         <div className="sidebar-scroll-nav">
@@ -625,7 +677,6 @@ export default function SettingsApp() {
             <span className="nav-section-label">{t('settings.navGroup.robo')}</span>
             {[
               { id: 'robo', label: t('settings.nav.robo'), icon: Bot },
-              { id: 'wardrobe', label: t('settings.nav.wardrobe'), icon: Shirt },
             ].map((item) => {
               const Icon = item.icon;
               return (
@@ -645,14 +696,11 @@ export default function SettingsApp() {
           <div className="nav-section-group">
             <span className="nav-section-label">{t('settings.navGroup.settings')}</span>
             {[
-              { id: 'account', label: t('settings.nav.account'), icon: User },
               { id: 'general', label: t('settings.nav.general'), icon: SlidersHorizontal },
               { id: 'typography', label: t('settings.nav.typography'), icon: Type },
               { id: 'notifications', label: t('settings.nav.notifications'), icon: Bell },
               { id: 'island', label: t('settings.nav.island'), icon: PanelTop },
               { id: 'focusguard', label: t('settings.nav.focusguard'), icon: Shield },
-              { id: 'news', label: t('settings.nav.news'), icon: Newspaper },
-              { id: 'support', label: t('settings.nav.support'), icon: Heart },
             ].map((item) => {
               const Icon = item.icon;
               return (
@@ -777,6 +825,15 @@ export default function SettingsApp() {
           </div>
         </header>
 
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={activePage}
+            className="settings-page-motion"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ type: 'spring', stiffness: 420, damping: 34, mass: 0.85 }}
+          >
         {/* ============================================================
             PAGE 1: HOME
             ============================================================ */}
@@ -794,16 +851,14 @@ export default function SettingsApp() {
               <div className="greeting-ai-pills">
                 <div className="ai-status-pill" onClick={() => setActivePage('connections')}>
                   <span className="ai-badge-icon claude">
-                    <i />
-                    <i />
+                    <ProviderSymbol provider="claude" size={16} />
                   </span>
                   <strong>Claude Code</strong>
                   <span>{t('settings.home.idle')}</span>
                 </div>
                 <div className="ai-status-pill" onClick={() => setActivePage('connections')}>
                   <span className="ai-badge-icon codex">
-                    <i />
-                    <i />
+                    <ProviderSymbol provider="codex" size={16} />
                   </span>
                   <strong>Codex</strong>
                   <span>{t('settings.home.idle')}</span>
@@ -817,8 +872,7 @@ export default function SettingsApp() {
                 </div>
                 <div className="ai-status-pill" onClick={() => setActivePage('connections')}>
                   <span className="ai-badge-icon antigravity">
-                    <i />
-                    <i />
+                    <ProviderSymbol provider="antigravity" size={15} />
                   </span>
                   <strong>Antigravity</strong>
                   <span>{t('settings.home.active')}</span>
@@ -890,10 +944,7 @@ export default function SettingsApp() {
                             {badgeClass === 'gemini' ? (
                               <RealAppIcon sc={{ id: `activity-gemini-${idx}`, type: 'gemini' }} size={15} />
                             ) : (
-                              <>
-                                <i />
-                                <i />
-                              </>
+                              <ProviderSymbol provider={badgeClass} size={15} />
                             )}
                           </span>
                           <div className="activity-item-center">
@@ -1000,13 +1051,13 @@ export default function SettingsApp() {
 
             <div className="agent-connection-grid">
               <section className="agent-connection-card codex" style={{ '--agent-rgb': '97, 152, 255', '--agent-hex': '#6198ff' }}>
-                <div className="agent-card-heading"><span className="ai-badge-icon lg codex"><i /><i /></span><div><strong>Codex</strong><span>App · CLI · VS Code</span></div><span className={`agent-status-pill ${agentIntegration.codexConnected ? 'connected' : ''}`}><i />{agentIntegration.codexConnected ? (langCode === 'tr' ? 'Kanca hazır' : 'Hook ready') : (langCode === 'tr' ? 'Bağlı değil' : 'Not connected')}</span></div>
+                <div className="agent-card-heading"><span className="ai-badge-icon lg codex"><ProviderSymbol provider="codex" size={20} /></span><div><strong>Codex</strong><span>App · CLI · VS Code</span></div><span className={`agent-status-pill ${agentIntegration.codexConnected ? 'connected' : ''}`}><i />{agentIntegration.codexConnected ? (langCode === 'tr' ? 'Kanca hazır' : 'Hook ready') : (langCode === 'tr' ? 'Bağlı değil' : 'Not connected')}</span></div>
                 <p className="agent-card-description">{langCode === 'tr' ? 'Codex başladığında ve yanıt verdiğinde Ada’dan sinyal alın.' : 'Get an Island signal when Codex starts and replies.'}</p>
                 <div className="agent-card-detail"><span>{langCode === 'tr' ? 'Yerel kanca' : 'Local hook'}</span><code>{agentIntegration.codexConnected ? (langCode === 'tr' ? 'Kuruldu · Codex’i yeniden başlatın' : 'Installed · restart Codex') : '~/.codex/hooks.json'}</code></div>
                 <button type="button" className="agent-test-button" onClick={() => testAgentTool('Codex')} disabled={agentIntegrationBusy}><Play size={13} /> {langCode === 'tr' ? 'Bildirimi önizle' : 'Preview notification'}</button>
               </section>
               <section className="agent-connection-card antigravity" style={{ '--agent-rgb': '73, 218, 202', '--agent-hex': '#49daca' }}>
-                <div className="agent-card-heading"><span className="ai-badge-icon lg antigravity"><i /><i /></span><div><strong>Antigravity</strong><span>{langCode === 'tr' ? 'Uygulama · bağımsız IDE' : 'App · standalone IDE'}</span></div><span className={`agent-status-pill ${agentIntegration.antigravityConnected ? 'connected' : ''}`}><i />{agentIntegration.antigravityConnected ? (langCode === 'tr' ? 'Kanca hazır' : 'Hook ready') : (langCode === 'tr' ? 'Bağlı değil' : 'Not connected')}</span></div>
+                <div className="agent-card-heading"><span className="ai-badge-icon lg antigravity"><ProviderSymbol provider="antigravity" size={20} /></span><div><strong>Antigravity</strong><span>{langCode === 'tr' ? 'Uygulama · bağımsız IDE' : 'App · standalone IDE'}</span></div><span className={`agent-status-pill ${agentIntegration.antigravityConnected ? 'connected' : ''}`}><i />{agentIntegration.antigravityConnected ? (langCode === 'tr' ? 'Kanca hazır' : 'Hook ready') : (langCode === 'tr' ? 'Bağlı değil' : 'Not connected')}</span></div>
                 <p className="agent-card-description">{langCode === 'tr' ? 'Uygulama ve IDE’deki düşünme ve tamamlanan yanıtları takip edin.' : 'Follow thinking and finished replies in the app and IDE.'}</p>
                 <div className="agent-card-detail"><span>{langCode === 'tr' ? 'Genel kanca' : 'Global hook'}</span><code>{agentIntegration.antigravityConnected ? (langCode === 'tr' ? 'Kuruldu · Antigravity’yi yeniden başlatın' : 'Installed · restart Antigravity') : '~/.gemini/config/hooks.json'}</code></div>
                 <div className="agent-card-actions">
@@ -1204,8 +1255,7 @@ export default function SettingsApp() {
               <div className="settings-row align-top">
                 <div className="row-left-with-icon align-top" style={{ flex: 1 }}>
                   <span className="ai-badge-icon lg claude">
-                    <i />
-                    <i />
+                    <ProviderSymbol provider="claude" size={22} />
                   </span>
                   <div className="row-text-col" style={{ width: '100%' }}>
                     <strong>Claude Code</strong>
@@ -1275,8 +1325,7 @@ export default function SettingsApp() {
               <div className="settings-row align-top">
                 <div className="row-left-with-icon align-top" style={{ flex: 1 }}>
                   <span className="ai-badge-icon lg codex">
-                    <i />
-                    <i />
+                    <ProviderSymbol provider="codex" size={22} />
                   </span>
                   <div className="row-text-col" style={{ width: '100%' }}>
                     <strong>Codex</strong>
@@ -1408,8 +1457,7 @@ export default function SettingsApp() {
               <div className="settings-row align-top">
                 <div className="row-left-with-icon align-top" style={{ flex: 1 }}>
                   <span className="ai-badge-icon lg antigravity">
-                    <i />
-                    <i />
+                    <ProviderSymbol provider="antigravity" size={20} />
                   </span>
                   <div className="row-text-col" style={{ width: '100%' }}>
                     <strong>Antigravity</strong>
@@ -1458,8 +1506,7 @@ export default function SettingsApp() {
               <div className="settings-row">
                 <div className="row-left-with-icon">
                   <span className="ai-badge-icon lg claude">
-                    <i />
-                    <i />
+                    <ProviderSymbol provider="claude" size={22} />
                   </span>
                   <div className="row-text-col">
                     <strong>Claude</strong>
@@ -1474,8 +1521,7 @@ export default function SettingsApp() {
               <div className="settings-row">
                 <div className="row-left-with-icon">
                   <span className="ai-badge-icon lg codex">
-                    <i />
-                    <i />
+                    <ProviderSymbol provider="codex" size={22} />
                   </span>
                   <div className="row-text-col">
                     <strong>Codex</strong>
@@ -2182,90 +2228,6 @@ export default function SettingsApp() {
         )}
 
         {/* ============================================================
-            PAGE 7: ACCOUNT
-            ============================================================ */}
-        {activePage === 'account' && (
-          <div className="settings-page-body narrow-body">
-            <div className="settings-card">
-              <div className="settings-row">
-                <div className="row-left-with-icon">
-                  <div className="stat-icon-sq green">
-                    <Bot size={16} />
-                  </div>
-                  <div className="row-text-col">
-                    <strong>{langCode === 'tr' ? '1 ücretsiz gün kaldı' : '1 free day left'}</strong>
-                    <span>
-                      {langCode === 'tr'
-                        ? 'Ücretsiz gününüzde satın alın ve indirim kazanın: €9,99 yerine €8,99. Tek seferlik, sonsuza dek.'
-                        : 'Buy it during your free day and get a discount: €8,99 instead of €9,99. Once, forever.'}
-                    </span>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  className="white-pill-btn"
-                  onClick={() => window.twocode?.openExternal('https://twocode.nl/')}
-                >
-                  {langCode === 'tr' ? 'Satın al · €8,99' : 'Buy · €8,99'}
-                </button>
-              </div>
-            </div>
-
-            <div className="settings-card" style={{ marginTop: 14 }}>
-              <div className="settings-row no-border">
-                <div className="row-left-with-icon">
-                  <div className="stat-icon-sq blue">
-                    <User size={16} />
-                  </div>
-                  <div className="row-text-col">
-                    <strong>{langCode === 'tr' ? 'Giriş yap' : 'Sign in'}</strong>
-                    <span>
-                      {langCode === 'tr'
-                        ? 'TwoCode hesabınızla. Satın aldıklarınız ve Kurucu durumunuz her PC’de sizinle gelir.'
-                        : 'With your TwoCode account. What you bought and your Founder status come with you to every PC.'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="account-form-stack">
-                <input
-                  type="email"
-                  className="settings-input full"
-                  placeholder={langCode === 'tr' ? 'siz@ornek.com' : 'you@example.com'}
-                  value={accountEmail}
-                  onChange={(e) => setAccountEmail(e.target.value)}
-                />
-                <div className="account-pass-row">
-                  <input
-                    type="password"
-                    className="settings-input full"
-                    placeholder={langCode === 'tr' ? 'Şifre' : 'Password'}
-                    value={accountPass}
-                    onChange={(e) => setAccountPass(e.target.value)}
-                  />
-                  <button type="button" className="white-pill-btn">
-                    {langCode === 'tr' ? 'Giriş yap' : 'Sign in'}
-                  </button>
-                </div>
-                <div className="account-sub-links">
-                  <button type="button" className="dark-pill-btn sm">
-                    {langCode === 'tr' ? 'Henüz hesabınız yok mu? Oluşturun' : 'No account yet? Create one'}
-                  </button>
-                  <button type="button" className="dark-pill-btn sm">
-                    {langCode === 'tr' ? 'Şifrenizi mi unuttunuz?' : 'Forgot password?'}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <button type="button" className="dark-pill-btn sm" style={{ marginTop: 14 }}>
-              {langCode === 'tr' ? 'Bizden bir kodunuz mu var?' : 'Got a code from us?'}
-            </button>
-          </div>
-        )}
-
-        {/* ============================================================
             PAGE 8: GENERAL
             ============================================================ */}
         {activePage === 'general' && (
@@ -2350,6 +2312,26 @@ export default function SettingsApp() {
                   onClick={() => updateSetting({ soundEffects: settings.soundEffects === false })}
                 >
                   <i />
+                </button>
+              </div>
+              <div className="settings-row">
+                <div className="row-text-col">
+                  <strong>{langCode === 'tr' ? 'Karşılama Ekranı' : 'Welcome Setup'}</strong>
+                  <span>
+                    {langCode === 'tr'
+                      ? 'İlk kurulum sihirbazını ve Bedo başlangıç ayarlarını yeniden aç'
+                      : 'Re-open the Apple-style welcome and setup assistant'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="dark-pill-btn"
+                  onClick={() => {
+                    setOnboardingStep(1);
+                    setShowOnboarding(true);
+                  }}
+                >
+                  {langCode === 'tr' ? 'Başlat' : 'Open'}
                 </button>
               </div>
             </div>
@@ -3148,175 +3130,216 @@ export default function SettingsApp() {
         )}
 
         {/* ============================================================
-            PAGE 12: NEWS
+            PAGE 12: END
             ============================================================ */}
-        {activePage === 'news' && (
-          <div className="settings-page-body narrow-body">
-            <div className="settings-card">
-              <div className="settings-row">
-                <div className="row-left-with-icon">
-                  <div className="stat-icon-sq green">
-                    <Check size={16} strokeWidth={2.5} />
+          </motion.div>
+        </AnimatePresence>
+      </div>
+
+      <AnimatePresence>
+      {settingsLoaded && (showOnboarding || settings.onboardingCompleted === false) && (
+        <motion.div
+          key="welcome-backdrop"
+          className="bedo-welcome-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Bedo Welcome"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.22 }}
+        >
+          <motion.div
+            className="bedo-welcome-card"
+            initial={{ opacity: 0, scale: 0.94, y: 16 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 12 }}
+            transition={{ type: 'spring', stiffness: 360, damping: 30, mass: 0.9 }}
+          >
+            <div className="bedo-welcome-steps">
+              {[1, 2, 3].map((step) => (
+                <span key={step} className={`bedo-welcome-pip ${onboardingStep === step ? 'is-active' : onboardingStep > step ? 'is-done' : ''}`} />
+              ))}
+            </div>
+
+            <AnimatePresence mode="wait">
+            {onboardingStep === 1 && (
+              <motion.div
+                key="welcome-step-1"
+                className="bedo-welcome-body"
+                initial={{ opacity: 0, x: 18 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -18 }}
+                transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+              >
+                <div className="bedo-welcome-orb">
+                  <span />
+                  <span />
+                </div>
+                <h2>{langCode === 'tr' ? 'Bedo’ya Hoş Geldiniz' : 'Welcome to Bedo'}</h2>
+                <p>
+                  {langCode === 'tr'
+                    ? 'Windows için akıllı Dynamic Island ve sesli yapay zekâ asistanınız. Başlamak için dilinizi ve adınızı seçin.'
+                    : 'Your intelligent Dynamic Island and voice AI assistant for Windows. Choose your language and name to begin.'}
+                </p>
+
+                <div className="bedo-welcome-fields">
+                  <div className="bedo-welcome-field">
+                    <label>{langCode === 'tr' ? 'Dil / Language' : 'Language'}</label>
+                    <div className="seg-btn-group">
+                      {['Turkish', 'English'].map((lng) => (
+                        <button
+                          key={lng}
+                          type="button"
+                          className={`seg-choice-btn ${(settings.language || 'Turkish') === lng ? 'active' : ''}`}
+                          onClick={() => updateSetting({ language: lng })}
+                        >
+                          {lng === 'Turkish' ? 'Türkçe' : 'English'}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                  <div className="row-text-col">
-                    <strong>{langCode === 'tr' ? 'TwoCode 1.2.0-beta.93 kullanıyorsunuz' : 'You have TwoCode 1.2.0-beta.93'}</strong>
-                    <span>{langCode === 'tr' ? 'Güncelsiniz · En yeni sürüm: v1.2.0-beta.93' : 'You are up to date · Newest version: v1.2.0-beta.93'}</span>
+                  <div className="bedo-welcome-field">
+                    <label>{langCode === 'tr' ? 'Adınız' : 'Your Name'}</label>
+                    <input
+                      type="text"
+                      className="settings-input full"
+                      placeholder={langCode === 'tr' ? 'Örn. Ahmet' : 'e.g. Alex'}
+                      value={settings.userName || ''}
+                      onChange={(e) => updateSetting({ userName: e.target.value })}
+                    />
                   </div>
                 </div>
+              </motion.div>
+            )}
+
+            {onboardingStep === 2 && (
+              <motion.div
+                key="welcome-step-2"
+                className="bedo-welcome-body"
+                initial={{ opacity: 0, x: 18 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -18 }}
+                transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+              >
+                <h2>{langCode === 'tr' ? 'Bedo Ses ve API Kurulumu' : 'Voice & API Setup'}</h2>
+                <p>
+                  {langCode === 'tr'
+                    ? 'Sesli asistan için Google Gemini API anahtarınızı ve Bedo’nun ses tonunu seçebilirsiniz.'
+                    : 'Enter your Google Gemini API key for voice AI and pick Bedo’s voice.'}
+                </p>
+
+                <div className="bedo-welcome-fields">
+                  <div className="bedo-welcome-field">
+                    <label>
+                      {langCode === 'tr' ? 'Gemini API Anahtarı (İsteğe Bağlı)' : 'Gemini API Key (Optional)'}
+                    </label>
+                    <input
+                      type="password"
+                      className="settings-input full"
+                      placeholder="AIzaSy..."
+                      value={settings.geminiApiKey || ''}
+                      onChange={(e) => updateSetting({ geminiApiKey: e.target.value })}
+                    />
+                  </div>
+                  <div className="bedo-welcome-field">
+                    <label>{langCode === 'tr' ? 'Bedo Sesi' : 'Bedo Voice'}</label>
+                    <div className="seg-btn-group">
+                      {['Charon', 'Fenrir', 'Puck', 'Aoede', 'Zephyr'].map((v) => (
+                        <button
+                          key={v}
+                          type="button"
+                          className={`seg-choice-btn ${(settings.bedoVoice || 'Charon') === v ? 'active' : ''}`}
+                          onClick={() => updateSetting({ bedoVoice: v })}
+                        >
+                          {v}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="bedo-welcome-switch-row">
+                    <span>{langCode === 'tr' ? 'Windows ile başlat' : 'Start with Windows'}</span>
+                    <button
+                      type="button"
+                      className={`settings-switch ${settings.startWithWindows !== false ? 'on' : ''}`}
+                      onClick={() => updateSetting({ startWithWindows: settings.startWithWindows === false })}
+                    >
+                      <i />
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+
+            {onboardingStep === 3 && (
+              <motion.div
+                key="welcome-step-3"
+                className="bedo-welcome-body"
+                initial={{ opacity: 0, scale: 0.94 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.94 }}
+                transition={{ type: 'spring', stiffness: 380, damping: 28 }}
+              >
+                <div className="bedo-welcome-check">
+                  <Check size={26} strokeWidth={2.5} />
+                </div>
+                <h2>{langCode === 'tr' ? 'Her Şey Hazır!' : 'All Set!'}</h2>
+                <p>
+                  {langCode === 'tr'
+                    ? 'Ekranın üstündeki Dynamic Island’a dokunun veya istediğiniz an "Bedo" diyerek asistanınızı uyandırın.'
+                    : 'Tap the Dynamic Island at the top of your screen or say "Bedo" anytime to wake your assistant.'}
+                </p>
+              </motion.div>
+            )}
+            </AnimatePresence>
+
+            <div className="bedo-welcome-footer">
+              {onboardingStep > 1 ? (
                 <button
                   type="button"
                   className="dark-pill-btn"
-                  onClick={() => window.twocode?.openExternal('https://twocode.nl/')}
+                  onClick={() => setOnboardingStep((s) => Math.max(1, s - 1))}
                 >
-                  <Download size={13} style={{ marginRight: 6 }} /> {langCode === 'tr' ? 'İndir' : 'Download'}
+                  {langCode === 'tr' ? 'Geri' : 'Back'}
                 </button>
-              </div>
-            </div>
-
-            <div className="news-timeline">
-              {[
-                {
-                  ver: 'TwoCode 1.2.0-beta.93',
-                  newest: true,
-                  date: langCode === 'tr' ? '6 Kasım 2026' : '6 November 2026',
-                  desc: langCode === 'tr'
-                    ? 'Diğer uygulama bildirimleri her zaman kendi uygulamasının adını gösterir ve Discord mesajları kanal adı olmadan kimden ve nereden geldiğini gösterir'
-                    : "Other apps' notifications always name their app, and Discord messages show who and where without the channel",
-                },
-                {
-                  ver: 'TwoCode 1.2.0-beta.92',
-                  date: langCode === 'tr' ? '6 Kasım 2026' : '6 November 2026',
-                  desc: langCode === 'tr'
-                    ? 'Şarkı satırı ve sözleri ortalandı, ses dalgası kısık müzikte ve her hoparlörde hareket eder, diğer uygulamalardan gelen bildirimler kaybolmaz ve daha hızlı gelir, özel kart solar ve saydamdır, Ayarlar son bildirimi gösterir'
-                    : 'Song line and lyrics centred, the sound wave also moves on soft music and any speaker, notifications from other apps are not lost when unreadable and come faster, own card fades out and is see-through, Settings shows the last notification',
-                },
-                {
-                  ver: 'TwoCode 1.2.0-beta.91',
-                  date: langCode === 'tr' ? '6 Kasım 2026' : '6 November 2026',
-                  desc: langCode === 'tr'
-                    ? 'Menüde gerçek bir dişli simgesi ve Ayarlar artık diğer uygulama bildirimlerinin çalışıp çalışmadığını gösteriyor.'
-                    : "A real gear icon in the menu, and Settings now shows whether other apps' notifications are working.",
-                },
-                {
-                  ver: 'TwoCode 1.2.0-beta.90',
-                  date: langCode === 'tr' ? '6 Kasım 2026' : '6 November 2026',
-                  desc: langCode === 'tr'
-                    ? 'Google ile giriş yapın: adada takviminiz, etkinlik ekleyin, kaç yeni postanız olduğunu görün ve postalamak için adaya dosya sürükleyin.'
-                    : 'Sign in with Google: your calendar in the island, add events, see how many new mails you have, and drag a file onto the island to mail it.',
-                },
-                {
-                  ver: 'TwoCode 1.2.0-beta.89',
-                  date: langCode === 'tr' ? '6 Kasım 2026' : '6 November 2026',
-                  desc: langCode === 'tr'
-                    ? 'Saat için kendi yazı tipinizi, kalınlığınızı ve renginizi seçin, müzik ve Claude altına uygulamalar ekleyin, ses dalgası geri döndü, menü çubuğu PC’nizin ses düzeyidir ve diğer uygulama bildirimleri adada gösterilebilir.'
-                    : "Pick your own font, thickness and colour for the clock, add apps under music and Claude, the sound wave is back, the menu's bar is your PC's volume, and other apps' notifications can show in the island.",
-                },
-                {
-                  ver: 'TwoCode 1.2.0-beta.88',
-                  date: langCode === 'tr' ? '6 Kasım 2026' : '6 November 2026',
-                  desc: langCode === 'tr'
-                    ? 'Daha hızlı açılış, daha akıcı ada üzerine gelme animasyonu ve geliştirilmiş Spotify ve tarayıcı medya algılaması.'
-                    : 'Faster startup, smoother island hover animation, and improved Spotify and browser media detection.',
-                },
-              ].map((rel) => (
-                <div key={rel.ver} className="news-item">
-                  <div className="news-dot-col">
-                    <span className={`news-dot ${rel.newest ? 'bright' : ''}`} />
-                    <span className="news-line" />
-                  </div>
-                  <div className="news-content-col">
-                    <div className="news-meta-row">
-                      <strong>{rel.ver}</strong>
-                      {rel.newest && <span className="news-tag">{langCode === 'tr' ? 'En yeni' : 'Newest'}</span>}
-                      <span className="news-tag amber">beta</span>
-                      <span className="news-date">{rel.date}</span>
-                    </div>
-                    <div className="settings-card news-body-card">
-                      <p>{rel.desc}</p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* ============================================================
-            PAGE 13: SUPPORT TWOCODE
-            ============================================================ */}
-        {activePage === 'support' && (
-          <div className="settings-page-body narrow-body">
-            <div className="settings-card support-hero-card">
-              <div className="stat-icon-sq pink">
-                <Heart size={18} />
-              </div>
-              <h3>{langCode === 'tr' ? 'TwoCode hoşunuza gidiyor mu?' : 'Enjoying TwoCode?'}</h3>
-              <p>
-                {langCode === 'tr'
-                  ? 'TwoCode Hollanda’da tek bir kişi tarafından geliştiriliyor. Beta sürecinde her şey ücretsizdir ve bağış yapsanız da yapmasanız da öyle kalacaktır. TwoCode size zaman kazandırıyorsa, küçük bir bağış geliştirmeye devam etmeme yardımcı olur.'
-                  : 'TwoCode is made by one person in the Netherlands. Everything is free during the beta, and it stays that way whether you donate or not. If TwoCode saves you time, a small donation helps me keep building it.'}
-              </p>
-              <div className="support-donate-row">
-                <button
-                  type="button"
-                  className="white-pill-btn"
-                  onClick={() => window.twocode?.openExternal('https://twocode.nl/')}
-                >
-                  {langCode === 'tr' ? '♡ Bağış yap ↗' : '♡ Donate ↗'}
-                </button>
-                <span>{langCode === 'tr' ? 'Tutarı siz seçersiniz · Stripe ile güvenli ödeme' : 'You choose the amount · secure payment by Stripe'}</span>
-              </div>
-            </div>
-
-            <span className="section-eyebrow" style={{ marginTop: 22 }}>
-              {langCode === 'tr' ? 'YARDIM ETMENİN DİĞER YOLLARI' : 'OTHER WAYS TO HELP'}
-            </span>
-            <div className="settings-card">
-              <div className="settings-row">
-                <div className="row-left-with-icon">
-                  <div className="stat-icon-sq blue">
-                    <Sparkles size={15} />
-                  </div>
-                  <div className="row-text-col">
-                    <strong>{langCode === 'tr' ? 'Bir arkadaşınıza TwoCode’dan bahsedin' : 'Tell a friend about TwoCode'}</strong>
-                    <span>twocode.nl</span>
-                  </div>
-                </div>
+              ) : (
                 <button
                   type="button"
                   className="dark-pill-btn"
                   onClick={() => {
-                    window.twocode?.copyText('https://twocode.nl/');
-                    setCopiedLink(true);
-                    setTimeout(() => setCopiedLink(false), 1500);
+                    updateSetting({ onboardingCompleted: true });
+                    setShowOnboarding(false);
                   }}
                 >
-                  {copiedLink ? (langCode === 'tr' ? '✓ Kopyalandı' : '✓ Copied') : (langCode === 'tr' ? 'Bağlantıyı kopyala' : 'Copy link')}
+                  {langCode === 'tr' ? 'Atla' : 'Skip'}
                 </button>
-              </div>
+              )}
 
-              <div className="settings-row">
-                <div className="row-left-with-icon">
-                  <div className="stat-icon-sq green">
-                    <MessageSquare size={15} />
-                  </div>
-                  <div className="row-text-col">
-                    <strong>{langCode === 'tr' ? 'Bir fikriniz mi var veya hata mı buldunuz?' : 'An idea, or found a bug?'}</strong>
-                    <span>{langCode === 'tr' ? 'Bana bildirin, her şeyi okuyorum' : 'Let me know, I read everything'}</span>
-                  </div>
-                </div>
+              {onboardingStep < 3 ? (
                 <button
                   type="button"
-                  className="dark-pill-btn"
-                  onClick={() => window.twocode?.openExternal('https://twocode.nl/')}
+                  className="white-pill-btn"
+                  onClick={() => setOnboardingStep((s) => Math.min(3, s + 1))}
                 >
-                  {langCode === 'tr' ? 'İletişim ↗' : 'Contact ↗'}
+                  {langCode === 'tr' ? 'Devam Et' : 'Continue'}
                 </button>
-              </div>
+              ) : (
+                <button
+                  type="button"
+                  className="white-pill-btn"
+                  onClick={() => {
+                    updateSetting({ onboardingCompleted: true });
+                    setShowOnboarding(false);
+                  }}
+                >
+                  {langCode === 'tr' ? 'Bedo’yu Başlat' : 'Start Bedo'}
+                </button>
+              )}
             </div>
-          </div>
-        )}
-      </div>
+          </motion.div>
+        </motion.div>
+      )}
+      </AnimatePresence>
     </div>
     </LanguageProvider>
   );

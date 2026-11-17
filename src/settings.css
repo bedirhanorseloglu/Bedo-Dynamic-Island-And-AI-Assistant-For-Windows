@@ -2298,3 +2298,260 @@
   margin-bottom: 2px;
 }
 
+
+
+/* ============================================================
+   Apple-style First-Run Welcome & Setup Assistant
+   ============================================================ */
+.bedo-welcome-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(5, 7, 12, 0.78);
+  backdrop-filter: blur(22px) saturate(150%);
+  -webkit-backdrop-filter: blur(22px) saturate(150%);
+}
+
+.bedo-welcome-card {
+  width: min(500px, 100%);
+  border-radius: 26px;
+  padding: 26px 28px 24px;
+  background: linear-gradient(165deg, rgba(24, 28, 38, 0.96) 0%, rgba(12, 14, 20, 0.98) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 28px 70px rgba(0, 0, 0, 0.65);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.bedo-welcome-steps {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.bedo-welcome-pip {
+  width: 24px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  transition: width 0.25s ease, background 0.25s ease;
+}
+
+.bedo-welcome-pip.is-active {
+  width: 36px;
+  background: #38bdf8;
+}
+
+.bedo-welcome-pip.is-done {
+  background: rgba(52, 211, 153, 0.7);
+}
+
+.bedo-welcome-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 12px;
+}
+
+.bedo-welcome-orb {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 38% 30%, rgba(56, 189, 248, 0.25), rgba(14, 18, 28, 0.95) 74%);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.22),
+    0 0 28px rgba(56, 189, 248, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 11px;
+}
+
+.bedo-welcome-orb span {
+  width: 8px;
+  height: 14px;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.6);
+}
+
+.bedo-welcome-check {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: rgba(52, 211, 153, 0.16);
+  border: 1px solid rgba(52, 211, 153, 0.42);
+  color: #34d399;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bedo-welcome-body h2 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  color: #ffffff;
+}
+
+.bedo-welcome-body p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.66);
+  max-width: 390px;
+}
+
+.bedo-welcome-fields {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 6px;
+  text-align: left;
+}
+
+.bedo-welcome-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.bedo-welcome-field label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.bedo-welcome-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 12.5px;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.bedo-welcome-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 6px;
+}
+
+
+/* ============================================================
+   macOS Sequoia / Apple System Settings Polish & Animations
+   ============================================================ */
+.settings-page-motion {
+  width: 100%;
+}
+
+.bedo-welcome-orb {
+  animation: bedoWelcomePulse 3.2s ease-in-out infinite;
+}
+
+@keyframes bedoWelcomePulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow:
+      inset 0 1px 1px rgba(255, 255, 255, 0.22),
+      0 0 24px rgba(56, 189, 248, 0.22);
+  }
+  50% {
+    transform: scale(1.05);
+    box-shadow:
+      inset 0 1px 1px rgba(255, 255, 255, 0.28),
+      0 0 38px rgba(56, 189, 248, 0.38);
+  }
+}
+
+.twocode-settings-window .settings-card {
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.085);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 8px 24px rgba(0, 0, 0, 0.22);
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+
+.twocode-settings-window .sidebar-nav-btn {
+  border-radius: 10px;
+  transition: background 0.16s ease, color 0.16s ease, transform 0.14s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.twocode-settings-window .sidebar-nav-btn:hover {
+  transform: translateX(2px);
+}
+
+.twocode-settings-window .sidebar-nav-btn.active {
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+/* ============================================================
+   Apple Interior Polish: Provider Badges & Home Cards
+   ============================================================ */
+.twocode-settings-window .ai-badge-icon.claude,
+.twocode-settings-window .ai-badge-icon.codex,
+.twocode-settings-window .ai-badge-icon.antigravity {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.twocode-settings-window .ai-badge-icon.claude {
+  background: rgba(217, 119, 87, 0.14);
+  border-color: rgba(217, 119, 87, 0.28);
+}
+
+.twocode-settings-window .ai-status-pill {
+  border-radius: 999px;
+  padding: 5px 11px 5px 6px;
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transition: background 0.18s ease, border-color 0.18s ease, transform 0.15s ease;
+}
+
+.twocode-settings-window .ai-status-pill:hover {
+  background: rgba(255, 255, 255, 0.085);
+  border-color: rgba(255, 255, 255, 0.18);
+  transform: translateY(-1px);
+}
+
+.twocode-settings-window .stat-box-card {
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  transition: border-color 0.2s ease, transform 0.18s ease;
+}
+
+.twocode-settings-window .stat-box-card:hover {
+  border-color: rgba(255, 255, 255, 0.16);
+  transform: translateY(-1px);
+}
+
+.twocode-settings-window .activity-item-row {
+  border-radius: 10px;
+  transition: background 0.16s ease;
+}
+
+.twocode-settings-window .activity-item-row:hover {
+  background: rgba(255, 255, 255, 0.04);
+}

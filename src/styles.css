@@ -471,6 +471,27 @@ select {
     0 18px 42px rgba(0, 0, 0, 0.56);
 }
 
+.notch-morph-shell.state-expanded.mode-robo.is-bedo-thinking {
+  background:
+    radial-gradient(ellipse 68% 48% at 50% 106%,
+      rgba(var(--music-accent-rgb, 110, 142, 185), 0.28) 0%,
+      rgba(var(--music-accent-rgb, 110, 142, 185), 0.1) 46%,
+      transparent 76%),
+    linear-gradient(180deg, #000000 0%, #12151f 16%, #0c0e14 100%);
+  background-size: 170% 100%, 100% 100%;
+  background-position: 100% 0%, 0% 0%;
+  animation: bedoBottomAmbientSweep 2.4s ease-in-out infinite alternate;
+}
+
+@keyframes bedoBottomAmbientSweep {
+  0% {
+    background-position: 100% 0%, 0% 0%;
+  }
+  100% {
+    background-position: 0% 0%, 0% 0%;
+  }
+}
+
 /* Burgundy bottom glow when customizing HOME clock */
 .notch-morph-shell.state-expanded.customizing-clock {
   background:
@@ -2193,6 +2214,7 @@ select {
   position: relative;
   display: flex;
   align-items: center;
+  gap: 8px;
   width: 100%;
   padding: 9px 10px 9px 9px;
   border-radius: 14px;
@@ -5217,8 +5239,11 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
 }
 
 .music-service-picker-row.in-music-tab {
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
   justify-content: flex-start;
-  gap: 10px;
+  gap: 8px;
 }
 
 .music-service-logo-btn {
@@ -6484,6 +6509,7 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 10px;
   margin-top: 4px;
 }
 
@@ -9647,10 +9673,6 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
 /* Music page: Apple Music-inspired fluid ambient player. */
 .notch-morph-shell.state-expanded.mode-music.has-cover-color {
   background:
-    radial-gradient(ellipse 68% 84% at 20% 52%,
-      rgba(var(--music-accent-rgb, 110, 142, 185), 0.24) 0%,
-      rgba(var(--music-accent-rgb, 110, 142, 185), 0.08) 46%,
-      transparent 76%),
     radial-gradient(ellipse 88% 46% at 50% 106%,
       rgba(var(--music-accent-rgb, 110, 142, 185), 0.22) 0%,
       rgba(var(--music-accent-rgb, 110, 142, 185), 0.07) 48%,
@@ -9687,9 +9709,7 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
   color: rgba(255, 255, 255, 0.36);
   background: rgba(18, 18, 22, 0.72);
   border: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow:
-    0 12px 28px rgba(0, 0, 0, 0.45),
-    0 4px 18px rgba(var(--music-accent-rgb, 255, 255, 255), 0.14);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
   transition:
     transform 0.38s cubic-bezier(0.32, 0.72, 0, 1),
     box-shadow 0.38s cubic-bezier(0.32, 0.72, 0, 1),
@@ -14373,11 +14393,8 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
 }
 
 .robo-eye.sleepy {
-  height: 3.5px !important;
-  opacity: 0.65;
-  background: #c084fc;
-  box-shadow: 0 0 8px rgba(192, 132, 252, 0.45);
-  animation: robo-sleep-breathe 3.2s ease-in-out infinite;
+  background: rgba(255, 255, 255, 0.9) !important;
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.32);
 }
 
 .robo-voice-mouth {
@@ -14453,8 +14470,8 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
 }
 
 .robo-face-mouth.sleepy {
-  color: #d8b4fe;
-  opacity: 0.75;
+  color: #a5b4fc;
+  opacity: 0.78;
 }
 
 .robo-face-mouth.is-hearing {
@@ -14802,24 +14819,11 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
    Apple / Awwwards Music Tab Redesign
    ============================================================ */
 .notch-morph-shell.state-expanded.mode-music .music-cover-halo {
-  position: absolute;
-  inset: 6px;
-  border-radius: 26px;
-  background: radial-gradient(
-    circle at 50% 50%,
-    rgba(var(--music-accent-rgb, 96, 165, 250), 0.58) 0%,
-    rgba(var(--music-accent-rgb, 96, 165, 250), 0.16) 58%,
-    transparent 82%
-  );
-  filter: blur(18px);
-  opacity: 0.42;
-  pointer-events: none;
-  transition: opacity 0.45s ease, transform 0.5s cubic-bezier(0.32, 0.72, 0, 1);
+  display: none;
 }
 
 .notch-morph-shell.state-expanded.mode-music .music-view.is-playing .music-cover-halo {
-  opacity: 0.94;
-  transform: scale(1.08);
+  display: none;
 }
 
 .notch-morph-shell.state-expanded.mode-music .music-cover-art {
@@ -14827,11 +14831,10 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
   width: min(100%, 142px);
   border-radius: 18px;
   background: linear-gradient(155deg, rgba(28, 32, 46, 0.92) 0%, rgba(13, 15, 22, 0.98) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.24),
-    0 16px 34px rgba(0, 0, 0, 0.52),
-    0 6px 22px rgba(var(--music-accent-rgb, 96, 165, 250), 0.24);
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    0 14px 30px rgba(0, 0, 0, 0.5);
   transition:
     transform 0.42s cubic-bezier(0.22, 1, 0.36, 1),
     box-shadow 0.42s cubic-bezier(0.22, 1, 0.36, 1),
@@ -15083,31 +15086,204 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
 
 
 /* ============================================================
-   Bedo v2 — Apple Intelligence Spatial Orb + Split Canvas
+   Bedo v2.5 — Unified Island Spatial Stage
    ============================================================ */
 .bedo-v2-shell {
+  position: relative;
   width: 100%;
   height: 100%;
   min-height: 0;
   display: flex;
+  flex-direction: row;
   align-items: stretch;
   gap: 14px;
-  padding: 4px 4px 2px;
+  padding: 2px 4px 4px;
   box-sizing: border-box;
+  background: transparent;
 }
 
-.bedo-v2-orb-col {
-  flex: 0 0 116px;
+.bedo-v2-cam-panel {
+  flex: 0 0 auto;
+  width: clamp(180px, 32%, 224px);
+  align-self: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bedo-v2-stage-main {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.bedo-v2-shell.is-centered .bedo-v2-stage-main {
+  align-items: center;
+}
+
+.bedo-v2-shell.is-top .bedo-v2-stage-main {
+  align-items: stretch;
+}
+
+.bedo-v2-top-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.bedo-v2-top-row.is-centered {
+  flex: 1 1 0;
+  width: 100%;
+  justify-content: center;
+}
+
+.bedo-v2-top-row.is-top {
+  flex: 0 0 auto;
+  width: 100%;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.bedo-v2-controls-anchor.is-centered {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  z-index: 4;
+}
+
+.bedo-v2-controls-anchor.is-top {
+  position: static;
+  flex: 0 0 auto;
+  z-index: 4;
+}
+
+.bedo-v2-orb-bar {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+}
+
+.bedo-v2-orb-bar.is-centered {
+  flex: 1 1 0;
+  width: 100%;
+  flex-direction: column;
+  gap: 7px;
+  padding-top: 6px;
+}
+
+.bedo-v2-orb-bar.is-top {
+  flex: 1 1 0;
+  min-width: 0;
+  flex-direction: row;
+  justify-content: flex-start;
+  gap: 8px;
+  min-height: 44px;
+}
+
+.bedo-v2-orb-info {
   display: flex;
   flex-direction: column;
   align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.bedo-v2-orb-info.is-top {
+  align-items: flex-start;
   justify-content: center;
+  gap: 2px;
+}
+
+.bedo-v2-status-row {
+  display: inline-flex;
+  align-items: center;
   gap: 7px;
-  padding: 8px 6px;
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  min-width: 0;
+}
+
+.bedo-v2-orb-stage {
+  position: relative;
+  width: 88px;
+  height: 88px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.bedo-v2-orb-stage.is-top {
+  width: 44px;
+  height: 44px;
+}
+
+.bedo-v2-orb-halo {
+  position: absolute;
+  inset: 2px;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 0deg,
+    rgba(56, 189, 248, 0.38),
+    rgba(99, 102, 241, 0.24),
+    rgba(56, 189, 248, 0.38)
+  );
+  filter: blur(12px);
+  opacity: 0.36;
+  animation: bedoOrbSpin 9s linear infinite;
+  transition: opacity 0.35s ease, filter 0.35s ease;
+  pointer-events: none;
+}
+
+.bedo-v2-orb-stage.is-top .bedo-v2-orb-halo {
+  inset: 4px;
+  filter: blur(7px);
+  opacity: 0.26;
+}
+
+.bedo-v2-orb-halo.is-speaking {
+  background: conic-gradient(
+    from 0deg,
+    rgba(52, 211, 153, 0.56),
+    rgba(45, 212, 191, 0.38),
+    rgba(52, 211, 153, 0.56)
+  );
+  opacity: 0.72;
+  animation-duration: 5s;
+}
+
+.bedo-v2-orb-halo.is-thinking {
+  background: conic-gradient(
+    from 0deg,
+    rgba(168, 85, 247, 0.58),
+    rgba(236, 72, 153, 0.42),
+    rgba(56, 189, 248, 0.42),
+    rgba(168, 85, 247, 0.58)
+  );
+  opacity: 0.76;
+  animation-duration: 3.4s;
+}
+
+.bedo-v2-orb-halo.is-sleeping {
+  opacity: 0.12;
+  animation-play-state: paused;
+}
+
+.bedo-v2-orb-halo.is-error {
+  background: conic-gradient(
+    from 0deg,
+    rgba(248, 113, 113, 0.55),
+    rgba(251, 146, 60, 0.38),
+    rgba(248, 113, 113, 0.55)
+  );
+  opacity: 0.62;
 }
 
 .bedo-v2-orb {
@@ -15115,64 +15291,45 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
   width: 82px;
   height: 82px;
   border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  border: none;
   padding: 0;
   cursor: pointer;
-  background: radial-gradient(circle at 38% 30%, rgba(255, 255, 255, 0.08), rgba(14, 18, 28, 0.96) 72%);
+  background: transparent;
   display: flex;
   align-items: center;
   justify-content: center;
   outline: none;
-  box-shadow:
-    inset 0 1px 1px rgba(255, 255, 255, 0.2),
-    0 10px 26px rgba(0, 0, 0, 0.48);
-  transition: border-color 0.25s ease, box-shadow 0.3s ease;
+  box-shadow: none;
 }
 
-.bedo-v2-orb.listening {
-  border-color: rgba(56, 189, 248, 0.34);
-  box-shadow:
-    inset 0 1px 1px rgba(255, 255, 255, 0.22),
-    0 0 0 3px rgba(56, 189, 248, 0.08),
-    0 10px 26px rgba(0, 0, 0, 0.48);
+.bedo-v2-orb.is-top {
+  width: 42px;
+  height: 42px;
 }
 
-.bedo-v2-orb.speaking {
-  border-color: rgba(52, 211, 153, 0.4);
-  box-shadow:
-    inset 0 1px 1px rgba(255, 255, 255, 0.24),
-    0 0 0 3px rgba(52, 211, 153, 0.1),
-    0 10px 26px rgba(0, 0, 0, 0.48);
-}
-
+.bedo-v2-orb.listening,
+.bedo-v2-orb.speaking,
 .bedo-v2-orb.thinking {
-  border-color: rgba(251, 191, 36, 0.38);
-  box-shadow:
-    inset 0 1px 1px rgba(255, 255, 255, 0.22),
-    0 0 0 3px rgba(251, 191, 36, 0.09),
-    0 10px 26px rgba(0, 0, 0, 0.48);
-}
-
-.bedo-v2-orb-ring {
-  display: none;
+  border: none;
+  box-shadow: none;
 }
 
 .bedo-v2-orb-core {
   position: absolute;
-  inset: 4px;
+  inset: 2px;
   border-radius: 50%;
-  background: radial-gradient(circle at 50% 45%, rgba(56, 189, 248, 0.2), transparent 72%);
+  background: radial-gradient(circle at 50% 50%, rgba(56, 189, 248, 0.2), transparent 64%);
   transform: scale(calc(1 + var(--bedo-mic, 0) * 0.14));
   transition: transform 0.08s linear;
   pointer-events: none;
 }
 
 .bedo-v2-orb.speaking .bedo-v2-orb-core {
-  background: radial-gradient(circle at 50% 45%, rgba(52, 211, 153, 0.28), transparent 72%);
+  background: radial-gradient(circle at 50% 50%, rgba(52, 211, 153, 0.26), transparent 64%);
 }
 
 .bedo-v2-orb.thinking .bedo-v2-orb-core {
-  background: radial-gradient(circle at 50% 45%, rgba(251, 191, 36, 0.24), transparent 72%);
+  background: radial-gradient(circle at 50% 50%, rgba(192, 132, 252, 0.24), transparent 64%);
 }
 
 .bedo-v2-orb-face {
@@ -15194,63 +15351,109 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
   align-items: center;
   gap: 5px;
   font-size: 11px;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.88);
+  font-weight: 550;
+  color: rgba(255, 255, 255, 0.84);
   letter-spacing: -0.01em;
 }
 
-.bedo-v2-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #38bdf8;
+.bedo-v2-orb-meta.is-sleeping {
+  padding: 3.5px 11px;
+  border-radius: 999px;
+  background: linear-gradient(155deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.03) 100%);
+  backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    0 6px 16px rgba(0, 0, 0, 0.3);
+  color: rgba(255, 255, 255, 0.84);
+  font-size: 10.5px;
+  font-weight: 500;
 }
 
-.bedo-v2-dot.is-sleeping {
-  background: #818cf8;
-  opacity: 0.7;
+.bedo-v2-sleep-icon {
+  color: rgba(255, 255, 255, 0.82);
+  opacity: 0.9;
+  flex: 0 0 auto;
 }
 
-.bedo-v2-dot.is-thinking {
-  background: #fbbf24;
-  box-shadow: 0 0 8px rgba(251, 191, 36, 0.7);
+.bedo-v2-orb-meta.is-listening {
+  color: #7dd3fc;
 }
 
-.bedo-v2-dot.is-speaking {
-  background: #34d399;
-  box-shadow: 0 0 8px rgba(52, 211, 153, 0.75);
+.bedo-v2-orb-meta.is-speaking {
+  color: #6ee7b7;
 }
 
-.bedo-v2-dot.is-error {
-  background: #f87171;
+.bedo-v2-orb-meta.is-thinking {
+  color: #bae6fd;
+}
+
+.bedo-v2-orb-meta.is-error {
+  color: #fca5a5;
 }
 
 .bedo-v2-eq {
   display: inline-flex;
-  align-items: flex-end;
+  align-items: center;
   gap: 2.5px;
   height: 14px;
 }
 
 .bedo-v2-eq i {
-  width: 2.5px;
+  width: 2px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.22);
-  transition: height 0.09s ease, background 0.12s ease;
+  background: rgba(255, 255, 255, 0.16);
+  transition: height 0.09s ease, background 0.14s ease, opacity 0.18s ease;
 }
 
-.bedo-v2-eq i.is-lit {
+.bedo-v2-eq.is-idle i {
+  opacity: 0.42;
+}
+
+.bedo-v2-eq.is-listening i.is-lit {
   background: #38bdf8;
+  box-shadow: 0 0 6px rgba(56, 189, 248, 0.5);
+}
+
+.bedo-v2-eq.is-speaking i.is-lit {
+  background: #34d399;
+  box-shadow: 0 0 6px rgba(52, 211, 153, 0.55);
+}
+
+.bedo-v2-eq.is-thinking i.is-lit {
+  background: #c084fc;
+  box-shadow: 0 0 6px rgba(192, 132, 252, 0.55);
 }
 
 /* Sağ Sütun */
 .bedo-v2-main-col {
-  flex: 1 1 0;
+  position: relative;
+  z-index: 1;
   min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.bedo-v2-shell.is-centered .bedo-v2-main-col {
+  flex: 0 0 auto;
+  width: 100%;
+  align-items: center;
+}
+
+.bedo-v2-shell.is-split .bedo-v2-main-col {
+  flex: 1 1 0;
   justify-content: space-between;
+}
+
+.bedo-v2-right-pane {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   gap: 8px;
 }
 
@@ -15259,25 +15462,36 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  min-height: 30px;
+  padding-right: 118px;
 }
 
 .bedo-v2-title-group {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 8px;
   min-width: 0;
 }
 
 .bedo-v2-brand {
-  font-size: 13.5px;
+  font-size: 14px;
   font-weight: 700;
-  color: rgba(255, 255, 255, 0.95);
-  letter-spacing: -0.02em;
+  color: rgba(255, 255, 255, 0.96);
+  letter-spacing: -0.025em;
+}
+
+.bedo-v2-title-sep {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.26);
+  flex: 0 0 auto;
 }
 
 .bedo-v2-sub {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.48);
+  font-size: 11.5px;
+  font-weight: 450;
+  color: rgba(255, 255, 255, 0.5);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -15289,23 +15503,34 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
   gap: 2px;
   padding: 3px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.11);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  background: linear-gradient(155deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.04) 100%);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 8px 20px rgba(0, 0, 0, 0.34);
+}
+
+.bedo-v2-ctrl-divider {
+  width: 1px;
+  height: 13px;
+  margin: 0 2px;
+  background: rgba(255, 255, 255, 0.12);
 }
 
 .bedo-v2-ctrl-btn {
-  width: 26px;
+  width: 27px;
   height: 24px;
   border-radius: 999px;
   border: 1px solid transparent;
   background: transparent;
-  color: rgba(255, 255, 255, 0.72);
+  color: rgba(255, 255, 255, 0.7);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: background 0.16s ease, color 0.16s ease, transform 0.14s ease;
+  transition: background 0.16s ease, color 0.16s ease, border-color 0.16s ease, transform 0.14s ease;
 }
 
 .bedo-v2-ctrl-btn:hover {
@@ -15315,20 +15540,20 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
 }
 
 .bedo-v2-ctrl-btn.is-active {
-  background: rgba(56, 189, 248, 0.18);
+  background: rgba(56, 189, 248, 0.16);
   border-color: rgba(56, 189, 248, 0.34);
   color: #7dd3fc;
 }
 
 .bedo-v2-ctrl-btn.is-live {
-  background: rgba(52, 211, 153, 0.18);
-  border-color: rgba(52, 211, 153, 0.35);
+  background: rgba(52, 211, 153, 0.16);
+  border-color: rgba(52, 211, 153, 0.34);
   color: #6ee7b7;
 }
 
 .bedo-v2-ctrl-btn.is-danger {
-  background: rgba(239, 68, 68, 0.2);
-  border-color: rgba(239, 68, 68, 0.38);
+  background: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.36);
   color: #fca5a5;
 }
 
@@ -15340,63 +15565,45 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
   justify-content: center;
 }
 
-.bedo-v2-suggestions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
-  align-items: center;
-}
-
-.bedo-v2-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 6px 11px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.045);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.82);
-  font-size: 11.5px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 0.18s ease, border-color 0.18s ease, transform 0.15s ease;
-}
-
-.bedo-v2-chip:hover {
-  background: rgba(56, 189, 248, 0.14);
-  border-color: rgba(56, 189, 248, 0.34);
-  color: #ffffff;
-  transform: translateY(-1px);
-}
-
 .bedo-v2-feed {
-  height: 100%;
+  flex: 1 1 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 8px 10px;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 9px 12px;
+  border-radius: 16px;
+  background: linear-gradient(155deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.03) 100%);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 10px 28px rgba(0, 0, 0, 0.36);
   overflow: hidden;
 }
 
 .bedo-v2-user-pill {
   display: flex;
-  align-items: baseline;
-  gap: 6px;
+  align-items: center;
+  gap: 7px;
   font-size: 11.5px;
-  color: rgba(255, 255, 255, 0.85);
+  color: rgba(255, 255, 255, 0.86);
+  padding-bottom: 5px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .bedo-v2-user-pill span {
   flex: 0 0 auto;
-  font-size: 10px;
+  padding: 1.5px 6px;
+  border-radius: 999px;
+  background: rgba(56, 189, 248, 0.14);
+  border: 1px solid rgba(56, 189, 248, 0.28);
+  font-size: 9.5px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: #38bdf8;
+  letter-spacing: 0.05em;
+  color: #7dd3fc;
 }
 
 .bedo-v2-user-pill p {
@@ -15411,15 +15618,25 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
   min-height: 0;
   overflow-y: auto;
   font-size: 12px;
-  line-height: 1.45;
-  color: rgba(255, 255, 255, 0.9);
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.92);
+  padding-right: 4px;
+}
+
+.bedo-v2-reply-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+
+.bedo-v2-reply-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
 }
 
 .bedo-v2-thinking-line {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  color: rgba(251, 191, 36, 0.9);
+  gap: 8px;
+  color: rgba(216, 180, 254, 0.92);
   font-size: 12px;
   font-weight: 500;
 }
@@ -15428,10 +15645,18 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
   position: relative;
   height: 100%;
   min-height: 0;
-  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(0, 0, 0, 0.45);
+}
+
+.bedo-v2-cam-frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  border-radius: 12px;
+  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -15441,25 +15666,84 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  object-position: center 22%;
   display: block;
 }
 
+.bedo-v2-cam-vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.24) 0%,
+    transparent 28%,
+    transparent 76%,
+    rgba(0, 0, 0, 0.2) 100%
+  );
+}
+
 .bedo-v2-cam-loading {
-  font-size: 11.5px;
-  color: rgba(255, 255, 255, 0.6);
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.56);
 }
 
 .bedo-v2-cam-badge {
   position: absolute;
-  top: 7px;
-  left: 8px;
-  padding: 2px 7px;
+  top: 6px;
+  left: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2.5px 7px;
   border-radius: 999px;
-  background: rgba(239, 68, 68, 0.85);
-  color: #ffffff;
-  font-size: 9.5px;
+  background: rgba(12, 15, 22, 0.58);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.94);
+  font-size: 8.5px;
   font-weight: 700;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.08em;
+}
+
+.bedo-v2-cam-badge i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #ef4444;
+}
+
+.bedo-v2-cam-close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(12, 15, 22, 0.58);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: rgba(255, 255, 255, 0.85);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transform: scale(0.9);
+  transition: opacity 0.16s ease, transform 0.16s ease, background 0.16s ease;
+}
+
+.bedo-v2-cam-frame:hover .bedo-v2-cam-close {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.bedo-v2-cam-close:hover {
+  background: rgba(239, 68, 68, 0.72);
+  border-color: rgba(252, 165, 165, 0.4);
+  color: #ffffff;
 }
 
 .bedo-v2-input-bar {
@@ -15467,20 +15751,39 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
   align-items: center;
   gap: 8px;
   height: 36px;
-  padding: 0 5px 0 13px;
+  width: 100%;
+  padding: 0 4px 0 14px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.11);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  background: linear-gradient(155deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.035) 100%);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 8px 24px rgba(0, 0, 0, 0.34);
   transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
 }
 
+.bedo-v2-input-bar.is-centered {
+  max-width: 390px;
+}
+
+.bedo-v2-input-bar.is-top {
+  max-width: 100%;
+}
+
 .bedo-v2-input-bar:focus-within {
-  background: rgba(255, 255, 255, 0.075);
-  border-color: rgba(56, 189, 248, 0.45);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.085) 0%, rgba(255, 255, 255, 0.045) 100%);
+  border-color: rgba(125, 211, 252, 0.45);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.12),
-    0 0 0 3px rgba(56, 189, 248, 0.12);
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 0 0 3px rgba(56, 189, 248, 0.11),
+    0 8px 24px -4px rgba(56, 189, 248, 0.22);
+}
+
+.bedo-v2-input-bar.is-thinking {
+  border-color: rgba(var(--music-accent-rgb, 110, 142, 185), 0.34);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .bedo-v2-input-bar input {
@@ -15490,33 +15793,674 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
   border: none;
   outline: none;
   color: #ffffff;
-  font-size: 12.5px;
+  font-size: 13px;
+  font-weight: 450;
+  letter-spacing: -0.01em;
 }
 
 .bedo-v2-input-bar input::placeholder {
-  color: rgba(255, 255, 255, 0.42);
+  color: rgba(255, 255, 255, 0.4);
 }
 
 .bedo-v2-send {
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
-  border: none;
-  background: rgba(255, 255, 255, 0.12);
-  color: rgba(255, 255, 255, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: linear-gradient(155deg, rgba(255, 255, 255, 0.18) 0%, rgba(255, 255, 255, 0.06) 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.24);
+  color: rgba(255, 255, 255, 0.56);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: transform 0.15s cubic-bezier(0.32, 0.72, 0, 1), background 0.18s ease, box-shadow 0.18s ease;
+  transition: transform 0.16s cubic-bezier(0.32, 0.72, 0, 1), background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, color 0.18s ease;
 }
 
 .bedo-v2-send.is-ready {
   background: linear-gradient(135deg, #38bdf8 0%, #3b82f6 100%);
+  border-color: rgba(186, 230, 253, 0.45);
   color: #ffffff;
-  box-shadow: 0 3px 12px rgba(56, 189, 248, 0.42);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    0 4px 14px rgba(56, 189, 248, 0.45);
 }
 
 .bedo-v2-send.is-ready:hover {
   transform: scale(1.08);
+}
+
+
+/* ============================================================
+   Bedo Live Island Wake & Breathing Animation
+   ============================================================ */
+@keyframes bedoLivePulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 12px rgba(56, 189, 248, 0.24);
+  }
+  50% {
+    transform: scale(1.045);
+    box-shadow: 0 0 22px rgba(56, 189, 248, 0.48);
+  }
+}
+
+@keyframes bedoLiveEqIdle {
+  0%, 100% {
+    transform: scaleY(0.65);
+    opacity: 0.72;
+  }
+  50% {
+    transform: scaleY(1.25);
+    opacity: 1;
+  }
+}
+
+.bedo-island-content.tone-listening .bedo-island-avatar,
+.bedo-island-content.tone-speaking .bedo-island-avatar,
+.bedo-island-content.tone-thinking .bedo-island-avatar {
+  animation: bedoLivePulse 2.2s ease-in-out infinite;
+}
+
+.bedo-island-content.tone-listening .bedo-island-eq i {
+  background: rgba(56, 189, 248, 0.85);
+  transform-origin: bottom center;
+  animation: bedoLiveEqIdle 1.1s ease-in-out infinite;
+}
+
+.bedo-island-content.tone-listening .bedo-island-eq i:nth-child(2) {
+  animation-delay: 0.16s;
+}
+
+.bedo-island-content.tone-listening .bedo-island-eq i:nth-child(3) {
+  animation-delay: 0.32s;
+}
+
+.bedo-island-content.tone-listening .bedo-island-eq i:nth-child(4) {
+  animation-delay: 0.48s;
+}
+
+
+/* ============================================================
+   Single-Row Inline Dynamic Island Bedo Pill (No Extra Layer)
+   ============================================================ */
+.notch-morph-shell.state-bedo-live {
+  width: 232px;
+  height: 28px;
+  border-radius: 0 0 14px 14px;
+  background: rgba(10, 12, 18, 0.88);
+  box-shadow:
+    inset 0 -1px 0 rgba(56, 189, 248, 0.25),
+    0 6px 18px rgba(0, 0, 0, 0.42);
+}
+
+.notch-morph-shell.state-bedo-live .layer-bedo-live {
+  padding: 0 11px;
+}
+
+.bedo-island-content.is-inline-pill {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  height: 100%;
+}
+
+.bedo-inline-left {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.bedo-inline-label {
+  flex: 1 1 0;
+  min-width: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: rgba(255, 255, 255, 0.92);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bedo-island-content.is-inline-pill.tone-listening .bedo-inline-label {
+  color: #7dd3fc;
+}
+
+.bedo-island-content.is-inline-pill.tone-thinking .bedo-inline-label {
+  color: #fde047;
+}
+
+.bedo-island-content.is-inline-pill.tone-speaking .bedo-inline-label {
+  color: #6ee7b7;
+}
+
+.bedo-inline-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.bedo-inline-close {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.72);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.bedo-inline-close:hover {
+  background: rgba(239, 68, 68, 0.28);
+  color: #fca5a5;
+}
+
+
+/* ============================================================
+   Apple / Awwwards Dynamic Island Inline Bedo Pill v2
+   ============================================================ */
+.notch-morph-shell.state-bedo-live {
+  width: 268px;
+  height: 34px;
+  border-radius: 0 0 18px 18px;
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.16) 0%,
+      rgba(255, 255, 255, 0.04) 24%,
+      rgba(12, 16, 26, 0.56) 100%
+    ),
+    radial-gradient(
+      120% 140% at 50% 0%,
+      rgba(130, 195, 255, 0.14) 0%,
+      rgba(10, 14, 24, 0.72) 68%
+    );
+  backdrop-filter: blur(26px) saturate(190%);
+  -webkit-backdrop-filter: blur(26px) saturate(190%);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-top: 0;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.14),
+    inset 1px 0 0 rgba(255, 255, 255, 0.10),
+    inset -1px 0 0 rgba(255, 255, 255, 0.10),
+    0 12px 30px rgba(0, 0, 0, 0.42),
+    0 2px 10px rgba(56, 189, 248, 0.12);
+}
+
+.notch-morph-shell.state-bedo-live:has(.tone-listening) {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.24),
+    inset 0 -1px 0 rgba(56, 189, 248, 0.32),
+    0 12px 30px rgba(0, 0, 0, 0.42),
+    0 4px 18px rgba(56, 189, 248, 0.22);
+}
+
+.notch-morph-shell.state-bedo-live:has(.tone-thinking) {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.24),
+    inset 0 -1px 0 rgba(168, 85, 247, 0.34),
+    0 12px 30px rgba(0, 0, 0, 0.42),
+    0 4px 18px rgba(168, 85, 247, 0.22);
+}
+
+.notch-morph-shell.state-bedo-live:has(.tone-speaking) {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.24),
+    inset 0 -1px 0 rgba(52, 211, 153, 0.34),
+    0 12px 30px rgba(0, 0, 0, 0.42),
+    0 4px 18px rgba(52, 211, 153, 0.22);
+}
+
+.notch-morph-shell.state-bedo-live .layer-bedo-live {
+  padding: 0 10px;
+}
+
+.bedo-inline-lens {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 20px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Home Tab: Bedo Quick Card (Apple Control Center neutral glass) */
+.home-card.bedo-home-card {
+  gap: 11px !important;
+  padding-right: 12px !important;
+  justify-content: space-between;
+  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), background 0.2s ease, border-color 0.2s ease !important;
+}
+
+.home-card.bedo-home-card:hover {
+  transform: translateY(-1px);
+}
+
+.bedo-home-orb {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(circle at 30% 26%, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.03) 45%, rgba(6, 8, 13, 0.92) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow:
+    inset 0 1px 2px rgba(255, 255, 255, 0.2),
+    inset 0 -3px 6px rgba(0, 0, 0, 0.55),
+    0 4px 12px rgba(0, 0, 0, 0.32);
+  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.22s ease;
+}
+
+.home-card.bedo-home-card:hover .bedo-home-orb {
+  transform: scale(1.06);
+  border-color: rgba(255, 255, 255, 0.24);
+}
+
+.home-card.bedo-home-card:not(.is-sleeping) .bedo-home-orb::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  animation: bedoOrbBreath 2.4s ease-in-out infinite;
+}
+
+@keyframes bedoOrbBreath {
+  0%, 100% {
+    transform: scale(0.98);
+    opacity: 0.35;
+  }
+  50% {
+    transform: scale(1.06);
+    opacity: 0.75;
+  }
+}
+
+.home-card.bedo-home-card .home-card-meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.bedo-home-name {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: rgba(255, 255, 255, 0.95);
+  line-height: 1.15;
+}
+
+.bedo-home-status {
+  display: block;
+  font-size: 11px !important;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  color: rgba(255, 255, 255, 0.54) !important;
+  margin-top: 2px;
+}
+
+.bedo-home-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.32);
+  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), color 0.2s ease;
+  flex-shrink: 0;
+}
+
+.home-card.bedo-home-card:hover .bedo-home-chevron {
+  transform: translateX(2px);
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.home-card.bedo-home-card.is-waking {
+  animation: bedoCardWakePulse 0.42s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes bedoCardWakePulse {
+  0% {
+    transform: scale(0.96);
+  }
+  50% {
+    transform: scale(1.03);
+    box-shadow: 0 0 18px rgba(255, 255, 255, 0.14);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.bedo-home-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bedo-home-name {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: rgba(255, 255, 255, 0.95);
+  line-height: 1.15;
+}
+
+.bedo-home-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #818cf8;
+  box-shadow: 0 0 8px rgba(129, 140, 248, 0.75);
+}
+
+.home-card.bedo-home-card.tone-listening .bedo-home-dot {
+  background: #38bdf8;
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.85);
+}
+
+.home-card.bedo-home-card.tone-thinking .bedo-home-dot {
+  background: #c084fc;
+  box-shadow: 0 0 8px rgba(192, 132, 252, 0.85);
+}
+
+.home-card.bedo-home-card.tone-speaking .bedo-home-dot {
+  background: #34d399;
+  box-shadow: 0 0 8px rgba(52, 211, 153, 0.85);
+}
+
+.bedo-home-status {
+  font-size: 11px !important;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.58) !important;
+  margin-top: 2px;
+}
+
+.bedo-inline-center {
+  flex: 1 1 0;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.bedo-inline-state-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background: #38bdf8;
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.75);
+}
+
+.tone-thinking .bedo-inline-state-dot {
+  background: #fbbf24;
+  box-shadow: 0 0 8px rgba(251, 191, 36, 0.8);
+}
+
+.tone-speaking .bedo-inline-state-dot {
+  background: #34d399;
+  box-shadow: 0 0 8px rgba(52, 211, 153, 0.8);
+}
+
+.bedo-island-content.is-inline-pill .bedo-inline-label {
+  flex: 0 1 auto;
+  color: rgba(255, 255, 255, 0.94);
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: -0.015em;
+}
+
+.bedo-island-eq.is-apple-bars {
+  gap: 2px;
+  height: 14px;
+}
+
+.bedo-island-eq.is-apple-bars i {
+  width: 2px;
+  border-radius: 999px;
+  background: rgba(56, 189, 248, 0.85);
+}
+
+.tone-speaking .bedo-island-eq.is-apple-bars i {
+  background: rgba(52, 211, 153, 0.92);
+}
+
+.tone-thinking .bedo-island-eq.is-apple-bars i {
+  background: rgba(251, 191, 36, 0.88);
+}
+
+.bedo-island-content.is-inline-pill .bedo-inline-close {
+  opacity: 0.48;
+  transition: opacity 0.16s ease, background 0.16s ease, color 0.16s ease;
+}
+
+.bedo-island-content.is-inline-pill:hover .bedo-inline-close {
+  opacity: 1;
+}
+
+
+/* ============================================================
+   Bedo v2 Reactive Animations & Living Feedback
+   ============================================================ */
+.bedo-v2-orb-pulse {
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(56, 189, 248, 0.45);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.bedo-v2-orb.listening .bedo-v2-orb-pulse {
+  animation: bedoOrbSonar 2.2s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+
+.bedo-v2-orb.speaking .bedo-v2-orb-pulse {
+  border-color: rgba(52, 211, 153, 0.58);
+  animation: bedoOrbSonar 1.4s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+
+.bedo-v2-orb.thinking .bedo-v2-orb-pulse {
+  border-color: rgba(192, 132, 252, 0.56);
+  animation: bedoOrbSonar 1.8s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+
+@keyframes bedoOrbSonar {
+  0% {
+    transform: scale(0.94);
+    opacity: 0.72;
+  }
+  100% {
+    transform: scale(1.24);
+    opacity: 0;
+  }
+}
+
+.bedo-v2-thinking-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3.5px;
+}
+
+.bedo-v2-thinking-dots i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #c084fc;
+  box-shadow: 0 0 6px rgba(192, 132, 252, 0.6);
+  animation: bedoThinkDot 1.1s ease-in-out infinite;
+}
+
+.bedo-v2-thinking-dots i:nth-child(2) {
+  animation-delay: 0.16s;
+}
+
+.bedo-v2-thinking-dots i:nth-child(3) {
+  animation-delay: 0.32s;
+}
+
+@keyframes bedoThinkDot {
+  0%, 80%, 100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  40% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+/* Tactile Apple-style Dock Shortcut Drag & Reorder */
+.dock-shortcuts-pill.is-reordering {
+  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.08);
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+
+.dock-shortcuts-pill.is-reordering .shortcut-brand-btn:not(.is-dragging) {
+  opacity: 0.68;
+  transform: scale(0.94);
+  transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.15s ease;
+}
+
+.shortcut-brand-btn.is-dragging {
+  transform: scale(1.24) translateY(-2px);
+  padding: 3px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.16);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    0 6px 14px rgba(0, 0, 0, 0.45);
+  opacity: 1;
+  cursor: grabbing;
+  z-index: 3;
+  transition: transform 0.14s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.14s ease, background 0.14s ease;
+}
+
+.bedo-v2-wake-ring {
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(56, 189, 248, 0.85);
+  box-shadow:
+    0 0 18px rgba(56, 189, 248, 0.55),
+    inset 0 0 10px rgba(167, 139, 250, 0.35);
+  pointer-events: none;
+}
+
+.notification-history-panel.is-empty {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: linear-gradient(180deg, rgba(20, 23, 31, 0.9) 0%, rgba(11, 13, 18, 0.94) 100%);
+  box-shadow:
+    0 22px 60px rgba(0, 0, 0, 0.72),
+    0 4px 16px rgba(0, 0, 0, 0.38),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+.notification-history-panel.is-empty .notif-panel-ambient-glow {
+  display: none;
+}
+
+.notification-history-panel.is-empty .notification-history-icon {
+  border-color: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: none;
+}
+
+/* All-Apps Horizontal Liquid Glass Pagination */
+.all-apps-overlay-view.is-paginated {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 38px 18px 38px;
+  overflow: hidden;
+}
+
+.all-apps-stage {
+  width: 100%;
+  overflow: hidden;
+}
+
+.all-apps-nav-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-56%);
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.86);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.04) 100%);
+  backdrop-filter: blur(18px) saturate(180%);
+  -webkit-backdrop-filter: blur(18px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.24),
+    0 4px 12px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  z-index: 4;
+  transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.18s ease, background 0.18s ease;
+}
+
+.all-apps-nav-btn.is-prev {
+  left: 6px;
+}
+
+.all-apps-nav-btn.is-next {
+  right: 6px;
+}
+
+.all-apps-nav-btn:hover:not(:disabled) {
+  transform: translateY(-56%) scale(1.08);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.08) 100%);
+}
+
+.all-apps-nav-btn:disabled {
+  opacity: 0.26;
+  cursor: default;
+}
+
+.all-apps-page-dots {
+  position: absolute;
+  bottom: 5px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.all-apps-page-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.24);
+  transition: width 0.2s ease, background 0.2s ease;
+}
+
+.all-apps-page-dot.is-active {
+  width: 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.82);
 }

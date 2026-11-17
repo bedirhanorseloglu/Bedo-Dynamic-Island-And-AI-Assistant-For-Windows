@@ -384,7 +384,7 @@ export default {
 
   // SettingsApp.jsx — Sidebar & Window Controls
   'settings.subtitle': 'Settings',
-  'settings.navGroup.twocode': 'TWOCODE',
+  'settings.navGroup.twocode': 'BEDO',
   'settings.navGroup.robo': 'ROBO',
   'settings.navGroup.settings': 'SETTINGS',
   'settings.nav.home': 'Home',

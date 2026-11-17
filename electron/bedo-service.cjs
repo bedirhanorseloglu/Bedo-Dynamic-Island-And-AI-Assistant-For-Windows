@@ -74,6 +74,12 @@ class BedoService extends EventEmitter {
     if (opts.apiKey) {
       env.BEDO_GEMINI_API_KEY = String(opts.apiKey).trim();
     }
+    if (opts.openaiApiKey) {
+      env.BEDO_OPENAI_API_KEY = String(opts.openaiApiKey).trim();
+    }
+    if (opts.anthropicApiKey) {
+      env.BEDO_ANTHROPIC_API_KEY = String(opts.anthropicApiKey).trim();
+    }
     if (opts.voice) {
       env.BEDO_VOICE = String(opts.voice).trim();
     }
@@ -214,6 +220,15 @@ class BedoService extends EventEmitter {
     const clean = String(apiKey || '').trim();
     if (!clean) return false;
     return this.sendCommand({ cmd: 'set_api_key', api_key: clean });
+  }
+
+  setProviderKeys(keys = {}) {
+    return this.sendCommand({
+      cmd: 'set_provider_keys',
+      gemini_api_key: String(keys.geminiApiKey || '').trim(),
+      openai_api_key: String(keys.openaiApiKey || '').trim(),
+      anthropic_api_key: String(keys.anthropicApiKey || '').trim(),
+    });
   }
 
   ping() {

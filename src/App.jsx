@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import RealAppIcon from './RealAppIcon';
 import { shouldPersistNotification } from './notification-history-policy.mjs';
 import {
@@ -45,6 +46,7 @@ import {
   Settings,
   RotateCw,
   ChevronUp,
+  ChevronLeft,
   ChevronRight,
   Power,
   Video,
@@ -1497,6 +1499,7 @@ export default function App() {
   const [bedoMicLevel, setBedoMicLevel] = useState(0);
   const [bedoThinkingHint, setBedoThinkingHint] = useState('');
   const bedoPausedMediaRef = useRef(false);
+  const lastBedoWakeAtRef = useRef(0);
   const currentMediaRef = useRef({ hasSession: false, isPlaying: false });
 
   const pauseMediaForBedo = useCallback(() => {
@@ -1544,19 +1547,38 @@ export default function App() {
       if (res?.status) setBedoStatus(res.status);
     }).catch(() => {});
 
+    let prevPaused = true;
     const unsubStatus = api.onBedoStatus?.((status) => {
-      if (status) setBedoStatus(status);
+      if (!status) return;
+      const nowPaused = Boolean(status.paused);
+      if (prevPaused && !nowPaused && islandModeRef.current !== 'expanded') {
+        lastBedoWakeAtRef.current = Date.now();
+        islandModeRef.current = 'bedo-live';
+        setIslandMode('bedo-live');
+        window.twocode?.setIslandMode?.('bedo-live');
+      }
+      prevPaused = nowPaused;
+      if (nowPaused) {
+        setRoboLoading(false);
+        setBedoThinkingHint('');
+      }
+      setBedoStatus(status);
     });
     const unsubEvent = api.onBedoEvent?.((ev) => {
       if (!ev || typeof ev !== 'object') return;
       if (ev.type === 'wake') {
+        lastBedoWakeAtRef.current = Date.now();
+        if (hoverOpenTimerRef.current) clearTimeout(hoverOpenTimerRef.current);
+        if (hoverCloseTimerRef.current) clearTimeout(hoverCloseTimerRef.current);
         pauseMediaForBedo();
         suppressHoverCollapseUntilRef.current = Date.now() + 9000;
         suppressHoverExpandUntilRef.current = Date.now() + 9000;
         setShowMenu(false);
         setNotificationHistoryOpen(false);
         setIslandOverlay(null);
+        islandModeRef.current = 'bedo-live';
         setIslandMode('bedo-live');
+        window.twocode?.setIslandMode?.('bedo-live');
         setSelectedAiProvider('Bedo');
         setRoboMood('listening');
         setBedoThinkingHint('');
@@ -1564,6 +1586,7 @@ export default function App() {
         playRoboSound('curious', islandSettings.soundEffects !== false);
       } else if (ev.type === 'sleep') {
         resumeMediaAfterBedo();
+        setRoboLoading(false);
         setBedoThinkingHint('');
         setIslandMode(resolvedCollapsedModeRef.current || 'idle');
       } else if (ev.type === 'island_action') {
@@ -1624,6 +1647,7 @@ export default function App() {
           setRoboLoading(false);
         } else if (ev.state === 'LISTENING') {
           setRoboMood('listening');
+          setRoboLoading(false);
         }
       } else if (ev.type === 'sfx') {
         triggerRoboReaction('happy', 4, 1500);
@@ -1645,6 +1669,7 @@ export default function App() {
           const cleanUser = String(ev.text || '').replace(/^Siz:\s*/i, '').trim();
           if (cleanUser) {
             setBedoUserTranscript(cleanUser);
+            setRoboReply(null);
             setRoboLoading(true);
             setRoboMood('curious');
           }
@@ -1678,7 +1703,9 @@ export default function App() {
   // Siri modu: Ada kapalıyken veya Bedo görünümü dışındayken otomatik uyku moduna geç
   useEffect(() => {
     const inBedoView = islandMode === 'bedo-live' || (islandMode === 'expanded' && activeTab === 'robo');
-    if (!inBedoView && bedoStatus.running && !bedoStatus.paused) {
+    const isTransientToast = islandMode === 'notif-toast' || islandMode === 'hud' || islandMode === 'battery';
+    if (!inBedoView && !isTransientToast && bedoStatus.running && !bedoStatus.paused) {
+      if (Date.now() - lastBedoWakeAtRef.current < 1500) return;
       window.twocode?.bedoSetPaused?.(true);
     }
   }, [islandMode, activeTab, bedoStatus.running, bedoStatus.paused]);
@@ -1707,6 +1734,7 @@ export default function App() {
   ]);
 
   // G-Helper live status (performance_mode & gpu_mode)
+  const [systemMicMuted, setSystemMicMuted] = useState(false);
   const [ghelperStatus, setGhelperStatus] = useState({
     performanceMode: 0,
     performanceName: 'Dengeli',
@@ -2250,6 +2278,11 @@ export default function App() {
 
   // User's custom apps synced from TwoCode Settings — EMPTY by default (no mock GHelper/YouTube)
   const [shortcuts, setShortcuts] = useState([]);
+  const [allAppsPage, setAllAppsPage] = useState(0);
+  const [allAppsDir, setAllAppsDir] = useState(1);
+  const [draggingShortcutId, setDraggingShortcutId] = useState(null);
+  const shortcutDragRef = useRef({ id: null, startX: 0, startY: 0, moved: false });
+  const suppressShortcutClickRef = useRef(false);
   const [islandSettings, setIslandSettings] = useState({
     language: 'English',
     eyeColorHex: '#ffffff',
@@ -2289,6 +2322,7 @@ export default function App() {
   const suppressHoverExpandUntilRef = useRef(0);
   const suppressHoverCollapseUntilRef = useRef(0);
   const suppressGHelperHudUntilRef = useRef(0);
+  const suppressMicHudUntilRef = useRef(0);
 
   // Live Windows System HUD (Volume & Screen Brightness) and Windows Notification Toast state
   const [hudOverlay, setHudOverlay] = useState({
@@ -2644,11 +2678,13 @@ export default function App() {
 
   // Keep collapsed notch updated if media starts/pauses/stops while collapsed
   useEffect(() => {
+    const curr = islandModeRef.current;
     if (
-      islandMode !== 'expanded' &&
-      islandMode !== 'battery' &&
-      islandMode !== 'hud' &&
-      islandMode !== 'notif-toast'
+      curr !== 'expanded' &&
+      curr !== 'bedo-live' &&
+      curr !== 'battery' &&
+      curr !== 'hud' &&
+      curr !== 'notif-toast'
     ) {
       setIslandMode(resolvedCollapsedMode);
     }
@@ -2733,7 +2769,12 @@ export default function App() {
       const nextPct = Math.round(batteryObj.level * 100);
       setBatteryPercent(nextPct);
 
-      if (batteryObj.charging) {
+      const nextCharging = Boolean(batteryObj.charging);
+      if (wasCharging !== null && wasCharging !== nextCharging) {
+        suppressMicHudUntilRef.current = Date.now() + 4500;
+      }
+
+      if (nextCharging) {
         setBatteryCharging(true);
         if (wasCharging === false && !isStartup) triggerChargingAlert();
         wasCharging = true;
@@ -2883,7 +2924,7 @@ export default function App() {
       setIslandMode((curr) => {
         const prevMode =
           curr === 'notif-toast' || curr === 'hud' || curr === 'battery'
-            ? resolvedCollapsedModeRef.current
+            ? (notifPrevModeRef.current || resolvedCollapsedModeRef.current)
             : curr;
         if (notifTimerRef.current) clearTimeout(notifTimerRef.current);
         notifPrevModeRef.current = prevMode;
@@ -2898,6 +2939,10 @@ export default function App() {
         return 'notif-toast';
       });
     };
+
+    window.twocode?.getSystemMicMuted?.().then((mutedState) => {
+      if (typeof mutedState === 'boolean') setSystemMicMuted(mutedState);
+    }).catch(() => {});
 
     window.twocode.getSettings?.().then((saved) => {
       if (saved && typeof saved === 'object') {
@@ -3119,6 +3164,12 @@ export default function App() {
       if (hud.type === 'ghelper') {
         if (hud.ghelper?.category === 'fnlock') {
           return;
+        }
+        if (hud.ghelper?.category === 'mic') {
+          setSystemMicMuted(Boolean(hud.ghelper.isMuted));
+          if (Date.now() < suppressMicHudUntilRef.current) {
+            return;
+          }
         }
         if (hud.ghelper?.category === 'mode' && typeof hud.ghelper.modeIndex === 'number') {
           setGhelperStatus((prev) => ({
@@ -3407,6 +3458,9 @@ export default function App() {
       setCodexHistory((prev) => [entry, ...prev]);
     }
     if (selectedAiProvider === 'Bedo') {
+      setBedoUserTranscript(q);
+      setRoboReply(null);
+      setRoboLoading(true);
       if (bedoStatus.paused) {
         await window.twocode?.bedoSetPaused?.(false);
       }
@@ -3495,7 +3549,7 @@ export default function App() {
     window.twocode?.openSettingsWindow?.('apps');
   };
 
-  // Agents, Mail and Robo chat are temporarily disabled; keep their entries for later.
+  // Agents, Mail and Clips are temporarily disabled; keep their entries for later.
   const navItems = [
     { id: 'home', label: t('dock.home'), icon: Home },
     { id: 'music', label: t('dock.music'), icon: Music },
@@ -3504,7 +3558,7 @@ export default function App() {
     { id: 'robo', label: 'Bedo', icon: RoboDockIcon },
     { id: 'timer', label: t('dock.focus'), icon: Timer },
     { id: 'sleep', label: t('dock.modes'), icon: Moon },
-    { id: 'clips', label: t('dock.clips'), icon: Copy },
+    // { id: 'clips', label: t('dock.clips'), icon: Copy },
     { id: 'notes', label: t('dock.notes'), icon: FileText },
     { id: 'cal', label: t('dock.agenda'), icon: Calendar },
     { id: 'perf', label: t('dock.perf'), icon: Activity },
@@ -3589,7 +3643,9 @@ export default function App() {
         ? 'dnd-sleep'
         : activeHookTask
           ? 'thinking'
-          : roboMood;
+          : bedoStatus.paused
+            ? 'sleepy'
+            : roboMood;
 
   const currentLayoutId = HOME_LAYOUTS[homeLayoutIndex]?.id || 'clock';
   const clockDisplay = formatClockDisplay(now);
@@ -3661,6 +3717,7 @@ export default function App() {
       <div
         ref={morphShellRef}
         className={`notch-morph-shell state-${islandMode} mode-${activeTab} ${liveActivity?.active ? 'has-live-activity' : ''} ${batteryAlertKind === 'charging' ? 'is-charging' : ''} ${activeTab === 'home' && isCustomizingClock ? 'customizing-clock' : ''
+          } ${activeTab === 'robo' && !bedoStatus.paused && (roboLoading || bedoStatus.jarvisState === 'THINKING') ? 'is-bedo-thinking' : ''
           } ${musicAccent.hasColor ? 'has-cover-color' : ''} ${islandMode === 'hud' && hudOverlay.ghelper?.category === 'aura'
             ? `has-aura-hud effect-${hudOverlay.ghelper.effectType || 'static'}`
             : ''
@@ -4103,6 +4160,14 @@ export default function App() {
             active={documentVisible && islandMode === 'bedo-live'}
             onToggleMute={() => window.twocode?.bedoSetMuted?.(!bedoStatus.muted)}
             onToggleWebcam={() => window.twocode?.bedoSetWebcam?.(!bedoStatus.webcamActive)}
+            onOpenMain={() => {
+              setShowMenu(false);
+              setNotificationHistoryOpen(false);
+              setIslandOverlay(null);
+              setActiveTab('robo');
+              setSelectedAiProvider('Bedo');
+              setIslandMode('expanded');
+            }}
             onClose={() => {
               window.twocode?.bedoSetPaused?.(true);
               resumeMediaAfterBedo();
@@ -4679,10 +4744,13 @@ export default function App() {
             <section
               ref={notificationHistoryPanelRef}
               id="notification-history-panel"
-              className="notification-history-panel"
+              className={`notification-history-panel ${notificationHistory.length === 0 ? 'is-empty' : ''}`}
               aria-label={t('notif.historyAria')}
               style={(() => {
                 const newest = notificationHistory[0];
+                if (!newest) {
+                  return { '--notif-panel-rgb': '255, 255, 255', '--notif-panel-hex': '#e2e8f0' };
+                }
                 const accent = resolveNotifBrand(newest, newest?.logoAccent);
                 return { '--notif-panel-rgb': accent.rgb, '--notif-panel-hex': accent.hex };
               })()}
@@ -4814,70 +4882,127 @@ export default function App() {
           {/* ============================================================
               OVERLAY 0: FILE DRAG-DROP 3-CARD TARGETS (Matches media_1794049683895_d176ec76.jpg)
               ============================================================ */}
-          {islandOverlay === 'all-apps' ? (
-            <div className="all-apps-overlay-view" onClick={() => setShowMenu(false)}>
-              <div className="all-apps-grid">
-                {[
-                  { id: 'music', label: t('allApps.music'), icon: Music, action: () => { setActiveTab('music'); setIslandOverlay(null); } },
-                  { id: 'drop', label: t('allApps.drop'), icon: UploadCloud, action: () => { setActiveTab('drop'); setIslandOverlay(null); } },
-                  { id: 'robo', label: 'Bedo', isRoboEyes: true, action: () => { setActiveTab('robo'); setSelectedAiProvider('Bedo'); setIslandOverlay(null); if (bedoStatus.paused) window.twocode?.bedoSetPaused?.(false); } },
-                  // { id: 'code', label: 'Agents', icon: Terminal, action: () => { setActiveTab('code'); setIslandOverlay(null); } },
-                  { id: 'timer', label: t('allApps.focus'), icon: Timer, action: () => { setActiveTab('timer'); setIslandOverlay(null); } },
-                  { id: 'clips', label: t('allApps.clipboard'), icon: Copy, action: () => { setActiveTab('clips'); setIslandOverlay(null); } },
-                  { id: 'notes', label: t('allApps.note'), icon: FileText, action: () => { setActiveTab('notes'); setIslandOverlay(null); } },
-                  { id: 'cal', label: t('allApps.calendar'), icon: Calendar, action: () => { setActiveTab('cal'); setIslandOverlay(null); } },
-                  // { id: 'inbox', label: 'Mail', icon: Mail, action: () => { setActiveTab('inbox'); setIslandOverlay(null); } },
-                  { id: 'mirror', label: t('allApps.mirror'), icon: Video, action: () => { setIslandOverlay('mirror'); } },
-                  { id: 'settings', label: t('allApps.settings'), icon: Settings, action: () => { window.twocode?.openSettingsWindow?.('home'); setIslandOverlay(null); } },
-                ].map((appItem) => {
-                  const AppIcon = appItem.icon;
-                  return (
-                    <button
-                      key={appItem.id}
-                      type="button"
-                      className="all-apps-cell"
-                      onClick={() => {
-                        playRoboSound('tap', islandSettings.soundEffects !== false);
-                        appItem.action();
-                      }}
-                    >
-                      <div className="all-apps-squircle">
-                        {appItem.isRoboEyes ? (
-                          <div className="mini-squircle-eyes">
-                            <i />
-                            <i />
-                          </div>
-                        ) : (
-                          <AppIcon size={18} strokeWidth={1.9} />
-                        )}
-                      </div>
-                      <span className="all-apps-label">{appItem.label}</span>
-                    </button>
-                  );
-                })}
-
-                {/* User's own added shortcuts ( ONLY if user added any in Settings ) */}
-                {shortcuts.map((sc) => (
+          {islandOverlay === 'all-apps' ? (() => {
+            const builtInApps = [
+              { id: 'music', label: t('allApps.music'), icon: Music, action: () => { setActiveTab('music'); setIslandOverlay(null); } },
+              { id: 'drop', label: t('allApps.drop'), icon: UploadCloud, action: () => { setActiveTab('drop'); setIslandOverlay(null); } },
+              { id: 'robo', label: 'Bedo', isRoboEyes: true, action: () => { setActiveTab('robo'); setSelectedAiProvider('Bedo'); setIslandOverlay(null); if (bedoStatus.paused) window.twocode?.bedoSetPaused?.(false); } },
+              { id: 'timer', label: t('allApps.focus'), icon: Timer, action: () => { setActiveTab('timer'); setIslandOverlay(null); } },
+              // { id: 'clips', label: t('allApps.clipboard'), icon: Copy, action: () => { setActiveTab('clips'); setIslandOverlay(null); } },
+              { id: 'notes', label: t('allApps.note'), icon: FileText, action: () => { setActiveTab('notes'); setIslandOverlay(null); } },
+              { id: 'cal', label: t('allApps.calendar'), icon: Calendar, action: () => { setActiveTab('cal'); setIslandOverlay(null); } },
+              { id: 'mirror', label: t('allApps.mirror'), icon: Video, action: () => { setIslandOverlay('mirror'); } },
+              { id: 'settings', label: t('allApps.settings'), icon: Settings, action: () => { window.twocode?.openSettingsWindow?.('home'); setIslandOverlay(null); } },
+            ];
+            const shortcutItems = shortcuts.map((sc) => ({
+              id: `sc-${sc.id}`,
+              label: sc.name,
+              shortcut: sc,
+              action: () => {
+                triggerRoboReaction('app-open', 2, 1050);
+                window.twocode?.openApp(sc);
+                setIslandOverlay(null);
+              },
+            }));
+            const allItems = [...builtInApps, ...shortcutItems];
+            const perPage = 12;
+            const totalPages = Math.max(1, Math.ceil(allItems.length / perPage));
+            const safePage = Math.min(allAppsPage, totalPages - 1);
+            const pageItems = allItems.slice(safePage * perPage, (safePage + 1) * perPage);
+            const goPage = (nextPage) => {
+              const clamped = Math.max(0, Math.min(totalPages - 1, nextPage));
+              if (clamped === safePage) return;
+              setAllAppsDir(clamped > safePage ? 1 : -1);
+              setAllAppsPage(clamped);
+            };
+            return (
+              <div className="all-apps-overlay-view is-paginated" onClick={() => setShowMenu(false)}>
+                {totalPages > 1 && (
                   <button
-                    key={sc.id}
                     type="button"
-                    className="all-apps-cell"
-                    onClick={() => {
-                      playRoboSound('tap', islandSettings.soundEffects !== false);
-                      triggerRoboReaction('app-open', 2, 1050);
-                      window.twocode?.openApp(sc);
-                      setIslandOverlay(null);
+                    className="all-apps-nav-btn is-prev"
+                    disabled={safePage === 0}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      goPage(safePage - 1);
                     }}
+                    aria-label="Önceki sayfa"
                   >
-                    <div className="all-apps-squircle">
-                      <RealAppIcon sc={sc} size={22} />
-                    </div>
-                    <span className="all-apps-label">{sc.name}</span>
+                    <ChevronLeft size={15} strokeWidth={2.2} />
                   </button>
-                ))}
+                )}
+
+                <div className="all-apps-stage">
+                  <AnimatePresence mode="wait" custom={allAppsDir}>
+                    <motion.div
+                      key={`all-apps-page-${safePage}`}
+                      className="all-apps-grid"
+                      custom={allAppsDir}
+                      initial={{ opacity: 0, x: allAppsDir * 32 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -allAppsDir * 32 }}
+                      transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+                    >
+                      {pageItems.map((appItem) => {
+                        const AppIcon = appItem.icon;
+                        return (
+                          <button
+                            key={appItem.id}
+                            type="button"
+                            className="all-apps-cell"
+                            onClick={() => {
+                              playRoboSound('tap', islandSettings.soundEffects !== false);
+                              appItem.action();
+                            }}
+                          >
+                            <div className="all-apps-squircle">
+                              {appItem.isRoboEyes ? (
+                                <div className="mini-squircle-eyes">
+                                  <i />
+                                  <i />
+                                </div>
+                              ) : appItem.shortcut ? (
+                                <RealAppIcon sc={appItem.shortcut} size={22} />
+                              ) : (
+                                <AppIcon size={18} strokeWidth={1.9} />
+                              )}
+                            </div>
+                            <span className="all-apps-label">{appItem.label}</span>
+                          </button>
+                        );
+                      })}
+                    </motion.div>
+                  </AnimatePresence>
+                </div>
+
+                {totalPages > 1 && (
+                  <button
+                    type="button"
+                    className="all-apps-nav-btn is-next"
+                    disabled={safePage >= totalPages - 1}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      goPage(safePage + 1);
+                    }}
+                    aria-label="Sonraki sayfa"
+                  >
+                    <ChevronRight size={15} strokeWidth={2.2} />
+                  </button>
+                )}
+
+                {totalPages > 1 && (
+                  <div className="all-apps-page-dots" aria-hidden="true">
+                    {Array.from({ length: totalPages }).map((_, idx) => (
+                      <span
+                        key={idx}
+                        className={`all-apps-page-dot ${idx === safePage ? 'is-active' : ''}`}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
-            </div>
-          ) : islandOverlay === 'mirror' ? (
+            );
+          })() : islandOverlay === 'mirror' ? (
             <MirrorOverlay onClose={() => setIslandOverlay(null)} />
           ) : (
             <>
@@ -5217,28 +5342,50 @@ export default function App() {
                               onOpenMirror={() => setIslandOverlay('mirror')}
                             />
                             <div className="home-cards-row">
-                              {/* Left Card: Matches original TwoCode (`0 / jobs today`) */}
+                              {/* Left Card: Bedo Live Liquid Glass Quick Card */}
                               <div
-                                className="home-card jobs-card"
-                                onClick={() => setActiveTab('code')}
-                                title={t('home.openAiHistory')}
+                                className={`home-card jobs-card bedo-home-card ${bedoStatus.paused ? 'is-sleeping' : `tone-${bedoStatus.jarvisState === 'SPEAKING' ? 'speaking' : bedoStatus.jarvisState === 'THINKING' ? 'thinking' : 'listening'}`}`}
+                                onClick={() => {
+                                  if (bedoStatus.paused) {
+                                    lastBedoWakeAtRef.current = Date.now();
+                                    window.twocode?.bedoSetPaused?.(false);
+                                    setRoboMood('listening');
+                                    triggerRoboReaction('happy', 5, 1100);
+                                    playRoboSound('curious', islandSettings.soundEffects !== false);
+                                  } else {
+                                    playRoboSound('tap', islandSettings.soundEffects !== false);
+                                  }
+                                  setSelectedAiProvider('Bedo');
+                                  setActiveTab('robo');
+                                }}
+                                title="Bedo"
                               >
-                                <span
-                                  className={`job-status-square ${pendingApproval
-                                    ? 'pulse-amber'
-                                    : activeHookTask
-                                      ? 'active-white'
-                                      : 'dim-grey'
-                                    }`}
-                                />
+                                <div className="bedo-home-orb" aria-hidden="true">
+                                  <RoboEyes
+                                    mood={bedoStatus.paused ? 'sleepy' : roboMood}
+                                    reaction={roboReaction}
+                                    micLevel={bedoMicLevel}
+                                    showMouth={true}
+                                    size="mini"
+                                    trackCursor={false}
+                                    active={documentVisible && islandMode === 'expanded' && activeTab === 'home'}
+                                  />
+                                </div>
                                 <div className="home-card-meta">
-                                  <strong className="home-card-big mono">
-                                    {pendingApproval ? t('home.approval') : `${jobsToday}`}
-                                  </strong>
-                                  <span className="home-card-sub">
-                                    {pendingApproval ? t('home.neededNow') : t('home.jobsToday')}
+                                  <strong className="bedo-home-name">Bedo</strong>
+                                  <span className="home-card-sub bedo-home-status">
+                                    {bedoStatus.paused
+                                      ? 'Uyku Modu'
+                                      : bedoStatus.jarvisState === 'SPEAKING'
+                                        ? 'Konuşuyor'
+                                        : bedoStatus.jarvisState === 'THINKING'
+                                          ? 'Düşünüyor'
+                                          : 'Dinliyor'}
                                   </span>
                                 </div>
+                                <span className="bedo-home-chevron" aria-hidden="true">
+                                  <ChevronRight size={14} strokeWidth={2.1} />
+                                </span>
                               </div>
 
                               {/* Middle Card: Live Windows Media with crimson placeholder & ambient color */}
@@ -5818,6 +5965,7 @@ export default function App() {
                     {activeTab === 'robo' && (
                       <BedoStage
                         status={bedoStatus}
+                        systemMicMuted={systemMicMuted}
                         webcamFrame={bedoWebcamFrame}
                         micLevel={bedoMicLevel}
                         roboMood={roboMood}
@@ -5825,7 +5973,7 @@ export default function App() {
                         documentVisible={documentVisible}
                         userTranscript={bedoUserTranscript}
                         reply={roboReply}
-                        loading={roboLoading}
+                        loading={roboLoading && !bedoStatus.paused}
                         question={roboQuestion}
                         onQuestionChange={setRoboQuestion}
                         onSubmit={() => submitRoboPrompt()}
@@ -6520,19 +6668,78 @@ export default function App() {
 
               {/* BOTTOM NAVIGATION DOCK */}
               <footer className="island-dock">
-                <div className="dock-shortcuts-pill">
+                <div className={`dock-shortcuts-pill ${draggingShortcutId ? 'is-reordering' : ''}`}>
                   {shortcuts.map((sc) => (
                     <button
                       key={sc.id}
                       type="button"
-                      className="shortcut-brand-btn"
-                      title={sc.name}
+                      draggable={false}
+                      data-shortcut-id={sc.id}
+                      className={`shortcut-brand-btn ${draggingShortcutId === sc.id ? 'is-dragging' : ''}`}
+                      title={draggingShortcutId ? undefined : sc.name}
+                      style={{ WebkitUserDrag: 'none', userSelect: 'none', touchAction: 'none' }}
+                      onDragStart={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }}
+                      onPointerDown={(e) => {
+                        if (e.button !== 0 || shortcuts.length < 2) return;
+                        e.preventDefault();
+                        const dragState = { id: sc.id, startX: e.clientX, startY: e.clientY, moved: false };
+                        shortcutDragRef.current = dragState;
+                        const onMove = (moveEv) => {
+                          if (!dragState.moved) {
+                            if (Math.hypot(moveEv.clientX - dragState.startX, moveEv.clientY - dragState.startY) < 5) {
+                              return;
+                            }
+                            dragState.moved = true;
+                            setDraggingShortcutId(dragState.id);
+                          }
+                          const els = document.elementsFromPoint(moveEv.clientX, moveEv.clientY);
+                          const targetBtn = els
+                            .map((el) => (el instanceof HTMLElement ? el.closest('[data-shortcut-id]') : null))
+                            .find(Boolean);
+                          const targetId = targetBtn?.dataset?.shortcutId;
+                          if (targetId && targetId !== String(dragState.id)) {
+                            setShortcuts((prev) => {
+                              const fromIdx = prev.findIndex((item) => String(item.id) === String(dragState.id));
+                              const toIdx = prev.findIndex((item) => String(item.id) === String(targetId));
+                              if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return prev;
+                              const next = [...prev];
+                              const [movedItem] = next.splice(fromIdx, 1);
+                              next.splice(toIdx, 0, movedItem);
+                              return next;
+                            });
+                          }
+                        };
+                        const onUp = () => {
+                          window.removeEventListener('pointermove', onMove);
+                          window.removeEventListener('pointerup', onUp);
+                          window.removeEventListener('pointercancel', onUp);
+                          setDraggingShortcutId(null);
+                          if (dragState.moved) {
+                            suppressShortcutClickRef.current = true;
+                            setTimeout(() => { suppressShortcutClickRef.current = false; }, 120);
+                            setShortcuts((latest) => {
+                              window.twocode?.saveSettings?.({ apps: latest });
+                              return latest;
+                            });
+                          }
+                          shortcutDragRef.current.id = null;
+                        };
+                        window.addEventListener('pointermove', onMove);
+                        window.addEventListener('pointerup', onUp);
+                        window.addEventListener('pointercancel', onUp);
+                      }}
                       onClick={() => {
+                        if (suppressShortcutClickRef.current) return;
                         triggerRoboReaction('app-open', 2, 1050);
                         window.twocode?.openApp(sc);
                       }}
                     >
-                      <RealAppIcon sc={sc} size={15} />
+                      <span style={{ pointerEvents: 'none', display: 'inline-flex', WebkitUserDrag: 'none' }}>
+                        <RealAppIcon sc={sc} size={15} />
+                      </span>
                     </button>
                   ))}
                   <div

@@ -81,7 +81,7 @@ app.commandLine.appendSwitch('media-cache-size', '10485760');
 app.commandLine.appendSwitch('enable-features', 'TrimOnMemoryPressure');
 app.commandLine.appendSwitch(
   'disable-features',
-  'SpareRendererForSitePerProcess,CalculateNativeWinOcclusion,InterestFeedContentSuggestions,AutofillServerCommunication,CertificateTransparencyComponentUpdater'
+  'SpareRendererForSitePerProcess,CalculateNativeWinOcclusion,InterestFeedContentSuggestions,AutofillServerCommunication,CertificateTransparencyComponentUpdater,MetricsReporting,OptimizationHints,MediaRouter'
 );
 
 function trimWorkingSetAndGC({ trimWorkingSet = false } = {}) {
@@ -112,7 +112,7 @@ const MODE_DIMENSIONS = {
   'music-bar': { bodyWidth: 350, height: 26, earRadius: 9, bottomRadius: 13, droplet: 0 },
   'focus-bar': { bodyWidth: 110, height: 26, earRadius: 8, bottomRadius: 13, droplet: 0 },
   'focus-bar-media': { bodyWidth: 104, height: 26, earRadius: 8, bottomRadius: 13, droplet: 1 },
-  'bedo-live': { bodyWidth: 416, height: 76, earRadius: 0, bottomRadius: 24, droplet: 0 },
+  'bedo-live': { bodyWidth: 256, height: 32, earRadius: 10, bottomRadius: 16, droplet: 0 },
   expanded: { bodyWidth: 620, height: 286, earRadius: 0, bottomRadius: 24, droplet: 0 },
 };
 
@@ -299,7 +299,8 @@ let currentShape = { ...MODE_DIMENSIONS.idle };
 // Persistent settings state shared between Dynamic Island & TwoCode Settings window
 let userSettings = {
   userName: os.userInfo().username || 'User',
-  language: 'English',
+  language: 'Turkish',
+  onboardingCompleted: false,
   googleConnected: false,
   googleEmail: '',
   apps: [],
@@ -460,8 +461,13 @@ function restoreApiKeysFromDisk(settings) {
 function loadSettingsFromDisk() {
   try {
     const p = getSettingsFilePath();
-    if (fs.existsSync(p)) {
-      const parsed = restoreApiKeysFromDisk(JSON.parse(fs.readFileSync(p, 'utf8')));
+    const legacyPath = path.join(app.getPath('appData'), 'twocode-island', 'twocode-settings.json');
+    const sourcePath = fs.existsSync(p) ? p : fs.existsSync(legacyPath) ? legacyPath : '';
+    if (sourcePath) {
+      const parsed = restoreApiKeysFromDisk(JSON.parse(fs.readFileSync(sourcePath, 'utf8')));
+      if (parsed.onboardingCompleted === undefined) {
+        parsed.onboardingCompleted = true;
+      }
       if (Array.isArray(parsed.apps)) {
         parsed.apps = parsed.apps
           .filter((a) => !['yt', 'ghlp', 'gm'].includes(a.id))
@@ -485,8 +491,17 @@ function saveSettingsToDisk(nextSettings) {
   if (Object.prototype.hasOwnProperty.call(nextSettings || {}, 'startWithWindows')) {
     applyStartWithWindows(userSettings.startWithWindows !== false);
   }
-  if (Object.prototype.hasOwnProperty.call(nextSettings || {}, 'geminiApiKey') && bedoService) {
-    bedoService.setApiKey(userSettings.geminiApiKey || '');
+  if (
+    (Object.prototype.hasOwnProperty.call(nextSettings || {}, 'geminiApiKey') ||
+      Object.prototype.hasOwnProperty.call(nextSettings || {}, 'codexApiKey') ||
+      Object.prototype.hasOwnProperty.call(nextSettings || {}, 'claudeApiKey')) &&
+    bedoService
+  ) {
+    bedoService.setProviderKeys({
+      geminiApiKey: userSettings.geminiApiKey || '',
+      openaiApiKey: userSettings.codexApiKey || '',
+      anthropicApiKey: userSettings.claudeApiKey || '',
+    });
   }
   if (Object.prototype.hasOwnProperty.call(nextSettings || {}, 'bedoVoice') && bedoService && bedoService.getStatus().running) {
     const wasPaused = bedoService.getStatus().paused;
@@ -1361,6 +1376,9 @@ function openOrFocusSettingsWindow(tabId = 'home') {
 
   settingsWindow.on('closed', () => {
     settingsWindow = null;
+    if (!userSettings.onboardingCompleted) {
+      saveSettingsToDisk({ onboardingCompleted: true });
+    }
     trimWorkingSetAndGC({ trimWorkingSet: true });
   });
 }
@@ -2078,6 +2096,11 @@ app.whenReady().then(() => {
   loadSavedGoogleSession();
   createWindow();
   createTray();
+  if (!userSettings.onboardingCompleted) {
+    setTimeout(() => {
+      try { openOrFocusSettingsWindow('home'); } catch {}
+    }, 650);
+  }
   const agentStatus = getAgentIntegrationStatus();
   if (agentStatus.codexConnected || agentStatus.antigravityConnected) startLocalAgentServers();
   startCursorHoverWatcher();
@@ -2340,9 +2363,7 @@ ipcMain.handle('media-control', async (_event, action, value) => {
 });
 
 async function openGHelper() {
-  const primaryPath = 'C:\\Users\\Bedirhan Orseloglu\\OneDrive\\Masaüstü\\GHelper.exe';
   const candidatePaths = [
-    primaryPath,
     path.join(os.homedir(), 'OneDrive', 'Masaüstü', 'GHelper.exe'),
     path.join(os.homedir(), 'Desktop', 'GHelper.exe'),
     path.join(os.homedir(), 'OneDrive', 'Desktop', 'GHelper.exe'),
@@ -2350,7 +2371,10 @@ async function openGHelper() {
     'C:\\Program Files\\GHelper\\GHelper.exe',
   ];
 
-  const targetPath = candidatePaths.find((p) => p && fs.existsSync(p)) || primaryPath;
+  const targetPath = candidatePaths.find((p) => p && fs.existsSync(p));
+  if (!targetPath) {
+    return { ok: false, error: 'GHelper.exe not found' };
+  }
 
   try {
     const err = await shell.openPath(targetPath);
@@ -2789,6 +2813,53 @@ ipcMain.handle('capture-screen', async () => {
     if (sources && sources.length > 0) {
       return sources[0].thumbnail.toDataURL();
     }
+  } catch {}
+  return null;
+});
+
+ipcMain.handle('get-system-mic-muted', async () => {
+  try {
+    const psCmd = `
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+[Guid("5CDF2C82-841E-4546-9722-0CF74078229A"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IAudioEndpointVolume {
+  int f0(); int f1(); int f2(); int f3(); int f4(); int f5(); int f6(); int f7(); int f8(); int f9(); int f10(); int f11();
+  int GetMute(out bool pbMute);
+}
+[Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IMMDevice { int Activate(ref Guid iid, int dwClsCtx, IntPtr pActivationParams, out IntPtr ppInterface); }
+[Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IMMDeviceEnumerator { int f0(); int GetDefaultAudioEndpoint(int dataFlow, int role, out IMMDevice ppEndpoint); }
+[ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")] class MMDeviceEnumerator {}
+public class MicMuteQuery {
+  public static bool IsMuted() {
+    var enumerator = (IMMDeviceEnumerator)(new MMDeviceEnumerator());
+    IMMDevice dev;
+    enumerator.GetDefaultAudioEndpoint(1, 1, out dev);
+    var iid = new Guid("5CDF2C82-841E-4546-9722-0CF74078229A");
+    IntPtr ptr;
+    dev.Activate(ref iid, 23, IntPtr.Zero, out ptr);
+    var vol = (IAudioEndpointVolume)Marshal.GetObjectForIUnknown(ptr);
+    bool muted;
+    vol.GetMute(out muted);
+    return muted;
+  }
+}
+"@
+[MicMuteQuery]::IsMuted()
+`;
+    const out = await new Promise((resolve) => {
+      execFile(
+        'powershell.exe',
+        ['-WindowStyle', 'Hidden', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', psCmd],
+        { windowsHide: true, timeout: 4000 },
+        (_err, stdout) => resolve((stdout || '').trim().toLowerCase())
+      );
+    });
+    if (out === 'true') return true;
+    if (out === 'false') return false;
   } catch {}
   return null;
 });
@@ -4370,6 +4441,8 @@ ipcMain.handle('bedo:start', async (_event, opts = {}) => {
   const svc = getBedoService();
   return svc.start({
     apiKey: opts.apiKey || userSettings.geminiApiKey || process.env.GEMINI_API_KEY || '',
+    openaiApiKey: opts.openaiApiKey || userSettings.codexApiKey || process.env.OPENAI_API_KEY || '',
+    anthropicApiKey: opts.anthropicApiKey || userSettings.claudeApiKey || process.env.ANTHROPIC_API_KEY || '',
     voice: opts.voice || userSettings.bedoVoice || 'Charon',
     startPaused: Boolean(opts.startPaused),
     enableWake: opts.enableWake !== false,

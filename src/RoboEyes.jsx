@@ -1,6 +1,38 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { playRoboSound } from './sounds';
 
+// Shared blink coordinator so all visible RoboEyes instances blink in unison.
+const blinkSubscribers = new Set();
+let sharedBlinkTimer = null;
+let sharedBlinkResetTimer = null;
+
+function scheduleSharedBlink() {
+  if (sharedBlinkTimer || blinkSubscribers.size === 0) return;
+  sharedBlinkTimer = setTimeout(() => {
+    sharedBlinkTimer = null;
+    blinkSubscribers.forEach((cb) => cb(true));
+    clearTimeout(sharedBlinkResetTimer);
+    sharedBlinkResetTimer = setTimeout(() => {
+      blinkSubscribers.forEach((cb) => cb(false));
+      scheduleSharedBlink();
+    }, 150);
+  }, 3600 + Math.random() * 2200);
+}
+
+function subscribeBlink(cb) {
+  blinkSubscribers.add(cb);
+  scheduleSharedBlink();
+  return () => {
+    blinkSubscribers.delete(cb);
+    if (blinkSubscribers.size === 0) {
+      clearTimeout(sharedBlinkTimer);
+      clearTimeout(sharedBlinkResetTimer);
+      sharedBlinkTimer = null;
+      sharedBlinkResetTimer = null;
+    }
+  };
+}
+
 export default function RoboEyes({ mood = 'normal', reaction = null, active = true, trackCursor = true, onPoke, size = 'normal', micLevel = 0, showMouth = false, batteryPercent, batteryCharging = false, unreadNotificationCount = 0, pendingAgendaCount = 0 }) {
   const [blink, setBlink] = useState(false);
   const [wakePhase, setWakePhase] = useState('closed'); // 'closed' | 'flutter' | 'look-left' | 'look-right' | 'happy' | 'done'
@@ -30,21 +62,13 @@ export default function RoboEyes({ mood = 'normal', reaction = null, active = tr
     clearTimeout(dizzyTimerRef.current);
   }, []);
 
-  // A single lightweight blink timer runs only for the currently visible Robo instance.
+  // Subscribe to the shared blink coordinator so all visible Robo instances blink together.
   useEffect(() => {
     if (!active || mood === 'music' || mood === 'dnd-sleep') {
       setBlink(false);
       return undefined;
     }
-    const interval = setInterval(() => {
-      setBlink(true);
-      clearTimeout(blinkTimerRef.current);
-      blinkTimerRef.current = setTimeout(() => setBlink(false), 150);
-    }, 3600 + Math.random() * 2200);
-    return () => {
-      clearInterval(interval);
-      clearTimeout(blinkTimerRef.current);
-    };
+    return subscribeBlink(setBlink);
   }, [active, mood]);
 
   // Subtle eye tracking toward cursor (disabled in idle to avoid background re-renders)
@@ -182,7 +206,7 @@ export default function RoboEyes({ mood = 'normal', reaction = null, active = tr
             ) : activeMood === 'thinking' || activeReaction === 'thinking' ? (
               <path d="M7 5.5 Q12 4.5 17 5.5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
             ) : activeMood === 'sleepy' || isDndSleep ? (
-              <circle cx="12" cy="5.5" r="1.7" fill="none" stroke="currentColor" strokeWidth="1.5" />
+              <path d="M8.5 5.2 Q12 6.8 15.5 5.2" fill="none" stroke="currentColor" strokeWidth="1.55" strokeLinecap="round" />
             ) : (
               <path d="M7.5 4.5 Q12 7.4 16.5 4.5" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
             )}
