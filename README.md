@@ -12,7 +12,7 @@
 [![Vite](https://img.shields.io/badge/Vite-6-646CFF?style=for-the-badge&logo=vite&logoColor=white)](https://vite.dev/)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2010%2F11-0078D6?style=for-the-badge&logo=windows&logoColor=white)](#)
 
-**Bedo** transforms the top edge of your Windows desktop into a living, breathing **Liquid Glass Dynamic Island**—combining fluid spring-physics micro-interactions, real-time media & hardware HUDs, Google Calendar & Gmail integration, and live activity tracking for **Claude Code**, **OpenAI Codex**, **Gemini CLI**, and **Antigravity IDE**.
+**Bedo** transforms the top edge of your Windows desktop into a living, breathing **Liquid Glass Dynamic Island**—combining a **multimodal AI Assistant (live voice with 6 voice personas, text chat, and camera vision)**, fluid spring-physics micro-interactions, real-time media & hardware HUDs, Google Calendar & Gmail integration, and live activity tracking for **Claude Code**, **OpenAI Codex**, **Gemini CLI**, and **Antigravity IDE**.
 
 </div>
 
@@ -54,10 +54,22 @@ Every surface in Bedo is designed as layered **Liquid Glass** with physical dept
 
 ---
 
+## Multimodal AI Assistant (Voice, Text & Camera)
+
+Bedo isn't just a passive status bar—it's an always-accessible **multimodal AI companion** built directly into the Dynamic Island:
+
+- **Real-Time Voice Conversations**: Talk naturally to Bedo hands-free with live microphone streaming and instant spoken responses.
+- **6 Selectable Voice Personas (`Bedo Voice`)**: Choose the tone that fits your workflow—**Charon** *(Default · Deep)*, **Fenrir** *(Crisp · Strong)*, **Puck** *(Dynamic · Youthful)*, **Aoede** *(Soft · Natural)*, **Kore** *(Warm · Calm)*, or **Zephyr** *(Light · Smooth)*. Switching voices reconnects automatically with zero friction.
+- **Text Chat & Rich Markdown**: Type directly inside the island or Settings companion with full Markdown rendering (`RoboMarkdown.jsx`) powered by your choice of **Gemini**, **Claude**, or **OpenAI**.
+- **Live Camera Vision**: Toggle your webcam (`webcamActive`) so Bedo can see what you show it in real time—combining voice, text, and visual context in one fluid Liquid Glass interface.
+
+---
+
 ## Core Capabilities
 
 | Category | Features |
 | :--- | :--- |
+| **Multimodal AI Assistant** | Live voice conversations, **6 voice personas** (`Charon`, `Fenrir`, `Puck`, `Aoede`, `Kore`, `Zephyr`), text chat (`RoboMarkdown.jsx`), and live **camera vision** |
 | **Dynamic Island Core** | Collapsible top-edge pill, drag-to-reorder/expand interactions, focus protection, custom island sizing & typography |
 | **AI Agent Monitoring** | Live hooks & activity stream for **Claude Code**, **Codex**, **Gemini CLI**, and **Antigravity IDE** (`live-activity-watcher.cjs`) |
 | **One-Click IDE Focus** | Click any completed agent task in Home or Agents to focus and jump directly to the corresponding IDE window/session |
