@@ -1735,6 +1735,12 @@ export default function App() {
 
   // G-Helper live status (performance_mode & gpu_mode)
   const [systemMicMuted, setSystemMicMuted] = useState(false);
+
+  useEffect(() => {
+    if (!bedoStatus.running) return;
+    window.twocode?.bedoSetSystemMicMuted?.(systemMicMuted);
+  }, [systemMicMuted, bedoStatus.running]);
+
   const [ghelperStatus, setGhelperStatus] = useState({
     performanceMode: 0,
     performanceName: 'Dengeli',
@@ -2940,9 +2946,13 @@ export default function App() {
       });
     };
 
-    window.twocode?.getSystemMicMuted?.().then((mutedState) => {
-      if (typeof mutedState === 'boolean') setSystemMicMuted(mutedState);
-    }).catch(() => {});
+    const syncSystemMicMuted = () => {
+      window.twocode?.getSystemMicMuted?.().then((mutedState) => {
+        if (typeof mutedState === 'boolean') setSystemMicMuted(mutedState);
+      }).catch(() => {});
+    };
+    syncSystemMicMuted();
+    window.addEventListener('focus', syncSystemMicMuted);
 
     window.twocode.getSettings?.().then((saved) => {
       if (saved && typeof saved === 'object') {
@@ -3222,6 +3232,7 @@ export default function App() {
       if (unsubGameMode) unsubGameMode();
       if (unsubMedia) unsubMedia();
       if (unsubClip) unsubClip();
+      window.removeEventListener('focus', syncSystemMicMuted);
       window.removeEventListener('dragover', handleWindowDragOver);
       window.removeEventListener('drop', handleWindowDrop);
       if (unsubAgent) unsubAgent();

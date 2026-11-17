@@ -26,6 +26,7 @@ class BedoService extends EventEmitter {
     this._proc = null;
     this._stdoutBuffer = '';
     this._stopping = false;
+    this._systemMicMuted = false;
     this._state = {
       running: false,
       ready: false,
@@ -158,6 +159,9 @@ class BedoService extends EventEmitter {
         this._state.ready = true;
         this._state.paused = Boolean(msg.paused);
         this._state.wakeEnabled = msg.wake_enabled !== false;
+        if (this._systemMicMuted) {
+          this.sendCommand({ cmd: 'set_system_mic_muted', muted: true });
+        }
         this.emit('status', this.getStatus());
         break;
       case 'state':
@@ -202,6 +206,11 @@ class BedoService extends EventEmitter {
 
   setMuted(muted) {
     return this.sendCommand({ cmd: 'set_muted', muted: Boolean(muted) });
+  }
+
+  setSystemMicMuted(muted) {
+    this._systemMicMuted = Boolean(muted);
+    return this.sendCommand({ cmd: 'set_system_mic_muted', muted: this._systemMicMuted });
   }
 
   setPaused(paused) {

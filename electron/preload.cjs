@@ -196,6 +196,7 @@ contextBridge.exposeInMainWorld('twocode', {
   bedoGetStatus: () => ipcRenderer.invoke('bedo:status'),
   bedoSendText: (text) => ipcRenderer.invoke('bedo:send-text', text),
   bedoSetMuted: (muted) => ipcRenderer.invoke('bedo:set-muted', muted),
+  bedoSetSystemMicMuted: (muted) => ipcRenderer.invoke('bedo:set-system-mic-muted', muted),
   bedoSetPaused: (paused) => ipcRenderer.invoke('bedo:set-paused', paused),
   bedoSetWebcam: (active) => ipcRenderer.invoke('bedo:set-webcam', active),
   bedoSyncIslandState: (state) => ipcRenderer.invoke('bedo:island-state', state),

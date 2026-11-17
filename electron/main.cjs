@@ -4473,6 +4473,11 @@ ipcMain.handle('bedo:set-muted', async (_event, muted) => {
   return { ok };
 });
 
+ipcMain.handle('bedo:set-system-mic-muted', async (_event, muted) => {
+  const ok = getBedoService().setSystemMicMuted(Boolean(muted));
+  return { ok };
+});
+
 ipcMain.handle('bedo:set-paused', async (_event, paused) => {
   const ok = getBedoService().setPaused(Boolean(paused));
   return { ok };
