@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import './styles.css';
 import './typography.css';
 import { initializeTypography } from './typography';
+import { createTranslator } from './i18n';
 
 const App = lazy(() => import('./App'));
 const SettingsApp = lazy(() => import('./SettingsApp'));
@@ -30,6 +31,11 @@ class GlobalErrorBoundary extends React.Component {
   }
   render() {
     if (this.state.hasError) {
+      const savedLang = (() => {
+        try { return localStorage.getItem('twocode_lang') || navigator.language || 'en'; }
+        catch { return 'en'; }
+      })();
+      const t = createTranslator(savedLang);
       return (
         <div style={{
           width: '100%',
@@ -43,7 +49,7 @@ class GlobalErrorBoundary extends React.Component {
           boxSizing: 'border-box'
         }}>
           <strong style={{ fontSize: '14px', display: 'block', marginBottom: '8px' }}>
-            ⚠️ Dynamic Island Render Hatası
+            {t('errorBoundary.title')}
           </strong>
           <div style={{ whiteSpace: 'pre-wrap', color: '#ffb4b4', marginBottom: '12px' }}>
             {String(this.state.error?.stack || this.state.error?.message || this.state.error)}
@@ -59,7 +65,7 @@ class GlobalErrorBoundary extends React.Component {
               cursor: 'pointer'
             }}
           >
-            Yeniden Başlat
+            {t('errorBoundary.reload')}
           </button>
         </div>
       );

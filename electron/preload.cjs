@@ -190,6 +190,24 @@ contextBridge.exposeInMainWorld('twocode', {
     return () => ipcRenderer.removeListener('google-data-update', listener);
   },
   askRobo: (payload) => ipcRenderer.invoke('ask-robo', payload),
+  bedoStart: (opts) => ipcRenderer.invoke('bedo:start', opts),
+  bedoStop: () => ipcRenderer.invoke('bedo:stop'),
+  bedoGetStatus: () => ipcRenderer.invoke('bedo:status'),
+  bedoSendText: (text) => ipcRenderer.invoke('bedo:send-text', text),
+  bedoSetMuted: (muted) => ipcRenderer.invoke('bedo:set-muted', muted),
+  bedoSetPaused: (paused) => ipcRenderer.invoke('bedo:set-paused', paused),
+  bedoSetWebcam: (active) => ipcRenderer.invoke('bedo:set-webcam', active),
+  bedoSyncIslandState: (state) => ipcRenderer.invoke('bedo:island-state', state),
+  onBedoEvent: (cb) => {
+    const listener = (_event, msg) => cb(msg);
+    ipcRenderer.on('bedo-event', listener);
+    return () => ipcRenderer.removeListener('bedo-event', listener);
+  },
+  onBedoStatus: (cb) => {
+    const listener = (_event, status) => cb(status);
+    ipcRenderer.on('bedo-status', listener);
+    return () => ipcRenderer.removeListener('bedo-status', listener);
+  },
   onAppContext: (cb) => {
     const listener = (_event, data) => cb(data);
     ipcRenderer.on('app-context', listener);

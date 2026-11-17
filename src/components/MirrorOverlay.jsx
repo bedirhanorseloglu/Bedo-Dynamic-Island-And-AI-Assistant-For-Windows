@@ -1,6 +1,8 @@
 import React, { useEffect, useRef } from 'react';
+import { useI18n } from '../i18n';
 
 export default function MirrorOverlay({ onClose }) {
+  const { t } = useI18n();
   const videoRef = useRef(null);
   const streamRef = useRef(null);
 
@@ -33,7 +35,7 @@ export default function MirrorOverlay({ onClose }) {
     <div className="mirror-overlay-view">
       <video ref={videoRef} autoPlay playsInline muted className="mirror-video-feed" />
       <button type="button" className="mirror-close-pill" onClick={onClose}>
-        Kapat
+        {t('common.close')}
       </button>
     </div>
   );

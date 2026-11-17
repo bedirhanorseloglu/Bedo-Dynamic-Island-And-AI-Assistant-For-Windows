@@ -1,5 +1,6 @@
 import React from 'react';
 import { CLOCK_FONT_FAMILIES } from './typography';
+import { useI18n } from './i18n';
 export { CLOCK_FONT_FAMILIES } from './typography';
 
 export default function HeroClock({
@@ -11,6 +12,7 @@ export default function HeroClock({
   onClick,
   size = 'hero',
 }) {
+  const { t } = useI18n();
   const chars = timeStr.split('');
   const fontFamily = CLOCK_FONT_FAMILIES[fontIndex] || CLOCK_FONT_FAMILIES[3];
   const isDottedMono = fontIndex === 3;
@@ -29,8 +31,8 @@ export default function HeroClock({
           onClick();
         }
       } : undefined}
-      aria-label={onClick ? `Saat ${timeStr} ${suffix}. Saat görünümünü özelleştir` : undefined}
-      title={onClick ? 'Font and colour' : undefined}
+      aria-label={onClick ? t('clock.ariaLabel', { time: timeStr, suffix: suffix ? ` ${suffix}` : '' }) : undefined}
+      title={onClick ? t('clock.title') : undefined}
       style={{
         fontFamily,
         color,

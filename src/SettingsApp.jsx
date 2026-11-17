@@ -42,6 +42,7 @@ import {
 import './settings.css';
 import { playRoboSound, playNotifSound } from './sounds';
 import { applyTypographyTokens, CLOCK_FONT_OPTIONS, CLOCK_STORAGE_KEY, normalizeFontIndex, readTypographyPreferences, TEXT_FONT_OPTIONS, TYPOGRAPHY_STORAGE_KEY } from './typography';
+import { LanguageProvider, createTranslator, getLocale, languageLabel, normalizeLanguage } from './i18n';
 
 const DEFAULT_SETTINGS = {
   userName: 'Bedirhan',
@@ -55,6 +56,7 @@ const DEFAULT_SETTINGS = {
   claudeApiKey: '',
   codexApiKey: '',
   geminiApiKey: '',
+  bedoVoice: 'Charon',
   antigravityApiKey: '',
   apps: [],
   roboBuddy: true,
@@ -305,14 +307,20 @@ export default function SettingsApp() {
 
     window.twocode.getSettings?.().then((saved) => {
       if (saved && typeof saved === 'object') {
-        setSettings((prev) => ({ ...prev, ...saved }));
+        const normalized = { ...saved, language: languageLabel(saved.language || 'en') };
+        setSettings((prev) => ({ ...prev, ...normalized }));
+        try { localStorage.setItem('twocode_lang', normalizeLanguage(normalized.language)); } catch {}
         if (saved.roboName) setRoboNameDraft(saved.roboName);
       }
     });
 
     const unsubSettings = window.twocode.onSettingsUpdated?.((updated) => {
       if (updated && typeof updated === 'object') {
-        setSettings((prev) => ({ ...prev, ...updated }));
+        const normalized = updated.language ? { ...updated, language: languageLabel(updated.language) } : updated;
+        setSettings((prev) => ({ ...prev, ...normalized }));
+        if (normalized.language) {
+          try { localStorage.setItem('twocode_lang', normalizeLanguage(normalized.language)); } catch {}
+        }
       }
     });
 
@@ -354,9 +362,17 @@ export default function SettingsApp() {
     };
   }, []);
 
+  const langCode = normalizeLanguage(settings.language);
+  const t = useMemo(() => createTranslator(langCode), [langCode]);
+  const locale = getLocale(langCode);
+
   const updateSetting = (patch) => {
     setSettings((prev) => {
       const next = { ...prev, ...patch };
+      if (patch.language) {
+        next.language = languageLabel(patch.language);
+        try { localStorage.setItem('twocode_lang', normalizeLanguage(next.language)); } catch {}
+      }
       window.twocode?.saveSettings?.(next);
       return next;
     });
@@ -368,9 +384,9 @@ export default function SettingsApp() {
     const result = await window.twocode?.connectAgentIntegrations?.();
     if (result?.ok) {
       setAgentIntegration(result.status);
-      setAgentIntegrationMessage('Connections installed. Restart Codex and Antigravity to load their hooks.');
+      setAgentIntegrationMessage(t('settings.agents.installSuccess'));
     } else {
-      setAgentIntegrationMessage(result?.error || 'Could not install the agent connections.');
+      setAgentIntegrationMessage(result?.error || t('settings.agents.installError'));
     }
     setAgentIntegrationBusy(false);
   };
@@ -378,7 +394,7 @@ export default function SettingsApp() {
   const testAgentTool = async (agent) => {
     setAgentIntegrationBusy(true);
     const result = await window.twocode?.testAgentIntegration?.(agent);
-    setAgentIntegrationMessage(result?.ok ? `${agent} test event reached TwoCode.` : (result?.error || 'TwoCode agent listener is not responding.'));
+    setAgentIntegrationMessage(result?.ok ? t('settings.agents.testSuccess', { agent }) : (result?.error || t('settings.agents.testError')));
     setAgentIntegrationBusy(false);
   };
 
@@ -397,9 +413,9 @@ export default function SettingsApp() {
     const res = await window.twocode?.installGHelperBridge?.();
     if (res?.ok) {
       setGhelperStatus(res.status || { installed: true, running: true });
-      setGhelperMessage('G-Helper köprü görevi başarıyla kuruldu.');
+      setGhelperMessage(t('settings.agents.ghelperInstalled'));
     } else {
-      setGhelperMessage(res?.error || 'G-Helper köprü görevi kurulamadı.');
+      setGhelperMessage(res?.error || t('settings.agents.ghelperError'));
     }
     setGhelperBusy(false);
   };
@@ -423,31 +439,18 @@ export default function SettingsApp() {
   };
 
   const formatDateTop = (d) => {
-    const days = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
-    const months = [
-      'JAN',
-      'FEB',
-      'MAR',
-      'APR',
-      'MAY',
-      'JUN',
-      'JUL',
-      'AUG',
-      'SEP',
-      'OCT',
-      'NOV',
-      'DEC',
-    ];
-    return `${days[d.getDay()]} ${String(d.getDate()).padStart(2, '0')} ${months[d.getMonth()]}`;
+    const wd = d.toLocaleDateString(locale, { weekday: 'short' }).replace('.', '').toUpperCase();
+    const mo = d.toLocaleDateString(locale, { month: 'short' }).replace('.', '').toUpperCase();
+    return `${wd} ${String(d.getDate()).padStart(2, '0')} ${mo}`;
   };
 
   const greetingTimeOfDay = useMemo(() => {
     const h = now.getHours();
-    if (h < 6 || h >= 22) return 'Good night';
-    if (h < 12) return 'Good morning';
-    if (h < 18) return 'Good afternoon';
-    return 'Good evening';
-  }, [now]);
+    if (h < 6 || h >= 22) return t('settings.greeting.night');
+    if (h < 12) return t('settings.greeting.morning');
+    if (h < 18) return t('settings.greeting.afternoon');
+    return t('settings.greeting.evening');
+  }, [now, t]);
 
   const handleAddApp = async () => {
     const name = newAppName.trim();
@@ -544,12 +547,16 @@ export default function SettingsApp() {
     playNotifSound(settings.notifSound || 'Ding', settings.soundEffects !== false);
     window.twocode?.triggerTestNotification?.({
       title: selectedNotifItem,
-      subtitle: 'Your notification preview is ready',
+      subtitle: langCode === 'tr' ? 'Bildirim önizlemeniz hazır' : 'Your notification preview is ready',
       color: settings.notifColor,
     });
   };
 
-  const headerInfo = PAGE_HEADERS[activePage] || PAGE_HEADERS.home;
+  const headerInfo = {
+    title: t(`settings.header.${activePage}.title`),
+    subtitle: t(`settings.header.${activePage}.sub`),
+    hasSearch: Boolean(PAGE_HEADERS[activePage]?.hasSearch),
+  };
 
   const filteredActivities = useMemo(() => {
     const all = [
@@ -569,6 +576,7 @@ export default function SettingsApp() {
   ].sort((a, b) => String(b.time || '').localeCompare(String(a.time || ''))).slice(0, 4), [aiHistory]);
 
   return (
+    <LanguageProvider language={settings.language}>
     <div className="twocode-settings-window">
       {/* ============================================================
           LEFT SIDEBAR NAVIGATION
@@ -583,7 +591,7 @@ export default function SettingsApp() {
             </div>
             <div className="brand-text-col">
               <strong>TwoCode</strong>
-              <span>Settings</span>
+              <span>{t('settings.subtitle')}</span>
             </div>
           </div>
           <span className="beta-pill">BETA</span>
@@ -591,12 +599,12 @@ export default function SettingsApp() {
 
         <div className="sidebar-scroll-nav">
           <div className="nav-section-group">
-            <span className="nav-section-label">TWOCODE</span>
+            <span className="nav-section-label">{t('settings.navGroup.twocode')}</span>
             {[
-              { id: 'home', label: 'Home', icon: Home },
-              { id: 'connections', label: 'Agents', icon: Plug },
-              { id: 'aichat', label: 'AI & Chat', icon: MessageSquare },
-              { id: 'apps', label: 'Apps', icon: LayoutGrid },
+              { id: 'home', label: t('settings.nav.home'), icon: Home },
+              { id: 'connections', label: t('settings.nav.connections'), icon: Plug },
+              { id: 'aichat', label: t('settings.nav.aichat'), icon: MessageSquare },
+              { id: 'apps', label: t('settings.nav.apps'), icon: LayoutGrid },
             ].map((item) => {
               const Icon = item.icon;
               return (
@@ -614,10 +622,10 @@ export default function SettingsApp() {
           </div>
 
           <div className="nav-section-group">
-            <span className="nav-section-label">ROBO</span>
+            <span className="nav-section-label">{t('settings.navGroup.robo')}</span>
             {[
-              { id: 'robo', label: 'Robo', icon: Bot },
-              { id: 'wardrobe', label: 'Wardrobe', icon: Shirt },
+              { id: 'robo', label: t('settings.nav.robo'), icon: Bot },
+              { id: 'wardrobe', label: t('settings.nav.wardrobe'), icon: Shirt },
             ].map((item) => {
               const Icon = item.icon;
               return (
@@ -635,16 +643,16 @@ export default function SettingsApp() {
           </div>
 
           <div className="nav-section-group">
-            <span className="nav-section-label">SETTINGS</span>
+            <span className="nav-section-label">{t('settings.navGroup.settings')}</span>
             {[
-              { id: 'account', label: 'Account', icon: User },
-              { id: 'general', label: 'General', icon: SlidersHorizontal },
-              { id: 'typography', label: 'Typography', icon: Type },
-              { id: 'notifications', label: 'Notifications', icon: Bell },
-              { id: 'island', label: 'Island', icon: PanelTop },
-              { id: 'focusguard', label: 'Focus guard', icon: Shield },
-              { id: 'news', label: 'News', icon: Newspaper },
-              { id: 'support', label: 'Support TwoCode', icon: Heart },
+              { id: 'account', label: t('settings.nav.account'), icon: User },
+              { id: 'general', label: t('settings.nav.general'), icon: SlidersHorizontal },
+              { id: 'typography', label: t('settings.nav.typography'), icon: Type },
+              { id: 'notifications', label: t('settings.nav.notifications'), icon: Bell },
+              { id: 'island', label: t('settings.nav.island'), icon: PanelTop },
+              { id: 'focusguard', label: t('settings.nav.focusguard'), icon: Shield },
+              { id: 'news', label: t('settings.nav.news'), icon: Newspaper },
+              { id: 'support', label: t('settings.nav.support'), icon: Heart },
             ].map((item) => {
               const Icon = item.icon;
               return (
@@ -668,13 +676,13 @@ export default function SettingsApp() {
           </div>
           <div className="mini-robo-meta">
             <strong>{settings.roboName || 'Robo'}</strong>
-            <span>{aiHistory.jobsToday || 2} tasks done</span>
+            <span>{t('settings.tasksDone', { count: aiHistory.jobsToday || 2 })}</span>
           </div>
           <button
             type="button"
             className="sidebar-theme-btn"
             onClick={(e) => e.stopPropagation()}
-            title="Theme"
+            title={t('settings.theme')}
           >
             <Sun size={15} />
           </button>
@@ -699,14 +707,14 @@ export default function SettingsApp() {
             <button
               type="button"
               onClick={() => window.twocode?.settingsWindowControl?.('minimize')}
-              title="Küçült"
+              title={t('settings.win.minimize')}
             >
               <Minus size={14} />
             </button>
             <button
               type="button"
               onClick={() => window.twocode?.settingsWindowControl?.('maximize')}
-              title="Büyüt"
+              title={t('settings.win.maximize')}
             >
               <Square size={12} />
             </button>
@@ -714,7 +722,7 @@ export default function SettingsApp() {
               type="button"
               className="close-btn"
               onClick={() => window.twocode?.settingsWindowControl?.('close')}
-              title="Kapat"
+              title={t('settings.win.close')}
             >
               <X size={15} />
             </button>
@@ -760,7 +768,7 @@ export default function SettingsApp() {
                 <Search size={14} />
                 <input
                   type="text"
-                  placeholder="Search"
+                  placeholder={t('settings.searchPlaceholder')}
                   value={pageSearch}
                   onChange={(e) => setPageSearch(e.target.value)}
                 />
@@ -780,7 +788,7 @@ export default function SettingsApp() {
                   {greetingTimeOfDay}, {settings.userName}
                 </h2>
                 <p className="greeting-sub">
-                  Robo keeps an eye on your AI and tells you when it is done or has a question.
+                  {t('settings.home.sub')}
                 </p>
               </div>
               <div className="greeting-ai-pills">
@@ -790,7 +798,7 @@ export default function SettingsApp() {
                     <i />
                   </span>
                   <strong>Claude Code</strong>
-                  <span>idle</span>
+                  <span>{t('settings.home.idle')}</span>
                 </div>
                 <div className="ai-status-pill" onClick={() => setActivePage('connections')}>
                   <span className="ai-badge-icon codex">
@@ -798,14 +806,14 @@ export default function SettingsApp() {
                     <i />
                   </span>
                   <strong>Codex</strong>
-                  <span>idle</span>
+                  <span>{t('settings.home.idle')}</span>
                 </div>
                 <div className="ai-status-pill" onClick={() => setActivePage('connections')}>
                   <span className="ai-badge-icon gemini">
                     <RealAppIcon sc={{ id: 'settings-pill-gemini', type: 'gemini' }} size={15} />
                   </span>
                   <strong>Gemini</strong>
-                  <span>active</span>
+                  <span>{t('settings.home.active')}</span>
                 </div>
                 <div className="ai-status-pill" onClick={() => setActivePage('connections')}>
                   <span className="ai-badge-icon antigravity">
@@ -813,7 +821,7 @@ export default function SettingsApp() {
                     <i />
                   </span>
                   <strong>Antigravity</strong>
-                  <span>active</span>
+                  <span>{t('settings.home.active')}</span>
                 </div>
               </div>
             </div>
@@ -825,7 +833,7 @@ export default function SettingsApp() {
                 </div>
                 <div className="stat-meta">
                   <strong>{aiHistory.jobsToday || 0}</strong>
-                  <span>tasks done</span>
+                  <span>{t('settings.home.tasksDone')}</span>
                 </div>
               </div>
 
@@ -835,7 +843,7 @@ export default function SettingsApp() {
                 </div>
                 <div className="stat-meta">
                   <strong>{aiHistory.jobsToday || 0}</strong>
-                  <span>today</span>
+                  <span>{t('settings.home.today')}</span>
                 </div>
               </div>
 
@@ -845,7 +853,7 @@ export default function SettingsApp() {
                 </div>
                 <div className="stat-meta">
                   <strong>1</strong>
-                  <span>days in a row</span>
+                  <span>{t('settings.home.daysStreak')}</span>
                 </div>
               </div>
             </div>
@@ -853,18 +861,18 @@ export default function SettingsApp() {
             <div className="home-two-col">
               <div className="home-activity-col">
                 <div className="activity-header-row">
-                  <h3>Activity</h3>
+                  <h3>{t('settings.home.activity')}</h3>
                   <input
                     type="text"
                     className="activity-search-input"
-                    placeholder="Search your activity"
+                    placeholder={t('settings.home.searchActivity')}
                     value={activitySearch}
                     onChange={(e) => setActivitySearch(e.target.value)}
                   />
                 </div>
 
                 <div className="settings-card activity-list-card">
-                  <span className="activity-day-label">Today</span>
+                  <span className="activity-day-label">{t('common.today')}</span>
                   <div className="activity-items-wrap">
                     {filteredActivities.slice(0, 8).map((job, idx) => {
                       const agent = (job.agent || '').toLowerCase();
@@ -894,7 +902,7 @@ export default function SettingsApp() {
                               {job.time} · {agentLabel} · {idx === 0 ? '2 s' : '1 s'}
                             </span>
                           </div>
-                          <span className="activity-done-tag">Done</span>
+                          <span className="activity-done-tag">{t('settings.home.done')}</span>
                         </div>
                       );
                     })}
@@ -913,7 +921,7 @@ export default function SettingsApp() {
                       <span className="ql-icon pink">
                         <Shirt size={15} />
                       </span>
-                      <strong>Wardrobe</strong>
+                      <strong>{t('settings.nav.wardrobe')}</strong>
                     </div>
                     <ChevronRight size={15} />
                   </button>
@@ -927,7 +935,7 @@ export default function SettingsApp() {
                       <span className="ql-icon green">
                         <Plug size={15} />
                       </span>
-                      <strong>Agents</strong>
+                      <strong>{t('settings.nav.connections')}</strong>
                     </div>
                     <ChevronRight size={15} />
                   </button>
@@ -941,7 +949,7 @@ export default function SettingsApp() {
                       <span className="ql-icon blue">
                         <SlidersHorizontal size={15} />
                       </span>
-                      <strong>General</strong>
+                      <strong>{t('settings.nav.general')}</strong>
                     </div>
                     <ChevronRight size={15} />
                   </button>
@@ -950,11 +958,10 @@ export default function SettingsApp() {
                 <div className="settings-card tip-card">
                   <div className="tip-header">
                     <Hand size={15} />
-                    <strong>Tip: Robo Buddy</strong>
+                    <strong>{t('settings.home.tipTitle')}</strong>
                   </div>
                   <p>
-                    Drag Robo out of the island onto anything on your screen and ask what it says.
-                    Or let him check your spelling in Word.
+                    {t('settings.home.tipBody')}
                   </p>
                 </div>
               </div>
@@ -971,55 +978,55 @@ export default function SettingsApp() {
               <div className="agents-hero-orbit agents-hero-orbit-one" />
               <div className="agents-hero-orbit agents-hero-orbit-two" />
               <div className="agents-hero-copy">
-                <span className="agents-eyebrow"><Sparkles size={12} /> YOUR LOCAL AGENT DESK</span>
-                <h2>All your agents,<br /><span>one quiet signal.</span></h2>
-                <p>See when Codex or Antigravity starts thinking and when its answer is ready. Activity stays on this PC and appears in the Island.</p>
+                <span className="agents-eyebrow"><Sparkles size={12} /> {langCode === 'tr' ? 'YEREL AJAN MASANIZ' : 'YOUR LOCAL AGENT DESK'}</span>
+                <h2>{langCode === 'tr' ? (<>Tüm ajanların,<br /><span>tek sessiz sinyal.</span></>) : (<>All your agents,<br /><span>one quiet signal.</span></>)}</h2>
+                <p>{langCode === 'tr' ? 'Codex veya Antigravity düşünmeye başladığında ve yanıtı hazır olduğunda görün. Etkinlik bu PC’de kalır ve Ada’da görünür.' : 'See when Codex or Antigravity starts thinking and when its answer is ready. Activity stays on this PC and appears in the Island.'}</p>
               </div>
               <div className="agents-hero-action">
-                <span className={`agents-bridge-status ${agentIntegration.codexConnected || agentIntegration.antigravityConnected ? 'is-ready' : ''}`}><i />{agentIntegration.codexConnected || agentIntegration.antigravityConnected ? 'Bridge ready' : 'Bridge not connected'}</span>
+                <span className={`agents-bridge-status ${agentIntegration.codexConnected || agentIntegration.antigravityConnected ? 'is-ready' : ''}`}><i />{agentIntegration.codexConnected || agentIntegration.antigravityConnected ? (langCode === 'tr' ? 'Köprü hazır' : 'Bridge ready') : (langCode === 'tr' ? 'Köprü bağlı değil' : 'Bridge not connected')}</span>
                 <button type="button" className="agent-connect-button" onClick={connectAgentTools} disabled={agentIntegrationBusy}>
                   {agentIntegrationBusy ? <RefreshCw size={14} className="agent-spin-icon" /> : <Link2 size={14} />}
-                  {agentIntegrationBusy ? 'Connecting…' : agentIntegration.codexConnected && agentIntegration.antigravityConnected ? 'Refresh setup' : 'Connect agents'}
+                  {agentIntegrationBusy ? (langCode === 'tr' ? 'Bağlanıyor…' : 'Connecting…') : agentIntegration.codexConnected && agentIntegration.antigravityConnected ? (langCode === 'tr' ? 'Kurulumu yenile' : 'Refresh setup') : (langCode === 'tr' ? 'Ajanları bağla' : 'Connect agents')}
                 </button>
               </div>
             </section>
-            {agentIntegrationMessage && <div className={`agent-integration-message ${agentIntegrationMessage.toLowerCase().includes('could not') || agentIntegrationMessage.toLowerCase().includes('not responding') ? 'error' : 'success'}`} role="status">{agentIntegrationMessage}</div>}
+            {agentIntegrationMessage && <div className={`agent-integration-message ${/could not|not responding|yanıt vermiyor|bulunamad|kurulamad|başarısız/i.test(agentIntegrationMessage) ? 'error' : 'success'}`} role="status">{agentIntegrationMessage}</div>}
 
             <div className="agents-summary-strip">
-              <div><span className="agents-summary-icon blue"><Link2 size={14} /></span><span><strong>{Number(agentIntegration.codexConnected) + Number(agentIntegration.antigravityConnected)}<small> / 2</small></strong><small>hooks installed</small></span></div>
-              <div><span className="agents-summary-icon mint"><Check size={14} /></span><span><strong>{aiHistory.jobsToday || 0}</strong><small>tasks today</small></span></div>
-              <div><span className="agents-summary-icon violet"><Bell size={14} /></span><span><strong>{recentAgentJobs.length ? recentAgentJobs[0].agent : 'Ready'}</strong><small>{recentAgentJobs.length ? `last active · ${recentAgentJobs[0].time}` : 'waiting for activity'}</small></span></div>
+              <div><span className="agents-summary-icon blue"><Link2 size={14} /></span><span><strong>{Number(agentIntegration.codexConnected) + Number(agentIntegration.antigravityConnected)}<small> / 2</small></strong><small>{langCode === 'tr' ? 'kanca kurulu' : 'hooks installed'}</small></span></div>
+              <div><span className="agents-summary-icon mint"><Check size={14} /></span><span><strong>{aiHistory.jobsToday || 0}</strong><small>{langCode === 'tr' ? 'bugünkü görev' : 'tasks today'}</small></span></div>
+              <div><span className="agents-summary-icon violet"><Bell size={14} /></span><span><strong>{recentAgentJobs.length ? recentAgentJobs[0].agent : t('common.ready')}</strong><small>{recentAgentJobs.length ? (langCode === 'tr' ? `son aktif · ${recentAgentJobs[0].time}` : `last active · ${recentAgentJobs[0].time}`) : (langCode === 'tr' ? 'etkinlik bekleniyor' : 'waiting for activity')}</small></span></div>
             </div>
 
             <div className="agent-connection-grid">
               <section className="agent-connection-card codex" style={{ '--agent-rgb': '97, 152, 255', '--agent-hex': '#6198ff' }}>
-                <div className="agent-card-heading"><span className="ai-badge-icon lg codex"><i /><i /></span><div><strong>Codex</strong><span>App · CLI · VS Code</span></div><span className={`agent-status-pill ${agentIntegration.codexConnected ? 'connected' : ''}`}><i />{agentIntegration.codexConnected ? 'Hook ready' : 'Not connected'}</span></div>
-                <p className="agent-card-description">Get an Island signal when Codex starts and replies.</p>
-                <div className="agent-card-detail"><span>Local hook</span><code>{agentIntegration.codexConnected ? 'Installed · restart Codex' : '~/.codex/hooks.json'}</code></div>
-                <button type="button" className="agent-test-button" onClick={() => testAgentTool('Codex')} disabled={agentIntegrationBusy}><Play size={13} /> Preview notification</button>
+                <div className="agent-card-heading"><span className="ai-badge-icon lg codex"><i /><i /></span><div><strong>Codex</strong><span>App · CLI · VS Code</span></div><span className={`agent-status-pill ${agentIntegration.codexConnected ? 'connected' : ''}`}><i />{agentIntegration.codexConnected ? (langCode === 'tr' ? 'Kanca hazır' : 'Hook ready') : (langCode === 'tr' ? 'Bağlı değil' : 'Not connected')}</span></div>
+                <p className="agent-card-description">{langCode === 'tr' ? 'Codex başladığında ve yanıt verdiğinde Ada’dan sinyal alın.' : 'Get an Island signal when Codex starts and replies.'}</p>
+                <div className="agent-card-detail"><span>{langCode === 'tr' ? 'Yerel kanca' : 'Local hook'}</span><code>{agentIntegration.codexConnected ? (langCode === 'tr' ? 'Kuruldu · Codex’i yeniden başlatın' : 'Installed · restart Codex') : '~/.codex/hooks.json'}</code></div>
+                <button type="button" className="agent-test-button" onClick={() => testAgentTool('Codex')} disabled={agentIntegrationBusy}><Play size={13} /> {langCode === 'tr' ? 'Bildirimi önizle' : 'Preview notification'}</button>
               </section>
               <section className="agent-connection-card antigravity" style={{ '--agent-rgb': '73, 218, 202', '--agent-hex': '#49daca' }}>
-                <div className="agent-card-heading"><span className="ai-badge-icon lg antigravity"><i /><i /></span><div><strong>Antigravity</strong><span>App · standalone IDE</span></div><span className={`agent-status-pill ${agentIntegration.antigravityConnected ? 'connected' : ''}`}><i />{agentIntegration.antigravityConnected ? 'Hook ready' : 'Not connected'}</span></div>
-                <p className="agent-card-description">Follow thinking and finished replies in the app and IDE.</p>
-                <div className="agent-card-detail"><span>Global hook</span><code>{agentIntegration.antigravityConnected ? 'Installed · restart Antigravity' : '~/.gemini/config/hooks.json'}</code></div>
+                <div className="agent-card-heading"><span className="ai-badge-icon lg antigravity"><i /><i /></span><div><strong>Antigravity</strong><span>{langCode === 'tr' ? 'Uygulama · bağımsız IDE' : 'App · standalone IDE'}</span></div><span className={`agent-status-pill ${agentIntegration.antigravityConnected ? 'connected' : ''}`}><i />{agentIntegration.antigravityConnected ? (langCode === 'tr' ? 'Kanca hazır' : 'Hook ready') : (langCode === 'tr' ? 'Bağlı değil' : 'Not connected')}</span></div>
+                <p className="agent-card-description">{langCode === 'tr' ? 'Uygulama ve IDE’deki düşünme ve tamamlanan yanıtları takip edin.' : 'Follow thinking and finished replies in the app and IDE.'}</p>
+                <div className="agent-card-detail"><span>{langCode === 'tr' ? 'Genel kanca' : 'Global hook'}</span><code>{agentIntegration.antigravityConnected ? (langCode === 'tr' ? 'Kuruldu · Antigravity’yi yeniden başlatın' : 'Installed · restart Antigravity') : '~/.gemini/config/hooks.json'}</code></div>
                 <div className="agent-card-actions">
-                  <button type="button" className="agent-test-button" onClick={() => testAgentTool('Antigravity IDE')} disabled={agentIntegrationBusy}><Play size={13} /> Preview notification</button>
-                  <button type="button" className="agent-secondary-button" onClick={chooseAntigravityIde}><Monitor size={13} /> {agentIntegration.antigravityIdePath ? 'Change IDE' : 'Locate IDE'}</button>
-                  {agentIntegration.antigravityIdePath && <button type="button" className="agent-secondary-button" onClick={() => window.twocode?.openApp?.({ type: 'native-app', path: agentIntegration.antigravityIdePath })}><ExternalLink size={13} /> Open IDE</button>}
+                  <button type="button" className="agent-test-button" onClick={() => testAgentTool('Antigravity IDE')} disabled={agentIntegrationBusy}><Play size={13} /> {langCode === 'tr' ? 'Bildirimi önizle' : 'Preview notification'}</button>
+                  <button type="button" className="agent-secondary-button" onClick={chooseAntigravityIde}><Monitor size={13} /> {agentIntegration.antigravityIdePath ? (langCode === 'tr' ? 'IDE’yi değiştir' : 'Change IDE') : (langCode === 'tr' ? 'IDE’yi bul' : 'Locate IDE')}</button>
+                  {agentIntegration.antigravityIdePath && <button type="button" className="agent-secondary-button" onClick={() => window.twocode?.openApp?.({ type: 'native-app', path: agentIntegration.antigravityIdePath })}><ExternalLink size={13} /> {langCode === 'tr' ? 'IDE’yi aç' : 'Open IDE'}</button>}
                 </div>
               </section>
             </div>
-            <div className="agent-connection-footnote"><RefreshCw size={12} /> Existing hook settings are preserved. Codex asks you to review the new hook once.</div>
+            <div className="agent-connection-footnote"><RefreshCw size={12} /> {langCode === 'tr' ? 'Mevcut kanca ayarları korunur. Codex yeni kancayı bir kez incelemenizi ister.' : 'Existing hook settings are preserved. Codex asks you to review the new hook once.'}</div>
 
             <section className="agent-activity-panel">
-              <div className="agent-activity-heading"><div><span className="agents-eyebrow"><Sparkles size={11} /> LIVE ACTIVITY</span><strong>Recent agent work</strong></div><span>{recentAgentJobs.length} recent</span></div>
+              <div className="agent-activity-heading"><div><span className="agents-eyebrow"><Sparkles size={11} /> {langCode === 'tr' ? 'CANLI ETKİNLİK' : 'LIVE ACTIVITY'}</span><strong>{langCode === 'tr' ? 'Son ajan çalışmaları' : 'Recent agent work'}</strong></div><span>{langCode === 'tr' ? `${recentAgentJobs.length} son` : `${recentAgentJobs.length} recent`}</span></div>
               {recentAgentJobs.length ? <div className="agent-activity-list">{recentAgentJobs.slice(0, 4).map((job, index) => {
                 const antigravityJob = (job.agent || '').toLowerCase().includes('antigravity');
-                return <div className="agent-activity-row" key={job.id || `${job.time}-${index}`} style={{ '--agent-rgb': antigravityJob ? '73, 218, 202' : '97, 152, 255' }}><span className={`agent-activity-marker ${antigravityJob ? 'antigravity' : ''}`}><i /></span><div><strong>{job.title}</strong><span>{job.agent || 'Agent'} · {job.time || 'Recently'}</span></div><span className="agent-activity-state"><Check size={11} /> Done</span></div>;
-              })}</div> : <div className="agent-activity-empty"><span><Bot size={16} /></span><div><strong>No agent activity yet</strong><small>Connect an agent and its finished tasks will show up here.</small></div></div>}
+                return <div className="agent-activity-row" key={job.id || `${job.time}-${index}`} style={{ '--agent-rgb': antigravityJob ? '73, 218, 202' : '97, 152, 255' }}><span className={`agent-activity-marker ${antigravityJob ? 'antigravity' : ''}`}><i /></span><div><strong>{job.title}</strong><span>{job.agent || 'Agent'} · {job.time || (langCode === 'tr' ? 'Yakın zamanda' : 'Recently')}</span></div><span className="agent-activity-state"><Check size={11} /> {t('common.done')}</span></div>;
+              })}</div> : <div className="agent-activity-empty"><span><Bot size={16} /></span><div><strong>{langCode === 'tr' ? 'Henüz ajan etkinliği yok' : 'No agent activity yet'}</strong><small>{langCode === 'tr' ? 'Bir ajan bağladığınızda tamamlanan görevleri burada görünür.' : 'Connect an agent and its finished tasks will show up here.'}</small></div></div>}
             </section>
 
-            <span className="section-eyebrow">LINKED</span>
+            <span className="section-eyebrow">{langCode === 'tr' ? 'BAĞLI HESAPLAR' : 'LINKED'}</span>
             <div className="settings-card">
               <div className="settings-row">
                 <div className="row-left-with-icon">
@@ -1036,7 +1043,7 @@ export default function SettingsApp() {
                       {settings.googleConnected ? settings.googleEmail : 'Google'}
                     </strong>
                     <span>
-                      {settings.googleConnected ? 'Google account · Connected' : 'Calendar and Gmail'}
+                      {settings.googleConnected ? (langCode === 'tr' ? 'Google hesabı · Bağlı' : 'Google account · Connected') : (langCode === 'tr' ? 'Takvim ve Gmail' : 'Calendar and Gmail')}
                     </span>
                   </div>
                 </div>
@@ -1064,10 +1071,10 @@ export default function SettingsApp() {
                   }}
                 >
                   {settings.googleConnected
-                    ? 'Disconnect'
+                    ? (langCode === 'tr' ? 'Bağlantıyı kes' : 'Disconnect')
                     : isConnectingGoogle
-                    ? 'Connecting...'
-                    : 'Connect'}
+                    ? (langCode === 'tr' ? 'Bağlanıyor...' : 'Connecting...')
+                    : (langCode === 'tr' ? 'Bağla' : 'Connect')}
                 </button>
               </div>
 
@@ -1116,15 +1123,15 @@ export default function SettingsApp() {
                       }
                     }}
                   >
-                    {isConnectingGoogle ? 'Linking...' : 'Link account'}
+                    {isConnectingGoogle ? (langCode === 'tr' ? 'Bağlanıyor...' : 'Linking...') : (langCode === 'tr' ? 'Hesabı bağla' : 'Link account')}
                   </button>
                 </div>
               )}
 
               <div className="settings-row">
                 <div className="row-text-col">
-                  <strong>Calendar</strong>
-                  <span>See and add events</span>
+                  <strong>{langCode === 'tr' ? 'Takvim' : 'Calendar'}</strong>
+                  <span>{langCode === 'tr' ? 'Etkinlikleri gör ve ekle' : 'See and add events'}</span>
                 </div>
                 <button
                   type="button"
@@ -1137,8 +1144,8 @@ export default function SettingsApp() {
 
               <div className="settings-row">
                 <div className="row-text-col">
-                  <strong>New mail</strong>
-                  <span>Only how many. Not who, and not what</span>
+                  <strong>{langCode === 'tr' ? 'Yeni posta' : 'New mail'}</strong>
+                  <span>{langCode === 'tr' ? 'Yalnızca kaç adet olduğu. Kimden veya ne olduğu değil' : 'Only how many. Not who, and not what'}</span>
                 </div>
                 <button
                   type="button"
@@ -1151,8 +1158,8 @@ export default function SettingsApp() {
 
               <div className="settings-row">
                 <div className="row-text-col">
-                  <strong>Mail a file</strong>
-                  <span>Only when you press Send</span>
+                  <strong>{langCode === 'tr' ? 'Dosya postala' : 'Mail a file'}</strong>
+                  <span>{langCode === 'tr' ? 'Yalnızca Gönder’e bastığınızda' : 'Only when you press Send'}</span>
                 </div>
                 <button
                   type="button"
@@ -1165,32 +1172,32 @@ export default function SettingsApp() {
 
               <div className="settings-row" style={{ background: 'rgba(255, 255, 255, 0.02)' }}>
                 <div className="row-text-col">
-                  <strong>Notification Test</strong>
-                  <span>Çentikte Mail ve Takvim bildirimini anında test edin</span>
+                  <strong>{langCode === 'tr' ? 'Bildirim Testi' : 'Notification Test'}</strong>
+                  <span>{langCode === 'tr' ? 'Adada Mail ve Takvim bildirimini anında test edin' : 'Instantly test Mail and Calendar notifications on the Island'}</span>
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button
                     type="button"
                     className="dark-pill-btn"
                     onClick={() => window.twocode?.testMailNotif?.()}
-                    title="Çentikte canlı Mail bildirimi göster"
+                    title={langCode === 'tr' ? 'Adada canlı Mail bildirimi göster' : 'Show live Mail notification on the Island'}
                   >
-                    Test Mail
+                    {langCode === 'tr' ? 'Postayı Test Et' : 'Test Mail'}
                   </button>
                   <button
                     type="button"
                     className="dark-pill-btn"
                     onClick={() => window.twocode?.testAgendaNotif?.()}
-                    title="Çentikte canlı Ajanda bildirimi göster"
+                    title={langCode === 'tr' ? 'Adada canlı Ajanda bildirimi göster' : 'Show live Agenda notification on the Island'}
                   >
-                    Test Ajanda
+                    {langCode === 'tr' ? 'Ajandayı Test Et' : 'Test Agenda'}
                   </button>
                 </div>
               </div>
             </div>
 
             <span className="section-eyebrow" style={{ marginTop: 22 }}>
-              CODING AI
+              {langCode === 'tr' ? 'KODLAMA YAPAY ZEKASI' : 'CODING AI'}
             </span>
             <div className="settings-card">
               {/* 1. Claude Code */}
@@ -1203,12 +1210,14 @@ export default function SettingsApp() {
                   <div className="row-text-col" style={{ width: '100%' }}>
                     <strong>Claude Code</strong>
                     <span>
-                      Follows Claude Code in the terminal, in VS Code and in the Code tab of the
-                      Claude app. The API key below is for Robo chat; it is not needed for monitoring.
+                      {langCode === 'tr'
+                        ? 'Terminalde, VS Code’da ve Claude uygulamasının Code sekmesinde Claude Code’u takip eder. Aşağıdaki API anahtarı Robo sohbeti içindir; izleme için gerekmez.'
+                        : 'Follows Claude Code in the terminal, in VS Code and in the Code tab of the Claude app. The API key below is for Robo chat; it is not needed for monitoring.'}
                     </span>
                     <em className="amber-notice-text">
-                      No task has come in yet. Close Claude Code and open it again (a new chat),
-                      then give it a task. An old version? Update it with: claude update
+                      {langCode === 'tr'
+                        ? 'Henüz görev gelmedi. Claude Code’u kapatıp yeniden açın (yeni sohbet), ardından bir görev verin. Eski sürüm mü? Şununla güncelleyin: claude update'
+                        : 'No task has come in yet. Close Claude Code and open it again (a new chat), then give it a task. An old version? Update it with: claude update'}
                     </em>
 
                     <div className="ai-api-key-box">
@@ -1218,10 +1227,10 @@ export default function SettingsApp() {
                         onClick={() =>
                           window.twocode?.openExternal?.('https://console.anthropic.com/settings/keys')
                         }
-                        title="Anthropic Console'a git ve API anahtarı oluştur"
+                        title={langCode === 'tr' ? "Anthropic Console'a git ve API anahtarı oluştur" : 'Go to Anthropic Console and create an API key'}
                       >
                         <ExternalLink size={12} />
-                        <span>Get API Key</span>
+                        <span>{langCode === 'tr' ? 'API Anahtarı Al' : 'Get API Key'}</span>
                       </button>
                       <div className="ai-api-key-input-wrap">
                         <input
@@ -1235,13 +1244,13 @@ export default function SettingsApp() {
                           type="button"
                           className="ai-api-key-eye-btn"
                           onClick={() => setShowKeyClaude(!showKeyClaude)}
-                          title={showKeyClaude ? 'Gizle' : 'Göster'}
+                          title={showKeyClaude ? (langCode === 'tr' ? 'Gizle' : 'Hide') : (langCode === 'tr' ? 'Göster' : 'Show')}
                         >
                           {showKeyClaude ? <EyeOff size={13} /> : <Eye size={13} />}
                         </button>
                       </div>
                       {settings.claudeApiKey ? (
-                        <span className="key-saved-pill">✓ Saved</span>
+                        <span className="key-saved-pill">{langCode === 'tr' ? '✓ Kaydedildi' : '✓ Saved'}</span>
                       ) : null}
                     </div>
                   </div>
@@ -1250,7 +1259,7 @@ export default function SettingsApp() {
                   <span
                     className={`status-badge ${settings.claudeApiKey ? 'green' : 'amber'}`}
                   >
-                      {settings.claudeApiKey ? 'API key saved' : 'Waiting for key'}
+                      {settings.claudeApiKey ? (langCode === 'tr' ? 'API anahtarı kayıtlı' : 'API key saved') : (langCode === 'tr' ? 'Anahtar bekleniyor' : 'Waiting for key')}
                   </span>
                   <button
                     type="button"
@@ -1272,8 +1281,9 @@ export default function SettingsApp() {
                   <div className="row-text-col" style={{ width: '100%' }}>
                     <strong>Codex</strong>
                     <span>
-                      Follows OpenAI Codex (the app, the terminal or VS Code) while it codes for
-                      you. The API key below is for Robo chat; Codex sign-in does not provide API access.
+                      {langCode === 'tr'
+                        ? 'Sizin için kod yazarken OpenAI Codex’i (uygulama, terminal veya VS Code) takip eder. Aşağıdaki API anahtarı Robo sohbeti içindir; Codex oturumu API erişimi sağlamaz.'
+                        : 'Follows OpenAI Codex (the app, the terminal or VS Code) while it codes for you. The API key below is for Robo chat; Codex sign-in does not provide API access.'}
                     </span>
 
                     <div className="ai-api-key-box">
@@ -1283,10 +1293,10 @@ export default function SettingsApp() {
                         onClick={() =>
                           window.twocode?.openExternal?.('https://platform.openai.com/api-keys')
                         }
-                        title="OpenAI Platform'a git ve API anahtarı oluştur"
+                        title={langCode === 'tr' ? "OpenAI Platform'a git ve API anahtarı oluştur" : 'Go to OpenAI Platform and create an API key'}
                       >
                         <ExternalLink size={12} />
-                        <span>Get API Key</span>
+                        <span>{langCode === 'tr' ? 'API Anahtarı Al' : 'Get API Key'}</span>
                       </button>
                       <div className="ai-api-key-input-wrap">
                         <input
@@ -1300,13 +1310,13 @@ export default function SettingsApp() {
                           type="button"
                           className="ai-api-key-eye-btn"
                           onClick={() => setShowKeyCodex(!showKeyCodex)}
-                          title={showKeyCodex ? 'Gizle' : 'Göster'}
+                          title={showKeyCodex ? (langCode === 'tr' ? 'Gizle' : 'Hide') : (langCode === 'tr' ? 'Göster' : 'Show')}
                         >
                           {showKeyCodex ? <EyeOff size={13} /> : <Eye size={13} />}
                         </button>
                       </div>
                       {settings.codexApiKey ? (
-                        <span className="key-saved-pill">✓ Saved</span>
+                        <span className="key-saved-pill">{langCode === 'tr' ? '✓ Kaydedildi' : '✓ Saved'}</span>
                       ) : null}
                     </div>
                   </div>
@@ -1315,7 +1325,7 @@ export default function SettingsApp() {
                   <span
                     className={`status-badge ${settings.codexApiKey ? 'green' : 'amber'}`}
                   >
-                      {settings.codexApiKey ? 'API key saved' : 'Waiting for key'}
+                      {settings.codexApiKey ? (langCode === 'tr' ? 'API anahtarı kayıtlı' : 'API key saved') : (langCode === 'tr' ? 'Anahtar bekleniyor' : 'Waiting for key')}
                   </span>
                   <button
                     type="button"
@@ -1336,7 +1346,7 @@ export default function SettingsApp() {
                   <div className="row-text-col" style={{ width: '100%' }}>
                     <strong>Gemini CLI</strong>
                     <span>
-                      Follows Google Gemini CLI in the terminal and VS Code sessions.
+                      {langCode === 'tr' ? 'Terminal ve VS Code oturumlarında Google Gemini CLI’ı takip eder.' : 'Follows Google Gemini CLI in the terminal and VS Code sessions.'}
                     </span>
 
                     <div className="ai-api-key-box">
@@ -1346,10 +1356,10 @@ export default function SettingsApp() {
                         onClick={() =>
                           window.twocode?.openExternal?.('https://aistudio.google.com/app/apikey')
                         }
-                        title="Google AI Studio'dan Ücretsiz Gemini API anahtarı al"
+                        title={langCode === 'tr' ? "Google AI Studio'dan Ücretsiz Gemini API anahtarı al" : 'Get a free Gemini API key from Google AI Studio'}
                       >
                         <ExternalLink size={12} />
-                        <span>Get API Key</span>
+                        <span>{langCode === 'tr' ? 'API Anahtarı Al' : 'Get API Key'}</span>
                       </button>
                       <div className="ai-api-key-input-wrap">
                         <input
@@ -1363,13 +1373,13 @@ export default function SettingsApp() {
                           type="button"
                           className="ai-api-key-eye-btn"
                           onClick={() => setShowKeyGemini(!showKeyGemini)}
-                          title={showKeyGemini ? 'Gizle' : 'Göster'}
+                          title={showKeyGemini ? (langCode === 'tr' ? 'Gizle' : 'Hide') : (langCode === 'tr' ? 'Göster' : 'Show')}
                         >
                           {showKeyGemini ? <EyeOff size={13} /> : <Eye size={13} />}
                         </button>
                       </div>
                       {settings.geminiApiKey ? (
-                        <span className="key-saved-pill">✓ Saved</span>
+                        <span className="key-saved-pill">{langCode === 'tr' ? '✓ Kaydedildi' : '✓ Saved'}</span>
                       ) : null}
                     </div>
                   </div>
@@ -1378,7 +1388,7 @@ export default function SettingsApp() {
                   <span
                     className={`status-badge ${settings.geminiApiKey ? 'green' : 'amber'}`}
                   >
-                      {settings.geminiApiKey ? 'API key saved' : 'Waiting for key'}
+                      {settings.geminiApiKey ? (langCode === 'tr' ? 'API anahtarı kayıtlı' : 'API key saved') : (langCode === 'tr' ? 'Anahtar bekleniyor' : 'Waiting for key')}
                   </span>
                   <button
                     type="button"
@@ -1404,13 +1414,15 @@ export default function SettingsApp() {
                   <div className="row-text-col" style={{ width: '100%' }}>
                     <strong>Antigravity</strong>
                     <span>
-                      Monitors Antigravity App and the standalone IDE through the local activity hook.
+                      {langCode === 'tr'
+                        ? 'Yerel etkinlik kancası üzerinden Antigravity uygulamasını ve bağımsız IDE’yi izler.'
+                        : 'Monitors Antigravity App and the standalone IDE through the local activity hook.'}
                     </span>
                   </div>
                 </div>
                 <div className="row-right-group">
                   <span className={`status-badge ${agentIntegration.antigravityConnected ? 'green' : 'amber'}`}>
-                    {agentIntegration.antigravityConnected ? 'Hook installed' : 'Not connected'}
+                    {agentIntegration.antigravityConnected ? (langCode === 'tr' ? 'Kanca kurulu' : 'Hook installed') : (langCode === 'tr' ? 'Bağlı değil' : 'Not connected')}
                   </span>
                   <button
                     type="button"
@@ -1437,8 +1449,9 @@ export default function SettingsApp() {
         {activePage === 'aichat' && (
           <div className="settings-page-body">
             <p className="page-lead-text">
-              Robo&apos;s chat uses the AI you turned on in Agents. Both on? Then you pick one
-              in the chat.
+              {langCode === 'tr'
+                ? 'Robo sohbeti Ajanlar’da açtığınız yapay zekayı kullanır. İkisi de açık mı? Sohbet içinde birini seçersiniz.'
+                : "Robo's chat uses the AI you turned on in Agents. Both on? Then you pick one in the chat."}
             </p>
 
             <div className="settings-card">
@@ -1450,11 +1463,11 @@ export default function SettingsApp() {
                   </span>
                   <div className="row-text-col">
                     <strong>Claude</strong>
-                    <span>Robo sohbetinde Claude API anahtarını kullanır. Claude Code görevleri ayrı olarak izlenir.</span>
+                    <span>{langCode === 'tr' ? 'Robo sohbetinde Claude API anahtarını kullanır. Claude Code görevleri ayrı olarak izlenir.' : 'Uses your Claude API key in Robo chat. Claude Code tasks are monitored separately.'}</span>
                   </div>
                 </div>
                 <span className={`status-badge ${settings.claudeApiKey ? 'green' : 'amber'}`}>
-                  {settings.claudeApiKey ? 'API key saved' : 'No API key'}
+                  {settings.claudeApiKey ? (langCode === 'tr' ? 'API anahtarı kayıtlı' : 'API key saved') : (langCode === 'tr' ? 'API anahtarı yok' : 'No API key')}
                 </span>
               </div>
 
@@ -1466,11 +1479,11 @@ export default function SettingsApp() {
                   </span>
                   <div className="row-text-col">
                     <strong>Codex</strong>
-                    <span>Robo sohbetinde OpenAI API anahtarını kullanır. Google bağlantısı yalnızca Gmail ve Takvim içindir.</span>
+                    <span>{langCode === 'tr' ? 'Robo sohbetinde OpenAI API anahtarını kullanır. Google bağlantısı yalnızca Gmail ve Takvim içindir.' : 'Uses your OpenAI API key in Robo chat. Google sign-in is only for Gmail and Calendar.'}</span>
                   </div>
                 </div>
                 <span className={`status-badge ${settings.codexApiKey ? 'green' : 'amber'}`}>
-                  {settings.codexApiKey ? 'API key saved' : 'No API key'}
+                  {settings.codexApiKey ? (langCode === 'tr' ? 'API anahtarı kayıtlı' : 'API key saved') : (langCode === 'tr' ? 'API anahtarı yok' : 'No API key')}
                 </span>
               </div>
             </div>
@@ -1482,14 +1495,14 @@ export default function SettingsApp() {
                     <RealAppIcon sc={{ id: 'settings-api-gemini', type: 'gemini' }} size={22} />
                   </span>
                   <div className="row-text-col">
-                    <strong>Google Gemini API Key</strong>
-                    <span>Gemini API for Robo chat. Google may charge for API usage.</span>
+                    <strong>{langCode === 'tr' ? 'Google Gemini API Anahtarı' : 'Google Gemini API Key'}</strong>
+                    <span>{langCode === 'tr' ? 'Robo sohbeti için Gemini API. Google API kullanımı için ücret alabilir.' : 'Gemini API for Robo chat. Google may charge for API usage.'}</span>
                   </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <input
                     type="password"
-                    placeholder="AIzaSy... (Opsiyonel)"
+                    placeholder={langCode === 'tr' ? 'AIzaSy... (İsteğe bağlı)' : 'AIzaSy... (Optional)'}
                     value={settings.geminiApiKey || ''}
                     onChange={(e) => updateSetting({ geminiApiKey: e.target.value })}
                     style={{
@@ -1504,10 +1517,44 @@ export default function SettingsApp() {
                     }}
                   />
                   {settings.geminiApiKey ? (
-                    <span className="status-badge green">API key saved</span>
+                    <span className="status-badge green">{langCode === 'tr' ? 'API anahtarı kayıtlı' : 'API key saved'}</span>
                   ) : (
-                    <span className="status-badge">API key required</span>
+                    <span className="status-badge">{langCode === 'tr' ? 'API anahtarı gerekli' : 'API key required'}</span>
                   )}
+                </div>
+              </div>
+
+              <div className="settings-row">
+                <div className="row-info">
+                  <strong>{langCode === 'tr' ? 'Bedo Ses Karakteri' : 'Bedo Voice'}</strong>
+                  <span>
+                    {langCode === 'tr'
+                      ? 'Bedo sesli yanıt verirken kullanılacak ses tonu (değişince otomatik yeniden bağlanır)'
+                      : 'Voice persona used by Bedo (reconnects automatically on change)'}
+                  </span>
+                </div>
+                <div className="row-right-group">
+                  <select
+                    value={settings.bedoVoice || 'Charon'}
+                    onChange={(e) => updateSetting({ bedoVoice: e.target.value })}
+                    style={{
+                      background: 'rgba(255,255,255,0.07)',
+                      border: '1px solid rgba(255,255,255,0.14)',
+                      borderRadius: 8,
+                      padding: '6px 10px',
+                      color: '#ffffff',
+                      fontSize: 12,
+                      outline: 'none',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <option value="Charon" style={{ background: '#14161c' }}>Charon (Varsayılan • Derin)</option>
+                    <option value="Fenrir" style={{ background: '#14161c' }}>Fenrir (Net • Güçlü)</option>
+                    <option value="Puck" style={{ background: '#14161c' }}>Puck (Dinamik • Genç)</option>
+                    <option value="Aoede" style={{ background: '#14161c' }}>Aoede (Yumuşak • Doğal)</option>
+                    <option value="Kore" style={{ background: '#14161c' }}>Kore (Sıcak • Sakin)</option>
+                    <option value="Zephyr" style={{ background: '#14161c' }}>Zephyr (Hafif • Akıcı)</option>
+                  </select>
                 </div>
               </div>
             </div>
@@ -1526,10 +1573,11 @@ export default function SettingsApp() {
                     <ExternalLink size={16} />
                   </div>
                   <div className="row-text-col">
-                    <strong>Your own apps</strong>
+                    <strong>{langCode === 'tr' ? 'Kendi uygulamaların' : 'Your own apps'}</strong>
                     <span>
-                      Up to 4 websites or programs. They sit in the island next to your tabs, on
-                      every page. Click one and it opens.
+                      {langCode === 'tr'
+                        ? 'En fazla 4 web sitesi veya program. Her sayfada sekmelerin yanında adada dururlar. Birine tıklayın, açılsın.'
+                        : 'Up to 4 websites or programs. They sit in the island next to your tabs, on every page. Click one and it opens.'}
                     </span>
                   </div>
                 </div>
@@ -1549,7 +1597,7 @@ export default function SettingsApp() {
                     className="dark-pill-btn"
                     onClick={() => handleRemoveApp(app.id)}
                   >
-                    Remove
+                    {t('common.remove')}
                   </button>
                 </div>
               ))}
@@ -1558,23 +1606,23 @@ export default function SettingsApp() {
                 <input
                   type="text"
                   className="settings-input"
-                  placeholder="Name (e.g. YouTube)"
+                  placeholder={langCode === 'tr' ? 'Ad (ör. YouTube)' : 'Name (e.g. YouTube)'}
                   value={newAppName}
                   onChange={(e) => setNewAppName(e.target.value)}
                 />
                 <input
                   type="text"
                   className="settings-input"
-                  placeholder="Address (e.g. youtube.com)"
+                  placeholder={langCode === 'tr' ? 'Adres (ör. youtube.com)' : 'Address (e.g. youtube.com)'}
                   value={newAppUrl}
                   onChange={(e) => setNewAppUrl(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleAddApp()}
                 />
                 <button type="button" className="white-pill-btn" onClick={handleAddApp}>
-                  Add
+                  {t('common.add')}
                 </button>
                 <button type="button" className="dark-pill-btn" onClick={handleChooseProgram}>
-                  Choose a program...
+                  {langCode === 'tr' ? 'Program seç...' : 'Choose a program...'}
                 </button>
               </div>
             </div>
@@ -1587,8 +1635,8 @@ export default function SettingsApp() {
                       <Shield size={16} />
                     </div>
                     <div className="row-text-col">
-                      <strong>Focus guard</strong>
-                      <span>Free for now ✓</span>
+                      <strong>{langCode === 'tr' ? 'Odak koruması' : 'Focus guard'}</strong>
+                      <span>{langCode === 'tr' ? 'Şimdilik ücretsiz ✓' : 'Free for now ✓'}</span>
                     </div>
                   </div>
                   <button
@@ -1596,16 +1644,16 @@ export default function SettingsApp() {
                     className="dark-pill-btn"
                     onClick={() => setActivePage('focusguard')}
                   >
-                    Open
+                    {t('common.open')}
                   </button>
                 </div>
-                <p>Robo stops you for a moment when you open something that distracts you.</p>
+                <p>{langCode === 'tr' ? 'Dikkatinizi dağıtan bir şey açtığınızda Robo sizi kısa bir an durdurur.' : 'Robo stops you for a moment when you open something that distracts you.'}</p>
                 <button
                   type="button"
                   className="how-it-works-btn"
                   onClick={() => setActivePage('focusguard')}
                 >
-                  <Play size={11} /> How does it work?
+                  <Play size={11} /> {langCode === 'tr' ? 'Nasıl çalışır?' : 'How does it work?'}
                 </button>
               </div>
 
@@ -1616,22 +1664,23 @@ export default function SettingsApp() {
                       <Bot size={16} />
                     </div>
                     <div className="row-text-col">
-                      <strong>AI assistants</strong>
-                      <span>Free</span>
+                      <strong>{langCode === 'tr' ? 'Yapay zeka asistanları' : 'AI assistants'}</strong>
+                      <span>{langCode === 'tr' ? 'Ücretsiz' : 'Free'}</span>
                     </div>
                   </div>
-                  <span className="status-badge subtle">Always on</span>
+                  <span className="status-badge subtle">{langCode === 'tr' ? 'Her zaman açık' : 'Always on'}</span>
                 </div>
                 <p>
-                  Claude Code and Codex: Robo shows whether your AI is busy, has a question or is
-                  done.
+                  {langCode === 'tr'
+                    ? 'Claude Code ve Codex: Robo yapay zekanızın meşgul olduğunu, sorusu olduğunu veya işi bitirdiğini gösterir.'
+                    : 'Claude Code and Codex: Robo shows whether your AI is busy, has a question or is done.'}
                 </p>
                 <button
                   type="button"
                   className="how-it-works-btn"
                   onClick={() => setActivePage('connections')}
                 >
-                  <Play size={11} /> How does it work?
+                  <Play size={11} /> {langCode === 'tr' ? 'Nasıl çalışır?' : 'How does it work?'}
                 </button>
               </div>
 
@@ -1643,7 +1692,7 @@ export default function SettingsApp() {
                     </div>
                     <div className="row-text-col">
                       <strong>Robo Buddy</strong>
-                      <span>In your TwoCode</span>
+                      <span>{langCode === 'tr' ? 'TwoCode’unun içinde' : 'In your TwoCode'}</span>
                     </div>
                   </div>
                   <button
@@ -1654,13 +1703,13 @@ export default function SettingsApp() {
                     <i />
                   </button>
                 </div>
-                <p>Grab Robo out of the island, drop him on anything and ask about it.</p>
+                <p>{langCode === 'tr' ? 'Robo’yu adadan tutup çıkarın, herhangi bir şeyin üzerine bırakın ve hakkında soru sorun.' : 'Grab Robo out of the island, drop him on anything and ask about it.'}</p>
                 <button
                   type="button"
                   className="how-it-works-btn"
                   onClick={() => setActivePage('robo')}
                 >
-                  <Play size={11} /> How does it work?
+                  <Play size={11} /> {langCode === 'tr' ? 'Nasıl çalışır?' : 'How does it work?'}
                 </button>
               </div>
             </div>
@@ -1678,19 +1727,19 @@ export default function SettingsApp() {
               </div>
               <div className="robo-hero-info">
                 <h2>{settings.roboName || 'Robo'}</h2>
-                <span>{aiHistory.jobsToday || 2} tasks done · 5 of 12 badges</span>
+                <span>{langCode === 'tr' ? `${aiHistory.jobsToday || 2} görev tamamlandı · 12 rozetten 5'i` : `${aiHistory.jobsToday || 2} tasks done · 5 of 12 badges`}</span>
                 <div className="robo-badge-progress">
                   <div className="robo-badge-fill" style={{ width: '42%' }} />
                 </div>
               </div>
             </div>
 
-            <span className="section-eyebrow">NAME</span>
+            <span className="section-eyebrow">{langCode === 'tr' ? 'İSİM' : 'NAME'}</span>
             <div className="settings-card">
               <div className="settings-row">
                 <div className="row-text-col">
-                  <strong>What&apos;s his name?</strong>
-                  <span>He says it when he says hi</span>
+                  <strong>{langCode === 'tr' ? 'Adı ne olsun?' : "What's his name?"}</strong>
+                  <span>{langCode === 'tr' ? 'Merhaba derken bu adı söyler' : 'He says it when he says hi'}</span>
                 </div>
                 <div className="row-right-group">
                   <input
@@ -1704,36 +1753,40 @@ export default function SettingsApp() {
                     className="white-pill-btn"
                     onClick={() => updateSetting({ roboName: roboNameDraft || 'Robo' })}
                   >
-                    Save
+                    {t('common.save')}
                   </button>
                 </div>
               </div>
             </div>
 
             <span className="section-eyebrow" style={{ marginTop: 18 }}>
-              LOOK
+              {langCode === 'tr' ? 'GÖRÜNÜM' : 'LOOK'}
             </span>
             <div className="settings-card">
               <div className="settings-row no-border">
                 <div className="row-text-col">
-                  <strong>Traffic-light eyes</strong>
-                  <span>Pick the colour for each state. Click the block for a test.</span>
+                  <strong>{langCode === 'tr' ? 'Trafik ışığı gözler' : 'Traffic-light eyes'}</strong>
+                  <span>{langCode === 'tr' ? 'Her durum için rengi seçin. Test etmek için bloğa tıklayın.' : 'Pick the colour for each state. Click the block for a test.'}</span>
                   <div className="preset-pills-row">
-                    {['Classic', 'Soft', 'Colour-blind'].map((preset) => (
+                    {[
+                      { value: 'Classic', label: langCode === 'tr' ? 'Klasik' : 'Classic' },
+                      { value: 'Soft', label: langCode === 'tr' ? 'Yumuşak' : 'Soft' },
+                      { value: 'Colour-blind', label: langCode === 'tr' ? 'Renk körlüğü dostu' : 'Colour-blind' },
+                    ].map((preset) => (
                       <button
-                        key={preset}
+                        key={preset.value}
                         type="button"
                         className={`preset-pill-btn ${
-                          settings.eyePreset === preset ? 'active' : ''
+                          settings.eyePreset === preset.value ? 'active' : ''
                         }`}
-                        onClick={() => updateSetting({ eyePreset: preset })}
+                        onClick={() => updateSetting({ eyePreset: preset.value })}
                       >
                         <span className="preset-dots">
                           <i style={{ background: '#f59e0b' }} />
                           <i style={{ background: '#22c55e' }} />
                           <i style={{ background: '#ef4444' }} />
                         </span>
-                        <span>{preset}</span>
+                        <span>{preset.label}</span>
                       </button>
                     ))}
                   </div>
@@ -1743,7 +1796,7 @@ export default function SettingsApp() {
               <div className="traffic-subrow" onClick={() => triggerEmotionOnIsland('curious')}>
                 <div className="traffic-left">
                   <i className="state-dot" style={{ background: settings.workingEyeColor }} />
-                  <strong>Working or a question</strong>
+                  <strong>{langCode === 'tr' ? 'Çalışıyor veya sorusu var' : 'Working or a question'}</strong>
                 </div>
                 <div className="swatch-group">
                   {['#f59e0b', '#fbbf24', '#fde047', '#f472b6', '#c084fc', '#60a5fa'].map((c) => (
@@ -1767,7 +1820,7 @@ export default function SettingsApp() {
               <div className="traffic-subrow" onClick={() => triggerEmotionOnIsland('happy')}>
                 <div className="traffic-left">
                   <i className="state-dot" style={{ background: settings.doneEyeColor }} />
-                  <strong>Done</strong>
+                  <strong>{t('common.done')}</strong>
                 </div>
                 <div className="swatch-group">
                   {['#22c55e', '#86efac', '#bef264', '#2dd4bf', '#3b82f6', '#ffffff'].map((c) => (
@@ -1789,7 +1842,7 @@ export default function SettingsApp() {
               <div className="traffic-subrow" onClick={() => triggerEmotionOnIsland('dizzy')}>
                 <div className="traffic-left">
                   <i className="state-dot" style={{ background: settings.errorEyeColor }} />
-                  <strong>Error</strong>
+                  <strong>{t('agents.error')}</strong>
                 </div>
                 <div className="swatch-group">
                   {['#ef4444', '#f87171', '#fb7185', '#e879f9', '#a855f7', '#f97316'].map((c) => (
@@ -1810,13 +1863,13 @@ export default function SettingsApp() {
             </div>
 
             <span className="section-eyebrow" style={{ marginTop: 18 }}>
-              BEHAVIOUR · CLICK A BLOCK FOR AN EXAMPLE
+              {langCode === 'tr' ? 'DAVRANIŞ · ÖRNEK İÇİN BİR BLOĞA TIKLAYIN' : 'BEHAVIOUR · CLICK A BLOCK FOR AN EXAMPLE'}
             </span>
             <div className="settings-card">
               <div className="settings-row">
                 <div className="row-text-col">
-                  <strong>Faces</strong>
-                  <span>Happy, sad, curious, focused</span>
+                  <strong>{langCode === 'tr' ? 'İfadeler' : 'Faces'}</strong>
+                  <span>{langCode === 'tr' ? 'Mutlu, üzgün, meraklı, odaklı' : 'Happy, sad, curious, focused'}</span>
                 </div>
                 <button
                   type="button"
@@ -1829,20 +1882,20 @@ export default function SettingsApp() {
 
               <div className="settings-row align-top">
                 <div className="row-text-col">
-                  <strong>See emotions</strong>
-                  <span>Click one to see it</span>
+                  <strong>{langCode === 'tr' ? 'Duyguları gör' : 'See emotions'}</strong>
+                  <span>{langCode === 'tr' ? 'Görmek için birine tıklayın' : 'Click one to see it'}</span>
                 </div>
                 <div className="emotions-grid">
                   {[
-                    { label: '😊 Happy', mood: 'happy' },
-                    { label: '😍 In love', mood: 'happy' },
-                    { label: '😮 Surprised', mood: 'curious' },
-                    { label: '🧐 Curious', mood: 'curious' },
-                    { label: '🤨 Focused', mood: 'focus-arc' },
-                    { label: '😉 Wink', mood: 'wink' },
-                    { label: '😢 Sad', mood: 'normal' },
-                    { label: '😵 Dizzy', mood: 'dizzy' },
-                    { label: '😴 Sleepy', mood: 'focus-arc' },
+                    { label: langCode === 'tr' ? '😊 Mutlu' : '😊 Happy', mood: 'happy' },
+                    { label: langCode === 'tr' ? '😍 Aşık' : '😍 In love', mood: 'happy' },
+                    { label: langCode === 'tr' ? '😮 Şaşkın' : '😮 Surprised', mood: 'curious' },
+                    { label: langCode === 'tr' ? '🧐 Meraklı' : '🧐 Curious', mood: 'curious' },
+                    { label: langCode === 'tr' ? '🤨 Odaklı' : '🤨 Focused', mood: 'focus-arc' },
+                    { label: langCode === 'tr' ? '😉 Göz kırp' : '😉 Wink', mood: 'wink' },
+                    { label: langCode === 'tr' ? '😢 Üzgün' : '😢 Sad', mood: 'normal' },
+                    { label: langCode === 'tr' ? '😵 Baş dönmesi' : '😵 Dizzy', mood: 'dizzy' },
+                    { label: langCode === 'tr' ? '😴 Uykulu' : '😴 Sleepy', mood: 'focus-arc' },
                   ].map((em) => (
                     <button
                       key={em.label}
@@ -1858,8 +1911,8 @@ export default function SettingsApp() {
 
               <div className="settings-row">
                 <div className="row-text-col">
-                  <strong>Blinking</strong>
-                  <span>He blinks now and then</span>
+                  <strong>{langCode === 'tr' ? 'Göz kırpma' : 'Blinking'}</strong>
+                  <span>{langCode === 'tr' ? 'Ara sıra göz kırpar' : 'He blinks now and then'}</span>
                 </div>
                 <button
                   type="button"
@@ -1872,8 +1925,8 @@ export default function SettingsApp() {
 
               <div className="settings-row">
                 <div className="row-text-col">
-                  <strong>Dancing to music</strong>
-                  <span>Moves along when Spotify plays</span>
+                  <strong>{langCode === 'tr' ? 'Müzikle dans' : 'Dancing to music'}</strong>
+                  <span>{langCode === 'tr' ? 'Spotify çalarken eşlik eder' : 'Moves along when Spotify plays'}</span>
                 </div>
                 <button
                   type="button"
@@ -1886,8 +1939,8 @@ export default function SettingsApp() {
 
               <div className="settings-row">
                 <div className="row-text-col">
-                  <strong>Sleep effect</strong>
-                  <span>He falls asleep when nothing happens for a while</span>
+                  <strong>{langCode === 'tr' ? 'Uyku efekti' : 'Sleep effect'}</strong>
+                  <span>{langCode === 'tr' ? 'Bir süre hiçbir şey olmadığında uykuya dalar' : 'He falls asleep when nothing happens for a while'}</span>
                 </div>
                 <button
                   type="button"
@@ -1900,8 +1953,8 @@ export default function SettingsApp() {
 
               <div className="settings-row">
                 <div className="row-text-col">
-                  <strong>Fall asleep after</strong>
-                  <span>When nothing happens (Sleep effect must be on)</span>
+                  <strong>{langCode === 'tr' ? 'Uyku süresi' : 'Fall asleep after'}</strong>
+                  <span>{langCode === 'tr' ? 'Hiçbir şey olmadığında (Uyku efekti açık olmalı)' : 'When nothing happens (Sleep effect must be on)'}</span>
                 </div>
                 <div className="seg-btn-group">
                   {[5, 10, 30].map((m) => (
@@ -1913,7 +1966,7 @@ export default function SettingsApp() {
                       }`}
                       onClick={() => updateSetting({ fallAsleepMinutes: m })}
                     >
-                      {m} min
+                      {langCode === 'tr' ? `${m} dk` : `${m} min`}
                     </button>
                   ))}
                 </div>
@@ -1921,8 +1974,8 @@ export default function SettingsApp() {
 
               <div className="settings-row">
                 <div className="row-text-col">
-                  <strong>Startup animation</strong>
-                  <span>Wave and say &quot;hi&quot; at startup</span>
+                  <strong>{langCode === 'tr' ? 'Başlangıç animasyonu' : 'Startup animation'}</strong>
+                  <span>{langCode === 'tr' ? 'Açılışta el sallayıp "merhaba" der' : 'Wave and say "hi" at startup'}</span>
                 </div>
                 <button
                   type="button"
@@ -1935,8 +1988,8 @@ export default function SettingsApp() {
 
               <div className="settings-row">
                 <div className="row-text-col">
-                  <strong>Hunger</strong>
-                  <span>Robo is 100% full. Every task gives food 🍪</span>
+                  <strong>{langCode === 'tr' ? 'Açlık' : 'Hunger'}</strong>
+                  <span>{langCode === 'tr' ? 'Robo %100 tok. Her görev yiyecek verir 🍪' : 'Robo is 100% full. Every task gives food 🍪'}</span>
                 </div>
                 <button
                   type="button"
@@ -1949,22 +2002,22 @@ export default function SettingsApp() {
             </div>
 
             <span className="section-eyebrow" style={{ marginTop: 18 }}>
-              ACHIEVEMENTS · 5/12
+              {langCode === 'tr' ? 'BAŞARIMLAR · 5/12' : 'ACHIEVEMENTS · 5/12'}
             </span>
             <div className="achievements-grid">
               {[
-                { icon: '🌱', title: 'First task', unlocked: true },
-                { icon: '🔒', title: 'Ten tasks', unlocked: false },
-                { icon: '🔒', title: 'Fifty tasks', unlocked: false },
-                { icon: '🔒', title: 'Helpful', unlocked: false },
-                { icon: '🦉', title: 'Night owl', unlocked: true },
-                { icon: '🌅', title: 'Early bird', unlocked: true },
-                { icon: '🎵', title: 'Music lover', unlocked: true },
-                { icon: '🎯', title: 'Deep focus', unlocked: true },
-                { icon: '🔒', title: 'Streak 7', unlocked: false },
-                { icon: '🔒', title: 'Clipboard pro', unlocked: false },
-                { icon: '🔒', title: 'Note taker', unlocked: false },
-                { icon: '🔒', title: 'Best dressed', unlocked: false },
+                { icon: '🌱', title: langCode === 'tr' ? 'İlk görev' : 'First task', unlocked: true },
+                { icon: '🔒', title: langCode === 'tr' ? 'On görev' : 'Ten tasks', unlocked: false },
+                { icon: '🔒', title: langCode === 'tr' ? 'Elli görev' : 'Fifty tasks', unlocked: false },
+                { icon: '🔒', title: langCode === 'tr' ? 'Yardımsever' : 'Helpful', unlocked: false },
+                { icon: '🦉', title: langCode === 'tr' ? 'Gece kuşu' : 'Night owl', unlocked: true },
+                { icon: '🌅', title: langCode === 'tr' ? 'Erkenci kuş' : 'Early bird', unlocked: true },
+                { icon: '🎵', title: langCode === 'tr' ? 'Müziksever' : 'Music lover', unlocked: true },
+                { icon: '🎯', title: langCode === 'tr' ? 'Derin odak' : 'Deep focus', unlocked: true },
+                { icon: '🔒', title: langCode === 'tr' ? '7 günlük seri' : 'Streak 7', unlocked: false },
+                { icon: '🔒', title: langCode === 'tr' ? 'Pano ustası' : 'Clipboard pro', unlocked: false },
+                { icon: '🔒', title: langCode === 'tr' ? 'Not tutucu' : 'Note taker', unlocked: false },
+                { icon: '🔒', title: langCode === 'tr' ? 'En şık' : 'Best dressed', unlocked: false },
               ].map((ach) => (
                 <div
                   key={ach.title}
@@ -1992,23 +2045,23 @@ export default function SettingsApp() {
                 />
                 <div className="wardrobe-preview-caption">
                   <strong>{settings.roboName || 'Robo'}</strong>
-                  <span>Wearing: {settings.outfit}</span>
+                  <span>{langCode === 'tr' ? `Giydiği: ${({ Best: 'En iyi', None: 'Yok', 'Party hat': 'Parti şapkası', Sunglasses: 'Güneş gözlüğü', Crown: 'Taç' }[settings.outfit] || settings.outfit)}` : `Wearing: ${settings.outfit}`}</span>
                 </div>
               </div>
 
               <div className="wardrobe-options-col">
                 <div className="wardrobe-group">
                   <div className="wardrobe-group-header">
-                    <strong>Outfit</strong>
-                    <span>Earn more by finishing tasks</span>
+                    <strong>{langCode === 'tr' ? 'Kıyafet' : 'Outfit'}</strong>
+                    <span>{langCode === 'tr' ? 'Görev tamamlayarak daha fazlasını kazanın' : 'Earn more by finishing tasks'}</span>
                   </div>
                   <div className="outfit-cards-grid">
                     {[
-                      { id: 'Best', icon: '✨', sub: '' },
-                      { id: 'None', icon: '🚫', sub: '' },
-                      { id: 'Party hat', icon: '🥳', sub: 'Earned at 5 tasks' },
-                      { id: 'Sunglasses', icon: '😎', sub: 'Earned at 15 tasks' },
-                      { id: 'Crown', icon: '👑', sub: 'Earned at 30 tasks' },
+                      { id: 'Best', label: langCode === 'tr' ? 'En iyi' : 'Best', icon: '✨', sub: '' },
+                      { id: 'None', label: langCode === 'tr' ? 'Yok' : 'None', icon: '🚫', sub: '' },
+                      { id: 'Party hat', label: langCode === 'tr' ? 'Parti şapkası' : 'Party hat', icon: '🥳', sub: langCode === 'tr' ? '5 görevde açılır' : 'Earned at 5 tasks' },
+                      { id: 'Sunglasses', label: langCode === 'tr' ? 'Güneş gözlüğü' : 'Sunglasses', icon: '😎', sub: langCode === 'tr' ? '15 görevde açılır' : 'Earned at 15 tasks' },
+                      { id: 'Crown', label: langCode === 'tr' ? 'Taç' : 'Crown', icon: '👑', sub: langCode === 'tr' ? '30 görevde açılır' : 'Earned at 30 tasks' },
                     ].map((o) => (
                       <button
                         key={o.id}
@@ -2022,7 +2075,7 @@ export default function SettingsApp() {
                           </span>
                         )}
                         <span className="outfit-emoji">{o.icon}</span>
-                        <strong>{o.id}</strong>
+                        <strong>{o.label}</strong>
                         {o.sub && <span>{o.sub}</span>}
                       </button>
                     ))}
@@ -2031,26 +2084,28 @@ export default function SettingsApp() {
 
                 <div className="wardrobe-group">
                   <div className="wardrobe-group-header">
-                    <strong>Body</strong>
+                    <strong>{langCode === 'tr' ? 'Gövde' : 'Body'}</strong>
                   </div>
                   <div className="sphere-swatches-row">
                     {[
-                      { name: 'Cloud', bg: 'radial-gradient(circle at 30% 30%, #ffffff, #d4d4d8)' },
-                      { name: 'Mint', bg: 'radial-gradient(circle at 30% 30%, #d1fae5, #6ee7b7)' },
-                      { name: 'Sky', bg: 'radial-gradient(circle at 30% 30%, #e0f2fe, #7dd3fc)' },
-                      { name: 'Rose', bg: 'radial-gradient(circle at 30% 30%, #fce7f3, #f9a8d4)' },
+                      { name: 'Cloud', label: langCode === 'tr' ? 'Bulut' : 'Cloud', bg: 'radial-gradient(circle at 30% 30%, #ffffff, #d4d4d8)' },
+                      { name: 'Mint', label: langCode === 'tr' ? 'Nane' : 'Mint', bg: 'radial-gradient(circle at 30% 30%, #d1fae5, #6ee7b7)' },
+                      { name: 'Sky', label: langCode === 'tr' ? 'Gökyüzü' : 'Sky', bg: 'radial-gradient(circle at 30% 30%, #e0f2fe, #7dd3fc)' },
+                      { name: 'Rose', label: langCode === 'tr' ? 'Gül' : 'Rose', bg: 'radial-gradient(circle at 30% 30%, #fce7f3, #f9a8d4)' },
                       {
                         name: 'Classic',
+                        label: langCode === 'tr' ? 'Klasik' : 'Classic',
                         bg: 'radial-gradient(circle at 30% 30%, #4b5563, #1f2937)',
                       },
-                      { name: 'Night', bg: 'radial-gradient(circle at 30% 30%, #3f3f46, #18181b)' },
-                      { name: 'Blue', bg: 'radial-gradient(circle at 30% 30%, #3b82f6, #1d4ed8)' },
+                      { name: 'Night', label: langCode === 'tr' ? 'Gece' : 'Night', bg: 'radial-gradient(circle at 30% 30%, #3f3f46, #18181b)' },
+                      { name: 'Blue', label: langCode === 'tr' ? 'Mavi' : 'Blue', bg: 'radial-gradient(circle at 30% 30%, #3b82f6, #1d4ed8)' },
                       {
                         name: 'Purple',
+                        label: langCode === 'tr' ? 'Mor' : 'Purple',
                         bg: 'radial-gradient(circle at 30% 30%, #8b5cf6, #4c1d95)',
                       },
-                      { name: 'Pink', bg: 'radial-gradient(circle at 30% 30%, #be185d, #500724)' },
-                      { name: 'Gold', bg: 'radial-gradient(circle at 30% 30%, #a16207, #422006)' },
+                      { name: 'Pink', label: langCode === 'tr' ? 'Pembe' : 'Pink', bg: 'radial-gradient(circle at 30% 30%, #be185d, #500724)' },
+                      { name: 'Gold', label: langCode === 'tr' ? 'Altın' : 'Gold', bg: 'radial-gradient(circle at 30% 30%, #a16207, #422006)' },
                     ].map((b) => (
                       <div
                         key={b.name}
@@ -2063,7 +2118,7 @@ export default function SettingsApp() {
                           }`}
                           style={{ background: b.bg }}
                         />
-                        <small>{b.name}</small>
+                        <small>{b.label}</small>
                       </div>
                     ))}
                   </div>
@@ -2071,16 +2126,16 @@ export default function SettingsApp() {
 
                 <div className="wardrobe-group">
                   <div className="wardrobe-group-header">
-                    <strong>Eyes</strong>
+                    <strong>{langCode === 'tr' ? 'Gözler' : 'Eyes'}</strong>
                   </div>
                   <div className="sphere-swatches-row">
                     {[
-                      { name: 'Mint', hex: '#a7f3d0' },
-                      { name: 'White', hex: '#ffffff' },
-                      { name: 'Blue', hex: '#7dd3fc' },
-                      { name: 'Pink', hex: '#f9a8d4' },
-                      { name: 'Purple', hex: '#c4b5fd' },
-                      { name: 'Yellow', hex: '#fef08a' },
+                      { name: 'Mint', label: langCode === 'tr' ? 'Nane' : 'Mint', hex: '#a7f3d0' },
+                      { name: 'White', label: langCode === 'tr' ? 'Beyaz' : 'White', hex: '#ffffff' },
+                      { name: 'Blue', label: langCode === 'tr' ? 'Mavi' : 'Blue', hex: '#7dd3fc' },
+                      { name: 'Pink', label: langCode === 'tr' ? 'Pembe' : 'Pink', hex: '#f9a8d4' },
+                      { name: 'Purple', label: langCode === 'tr' ? 'Mor' : 'Purple', hex: '#c4b5fd' },
+                      { name: 'Yellow', label: langCode === 'tr' ? 'Sarı' : 'Yellow', hex: '#fef08a' },
                     ].map((ey) => (
                       <div
                         key={ey.name}
@@ -2095,7 +2150,7 @@ export default function SettingsApp() {
                           }`}
                           style={{ background: ey.hex }}
                         />
-                        <small>{ey.name}</small>
+                        <small>{ey.label}</small>
                       </div>
                     ))}
                   </div>
@@ -2108,8 +2163,8 @@ export default function SettingsApp() {
                         <Sparkles size={15} />
                       </div>
                       <div className="row-text-col">
-                        <strong>Seasonal outfits</strong>
-                        <span>Santa hat, witch hat, orange crown on King&apos;s Day</span>
+                        <strong>{langCode === 'tr' ? 'Mevsimlik kıyafetler' : 'Seasonal outfits'}</strong>
+                        <span>{langCode === 'tr' ? 'Noel Baba şapkası, cadı şapkası, özel gün taçları' : "Santa hat, witch hat, orange crown on King's Day"}</span>
                       </div>
                     </div>
                     <button
@@ -2138,10 +2193,11 @@ export default function SettingsApp() {
                     <Bot size={16} />
                   </div>
                   <div className="row-text-col">
-                    <strong>1 free day left</strong>
+                    <strong>{langCode === 'tr' ? '1 ücretsiz gün kaldı' : '1 free day left'}</strong>
                     <span>
-                      Buy it during your free day and get a discount: €8,99 instead of €9,99. Once,
-                      forever.
+                      {langCode === 'tr'
+                        ? 'Ücretsiz gününüzde satın alın ve indirim kazanın: €9,99 yerine €8,99. Tek seferlik, sonsuza dek.'
+                        : 'Buy it during your free day and get a discount: €8,99 instead of €9,99. Once, forever.'}
                     </span>
                   </div>
                 </div>
@@ -2150,7 +2206,7 @@ export default function SettingsApp() {
                   className="white-pill-btn"
                   onClick={() => window.twocode?.openExternal('https://twocode.nl/')}
                 >
-                  Buy · €8,99
+                  {langCode === 'tr' ? 'Satın al · €8,99' : 'Buy · €8,99'}
                 </button>
               </div>
             </div>
@@ -2162,10 +2218,11 @@ export default function SettingsApp() {
                     <User size={16} />
                   </div>
                   <div className="row-text-col">
-                    <strong>Sign in</strong>
+                    <strong>{langCode === 'tr' ? 'Giriş yap' : 'Sign in'}</strong>
                     <span>
-                      With your TwoCode account. What you bought and your Founder status come with
-                      you to every PC.
+                      {langCode === 'tr'
+                        ? 'TwoCode hesabınızla. Satın aldıklarınız ve Kurucu durumunuz her PC’de sizinle gelir.'
+                        : 'With your TwoCode account. What you bought and your Founder status come with you to every PC.'}
                     </span>
                   </div>
                 </div>
@@ -2175,7 +2232,7 @@ export default function SettingsApp() {
                 <input
                   type="email"
                   className="settings-input full"
-                  placeholder="you@example.com"
+                  placeholder={langCode === 'tr' ? 'siz@ornek.com' : 'you@example.com'}
                   value={accountEmail}
                   onChange={(e) => setAccountEmail(e.target.value)}
                 />
@@ -2183,27 +2240,27 @@ export default function SettingsApp() {
                   <input
                     type="password"
                     className="settings-input full"
-                    placeholder="Password"
+                    placeholder={langCode === 'tr' ? 'Şifre' : 'Password'}
                     value={accountPass}
                     onChange={(e) => setAccountPass(e.target.value)}
                   />
                   <button type="button" className="white-pill-btn">
-                    Sign in
+                    {langCode === 'tr' ? 'Giriş yap' : 'Sign in'}
                   </button>
                 </div>
                 <div className="account-sub-links">
                   <button type="button" className="dark-pill-btn sm">
-                    No account yet? Create one
+                    {langCode === 'tr' ? 'Henüz hesabınız yok mu? Oluşturun' : 'No account yet? Create one'}
                   </button>
                   <button type="button" className="dark-pill-btn sm">
-                    Forgot password?
+                    {langCode === 'tr' ? 'Şifrenizi mi unuttunuz?' : 'Forgot password?'}
                   </button>
                 </div>
               </div>
             </div>
 
             <button type="button" className="dark-pill-btn sm" style={{ marginTop: 14 }}>
-              Got a code from us?
+              {langCode === 'tr' ? 'Bizden bir kodunuz mu var?' : 'Got a code from us?'}
             </button>
           </div>
         )}
@@ -2213,18 +2270,18 @@ export default function SettingsApp() {
             ============================================================ */}
         {activePage === 'general' && (
           <div className="settings-page-body narrow-body">
-            <span className="section-eyebrow">KEYBOARD SHORTCUTS</span>
+            <span className="section-eyebrow">{t('settings.general.shortcuts')}</span>
             <div className="settings-card">
               {[
-                { label: 'Open the island', keys: 'Ctrl + Alt + T' },
-                { label: 'Tuck the island away / back', keys: 'Ctrl + Alt + H' },
-                { label: 'Talk to Robo', keys: 'Ctrl + Alt + Space' },
-                { label: 'Home', keys: 'Ctrl + Alt + Shift + 1' },
-                { label: 'Music', keys: 'Ctrl + Alt + Shift + 2' },
+                { label: t('settings.general.openIsland'), keys: 'Ctrl + Alt + T' },
+                { label: t('settings.general.tuckIsland'), keys: 'Ctrl + Alt + H' },
+                { label: langCode === 'tr' ? "Robo ile konuş" : 'Talk to Robo', keys: 'Ctrl + Alt + Space' },
+                { label: t('settings.nav.home'), keys: 'Ctrl + Alt + Shift + 1' },
+                { label: t('settings.opt.Music'), keys: 'Ctrl + Alt + Shift + 2' },
                 { label: 'Claude Code', keys: 'Ctrl + Alt + Shift + 3' },
-                { label: 'Focus timer', keys: 'Ctrl + Alt + Shift + 4' },
-                { label: 'Clipboard', keys: 'Ctrl + Alt + Shift + 5' },
-                { label: 'Note', keys: 'Ctrl + Alt + Shift + 6' },
+                { label: langCode === 'tr' ? 'Odak sayacı' : 'Focus timer', keys: 'Ctrl + Alt + Shift + 4' },
+                { label: langCode === 'tr' ? 'Pano' : 'Clipboard', keys: 'Ctrl + Alt + Shift + 5' },
+                { label: langCode === 'tr' ? 'Not' : 'Note', keys: 'Ctrl + Alt + Shift + 6' },
               ].map((sc) => (
                 <div key={sc.label} className="settings-row">
                   <strong>{sc.label}</strong>
@@ -2232,28 +2289,28 @@ export default function SettingsApp() {
                 </div>
               ))}
               <div className="settings-row">
-                <strong>Put all shortcuts back</strong>
+                <strong>{t('settings.general.resetShortcuts')}</strong>
                 <button type="button" className="dark-pill-btn sm">
-                  Reset
+                  {t('common.reset')}
                 </button>
               </div>
             </div>
 
             <span className="section-eyebrow" style={{ marginTop: 20 }}>
-              LANGUAGE
+              {t('settings.general.languageEyebrow')}
             </span>
             <div className="settings-card">
               <div className="settings-row">
                 <div className="row-text-col">
-                  <strong>Language · Taal</strong>
-                  <span>The language of the island</span>
+                  <strong>{t('settings.general.languageTitle')}</strong>
+                  <span>{t('settings.general.languageDesc')}</span>
                 </div>
                 <div className="seg-btn-group">
-                  {['Nederlands', 'English'].map((lang) => (
+                  {['Türkçe', 'English'].map((lang) => (
                     <button
                       key={lang}
                       type="button"
-                      className={`seg-choice-btn ${settings.language === lang ? 'active' : ''}`}
+                      className={`seg-choice-btn ${languageLabel(settings.language) === lang ? 'active' : ''}`}
                       onClick={() => updateSetting({ language: lang })}
                     >
                       {lang}
@@ -2264,13 +2321,13 @@ export default function SettingsApp() {
             </div>
 
             <span className="section-eyebrow" style={{ marginTop: 20 }}>
-              BEHAVIOUR
+              {t('settings.general.behaviourEyebrow')}
             </span>
             <div className="settings-card">
               <div className="settings-row">
                 <div className="row-text-col">
-                  <strong>Start with Windows</strong>
-                  <span>Open TwoCode automatically when you sign in to your PC</span>
+                  <strong>{t('settings.general.startWithWindows')}</strong>
+                  <span>{t('settings.general.startWithWindowsDesc')}</span>
                 </div>
                 <button
                   type="button"
@@ -2284,8 +2341,8 @@ export default function SettingsApp() {
               </div>
               <div className="settings-row">
                 <div className="row-text-col">
-                  <strong>Sound effects</strong>
-                  <span>Subtle chimes when tasks finish or timers end</span>
+                  <strong>{t('settings.general.soundEffects')}</strong>
+                  <span>{t('settings.general.soundEffectsDesc')}</span>
                 </div>
                 <button
                   type="button"
@@ -2301,8 +2358,8 @@ export default function SettingsApp() {
 
         {activePage === 'typography' && (
           <div className="settings-page-body narrow-body typography-settings-page">
-            <span className="section-eyebrow">INTERFACE TEXT</span>
-            <p className="typography-intro">One choice updates labels, menus, cards and descriptions throughout TwoCode.</p>
+            <span className="section-eyebrow">{langCode === 'tr' ? 'ARAYÜZ METNİ' : 'INTERFACE TEXT'}</span>
+            <p className="typography-intro">{langCode === 'tr' ? 'Tek bir seçim TwoCode genelindeki etiketleri, menüleri, kartları ve açıklamaları günceller.' : 'One choice updates labels, menus, cards and descriptions throughout TwoCode.'}</p>
             <div className="typography-font-grid">
               {TEXT_FONT_OPTIONS.map((font, index) => (
                 <button
@@ -2314,14 +2371,14 @@ export default function SettingsApp() {
                 >
                   <span className="typography-font-preview" style={{ fontFamily: font.family }}>Ag</span>
                   <span className="typography-font-name">{font.name}</span>
-                  <span className="typography-font-sample" style={{ fontFamily: font.family }}>The quick brown fox</span>
+                  <span className="typography-font-sample" style={{ fontFamily: font.family }}>{langCode === 'tr' ? 'Pijamalı hasta yağız şoföre çabucak güvendi' : 'The quick brown fox'}</span>
                   {textFontIndex === index && <Check size={15} className="typography-font-check" />}
                 </button>
               ))}
             </div>
 
-            <span className="section-eyebrow typography-number-eyebrow">NUMBERS & CLOCK</span>
-            <p className="typography-intro">This is shared with the clock font picker on Home. Timers, dates and numeric readouts follow it.</p>
+            <span className="section-eyebrow typography-number-eyebrow">{langCode === 'tr' ? 'SAYILAR VE SAAT' : 'NUMBERS & CLOCK'}</span>
+            <p className="typography-intro">{langCode === 'tr' ? 'Bu ayar Ana Sayfa’daki saat yazı tipi seçici ile paylaşılır. Zamanlayıcılar, tarihler ve sayısal göstergeler bunu takip eder.' : 'This is shared with the clock font picker on Home. Timers, dates and numeric readouts follow it.'}</p>
             <div className="typography-font-grid number-font-grid">
               {CLOCK_FONT_OPTIONS.map((font, index) => (
                 <button
@@ -2353,7 +2410,7 @@ export default function SettingsApp() {
             <div className="notif-left-list">
               <div className="notif-top-toggles">
                 <div className="notif-toggle-line">
-                  <strong>Windows notifications</strong>
+                  <strong>{langCode === 'tr' ? 'Windows bildirimleri' : 'Windows notifications'}</strong>
                   <button
                     type="button"
                     className={`settings-switch ${settings.windowsNotifications ? 'on' : ''}`}
@@ -2365,7 +2422,7 @@ export default function SettingsApp() {
                   </button>
                 </div>
                 <div className="notif-toggle-line">
-                  <strong>Do not disturb</strong>
+                  <strong>{langCode === 'tr' ? 'Rahatsız etme' : 'Do not disturb'}</strong>
                   <button
                     type="button"
                     className={`settings-switch ${settings.doNotDisturb ? 'on' : ''}`}
@@ -2383,11 +2440,15 @@ export default function SettingsApp() {
                     <div className="gh-bridge-title-row">
                       <span className="gh-bridge-title">G-Helper Bridge</span>
                       <span className={`gh-bridge-status-pill ${ghelperStatus.running ? 'is-active' : ghelperStatus.installed ? 'is-idle' : 'is-action'}`}>
-                        {ghelperStatus.running ? 'BAĞLI' : ghelperStatus.installed ? 'BEKLEMEDE' : 'KURULUM'}
+                        {langCode === 'tr'
+                          ? (ghelperStatus.running ? 'BAĞLI' : ghelperStatus.installed ? 'BEKLEMEDE' : 'KURULUM')
+                          : (ghelperStatus.running ? 'CONNECTED' : ghelperStatus.installed ? 'IDLE' : 'SETUP')}
                       </span>
                     </div>
                     <span className="gh-bridge-subtitle">
-                      {ghelperStatus.running ? 'OSD adaya yönlendirildi' : ghelperStatus.installed ? 'Kurulu (Çalışmıyor)' : 'Yetkili görev kurulumu gerekiyor'}
+                      {langCode === 'tr'
+                        ? (ghelperStatus.running ? 'OSD adaya yönlendirildi' : ghelperStatus.installed ? 'Kurulu (Çalışmıyor)' : 'Yetkili görev kurulumu gerekiyor')
+                        : (ghelperStatus.running ? 'OSD routed to island' : ghelperStatus.installed ? 'Installed (Not running)' : 'Elevated task setup required')}
                     </span>
                   </div>
                   <button
@@ -2396,11 +2457,13 @@ export default function SettingsApp() {
                     onClick={installGHelperBridge}
                     disabled={ghelperBusy}
                   >
-                    {ghelperBusy ? 'İşleniyor…' : ghelperStatus.running ? 'Yeniden Kur' : ghelperStatus.installed ? 'Başlat' : 'Bağla'}
+                    {langCode === 'tr'
+                      ? (ghelperBusy ? 'İşleniyor…' : ghelperStatus.running ? 'Yeniden Kur' : ghelperStatus.installed ? 'Başlat' : 'Bağla')
+                      : (ghelperBusy ? 'Working…' : ghelperStatus.running ? 'Reinstall' : ghelperStatus.installed ? 'Start' : 'Connect')}
                   </button>
                 </div>
                 {ghelperMessage && (
-                  <div className={`gh-bridge-alert ${ghelperMessage.includes('Could not') ? 'is-err' : 'is-ok'}`}>
+                  <div className={`gh-bridge-alert ${ghelperMessage.includes('Could not') || ghelperMessage.includes('kurulamadı') ? 'is-err' : 'is-ok'}`}>
                     {ghelperMessage}
                   </div>
                 )}
@@ -2409,14 +2472,14 @@ export default function SettingsApp() {
                   <button
                     type="button"
                     className="gh-bridge-chip"
-                    onClick={() => testGHelperHud('Yüksek')}
+                    onClick={() => testGHelperHud(langCode === 'tr' ? 'Yüksek' : 'High')}
                   >
-                    Klavye
+                    {langCode === 'tr' ? 'Klavye' : 'Keyboard'}
                   </button>
                   <button
                     type="button"
                     className="gh-bridge-chip"
-                    onClick={() => testGHelperHud('Ses açık')}
+                    onClick={() => testGHelperHud(langCode === 'tr' ? 'Ses açık' : 'Mic on')}
                   >
                     Mic
                   </button>
@@ -2430,9 +2493,39 @@ export default function SettingsApp() {
                 </div>
               </div>
 
-              {NOTIFICATION_ITEMS.map((grp) => (
+              {NOTIFICATION_ITEMS.map((grp) => {
+                const trGroup = {
+                  'MAIL AND OTHER APPS': 'POSTA VE DİĞER UYGULAMALAR',
+                  'CLAUDE AND AI': 'CLAUDE VE YAPAY ZEKA',
+                  FOCUS: 'ODAK',
+                  'MUSIC AND SOUND': 'MÜZİK VE SES',
+                  'PHONE, CALENDAR, BATTERY': 'TELEFON, TAKVİM, PİL',
+                }[grp.group] || grp.group;
+                const trItem = (it) => ({
+                  'New mail': 'Yeni posta',
+                  'Mail sent': 'Posta gönderildi',
+                  "Other apps' notifications": 'Diğer uygulama bildirimleri',
+                  'Claude asks for permission': 'Claude izin istiyor',
+                  'Claude has a question': 'Claude’un bir sorusu var',
+                  'Claude is done': 'Claude tamamladı',
+                  'Claude: error': 'Claude: hata',
+                  'ChatGPT or Claude in your browser': 'Tarayıcıda ChatGPT veya Claude',
+                  'Claude limit almost full': 'Claude limiti neredeyse doldu',
+                  'Focus done': 'Odak tamamlandı',
+                  'Back to work': 'İşe dönüş',
+                  'Next or previous song': 'Sonraki veya önceki şarkı',
+                  'Sound moved': 'Ses aktarıldı',
+                  "Can't jump in this song": 'Bu şarkıda ileri/geri sarma yok',
+                  Volume: 'Ses düzeyi',
+                  'Received from your phone': 'Telefonunuzdan alındı',
+                  'Calendar: in 10 minutes': 'Takvim: 10 dakika içinde',
+                  'Calendar linked': 'Takvim bağlandı',
+                  'Battery low': 'Pil düşük',
+                  'Headphones almost empty': 'Kulaklık şarjı bitmek üzere',
+                }[it] || it);
+                return (
                 <div key={grp.group} className="notif-group-block">
-                  <span className="notif-group-title">{grp.group}</span>
+                  <span className="notif-group-title">{langCode === 'tr' ? trGroup : grp.group}</span>
                   {grp.items.map((it) => (
                     <button
                       key={it}
@@ -2440,11 +2533,12 @@ export default function SettingsApp() {
                       className={`notif-item-btn ${selectedNotifItem === it ? 'active' : ''}`}
                       onClick={() => setSelectedNotifItem(it)}
                     >
-                      {it}
+                      {langCode === 'tr' ? trItem(it) : it}
                     </button>
                   ))}
                 </div>
-              ))}
+                );
+              })}
             </div>
 
             <div className="notif-right-detail">
@@ -2460,9 +2554,30 @@ export default function SettingsApp() {
                     <Check size={14} strokeWidth={3} color="#fff" />
                   </span>
                   <div className="notif-preview-copy">
-                    <small>TWOCODE · JUST NOW</small>
-                    <strong>{selectedNotifItem}</strong>
-                    <span>Your notification is ready to view</span>
+                    <small>{langCode === 'tr' ? 'TWOCODE · AZ ÖNCE' : 'TWOCODE · JUST NOW'}</small>
+                    <strong>{langCode === 'tr' ? ({
+                      'New mail': 'Yeni posta',
+                      'Mail sent': 'Posta gönderildi',
+                      "Other apps' notifications": 'Diğer uygulama bildirimleri',
+                      'Claude asks for permission': 'Claude izin istiyor',
+                      'Claude has a question': 'Claude’un bir sorusu var',
+                      'Claude is done': 'Claude tamamladı',
+                      'Claude: error': 'Claude: hata',
+                      'ChatGPT or Claude in your browser': 'Tarayıcıda ChatGPT veya Claude',
+                      'Claude limit almost full': 'Claude limiti neredeyse doldu',
+                      'Focus done': 'Odak tamamlandı',
+                      'Back to work': 'İşe dönüş',
+                      'Next or previous song': 'Sonraki veya önceki şarkı',
+                      'Sound moved': 'Ses aktarıldı',
+                      "Can't jump in this song": 'Bu şarkıda ileri/geri sarma yok',
+                      Volume: 'Ses düzeyi',
+                      'Received from your phone': 'Telefonunuzdan alındı',
+                      'Calendar: in 10 minutes': 'Takvim: 10 dakika içinde',
+                      'Calendar linked': 'Takvim bağlandı',
+                      'Battery low': 'Pil düşük',
+                      'Headphones almost empty': 'Kulaklık şarjı bitmek üzere',
+                    }[selectedNotifItem] || selectedNotifItem) : selectedNotifItem}</strong>
+                    <span>{langCode === 'tr' ? 'Bildiriminiz görüntülenmeye hazır' : 'Your notification is ready to view'}</span>
                   </div>
                 </div>
                 <button
@@ -2470,47 +2585,55 @@ export default function SettingsApp() {
                   className="white-pill-btn try-it-btn"
                   onClick={triggerTestNotificationOnIsland}
                 >
-                  Try it
+                  {langCode === 'tr' ? 'Dene' : 'Try it'}
                 </button>
               </div>
 
               <div className="notif-options-table">
                 <div className="settings-row">
-                  <strong>Show it</strong>
+                  <strong>{langCode === 'tr' ? 'Gösterim yeri' : 'Show it'}</strong>
                   <div className="seg-btn-group">
-                    {['In the island', 'Own card', 'Windows', 'Off'].map((opt) => (
+                    {[
+                      { value: 'In the island', label: langCode === 'tr' ? 'Ada içinde' : 'In the island' },
+                      { value: 'Own card', label: langCode === 'tr' ? 'Kendi kartında' : 'Own card' },
+                      { value: 'Windows', label: 'Windows' },
+                      { value: 'Off', label: t('common.off') },
+                    ].map((opt) => (
                       <button
-                        key={opt}
+                        key={opt.value}
                         type="button"
                         className={`seg-choice-btn ${
-                          settings.notifShowWhere === opt ? 'active' : ''
+                          settings.notifShowWhere === opt.value ? 'active' : ''
                         }`}
-                        onClick={() => updateSetting({ notifShowWhere: opt })}
+                        onClick={() => updateSetting({ notifShowWhere: opt.value })}
                       >
-                        {opt}
+                        {opt.label}
                       </button>
                     ))}
                   </div>
                 </div>
 
                 <div className="settings-row">
-                  <strong>Size</strong>
+                  <strong>{langCode === 'tr' ? 'Boyut' : 'Size'}</strong>
                   <div className="seg-btn-group">
-                    {['Small', 'Big'].map((sz) => (
+                    {[
+                      { value: 'Small', label: langCode === 'tr' ? 'Küçük' : 'Small' },
+                      { value: 'Big', label: langCode === 'tr' ? 'Büyük' : 'Big' },
+                    ].map((sz) => (
                       <button
-                        key={sz}
+                        key={sz.value}
                         type="button"
-                        className={`seg-choice-btn ${settings.notifSize === sz ? 'active' : ''}`}
-                        onClick={() => updateSetting({ notifSize: sz })}
+                        className={`seg-choice-btn ${settings.notifSize === sz.value ? 'active' : ''}`}
+                        onClick={() => updateSetting({ notifSize: sz.value })}
                       >
-                        {sz}
+                        {sz.label}
                       </button>
                     ))}
                   </div>
                 </div>
 
                 <div className="settings-row">
-                  <strong>Stay for</strong>
+                  <strong>{langCode === 'tr' ? 'Kalma süresi' : 'Stay for'}</strong>
                   <div className="slider-with-val">
                     <input
                       type="range"
@@ -2521,31 +2644,38 @@ export default function SettingsApp() {
                         updateSetting({ notifDurationSec: parseInt(e.target.value, 10) })
                       }
                     />
-                    <span>{settings.notifDurationSec} s</span>
+                    <span>{langCode === 'tr' ? `${settings.notifDurationSec} sn` : `${settings.notifDurationSec} s`}</span>
                   </div>
                 </div>
 
                 <div className="settings-row">
-                  <strong>Sound</strong>
+                  <strong>{langCode === 'tr' ? 'Ses' : 'Sound'}</strong>
                   <div className="seg-btn-group">
-                    {['Ding', 'Pling', 'Pop', 'Warning', 'Party', 'None'].map((snd) => (
+                    {[
+                      { value: 'Ding', label: 'Ding' },
+                      { value: 'Pling', label: 'Pling' },
+                      { value: 'Pop', label: 'Pop' },
+                      { value: 'Warning', label: langCode === 'tr' ? 'Uyarı' : 'Warning' },
+                      { value: 'Party', label: langCode === 'tr' ? 'Parti' : 'Party' },
+                      { value: 'None', label: langCode === 'tr' ? 'Yok' : 'None' },
+                    ].map((snd) => (
                       <button
-                        key={snd}
+                        key={snd.value}
                         type="button"
-                        className={`seg-choice-btn ${settings.notifSound === snd ? 'active' : ''}`}
+                        className={`seg-choice-btn ${settings.notifSound === snd.value ? 'active' : ''}`}
                         onClick={() => {
-                          updateSetting({ notifSound: snd });
-                          playNotifSound(snd, settings.soundEffects !== false);
+                          updateSetting({ notifSound: snd.value });
+                          playNotifSound(snd.value, settings.soundEffects !== false);
                         }}
                       >
-                        {snd}
+                        {snd.label}
                       </button>
                     ))}
                   </div>
                 </div>
 
                 <div className="settings-row">
-                  <strong>Colour</strong>
+                  <strong>{langCode === 'tr' ? 'Renk' : 'Colour'}</strong>
                   <div className="swatch-group">
                     <button
                       type="button"
@@ -2553,7 +2683,7 @@ export default function SettingsApp() {
                         settings.notifColor === '#3b82f6' ? 'selected' : ''
                       }`}
                       onClick={() => updateSetting({ notifColor: '#3b82f6' })}
-                      title="Custom colour"
+                      title={langCode === 'tr' ? 'Özel renk' : 'Custom colour'}
                     />
                     {['#f97316', '#ef4444', '#8b5cf6', '#3b82f6', '#22c55e', '#ffffff'].map((c) => (
                       <button
@@ -2572,7 +2702,7 @@ export default function SettingsApp() {
                     settings.notifShowWhere !== 'Own card' ? 'row-dimmed' : ''
                   }`}
                 >
-                  <strong>Place</strong>
+                  <strong>{langCode === 'tr' ? 'Konum' : 'Place'}</strong>
                   <div className="notif-place-grid">
                     {['top-left', 'top-center', 'top-right', 'bottom-left', 'bottom-center', 'bottom-right'].map(
                       (pos) => (
@@ -2590,27 +2720,30 @@ export default function SettingsApp() {
                 </div>
 
                 <div className="settings-row">
-                  <strong>Your text</strong>
+                  <strong>{langCode === 'tr' ? 'Metniniz' : 'Your text'}</strong>
                   <div className="seg-btn-group">
-                    {['Show', 'Hide'].map((tx) => (
+                    {[
+                      { value: 'Show', label: langCode === 'tr' ? 'Göster' : 'Show' },
+                      { value: 'Hide', label: langCode === 'tr' ? 'Gizle' : 'Hide' },
+                    ].map((tx) => (
                       <button
-                        key={tx}
+                        key={tx.value}
                         type="button"
                         className={`seg-choice-btn ${
-                          settings.notifShowText === tx ? 'active' : ''
+                          settings.notifShowText === tx.value ? 'active' : ''
                         }`}
-                        onClick={() => updateSetting({ notifShowText: tx })}
+                        onClick={() => updateSetting({ notifShowText: tx.value })}
                       >
-                        {tx}
+                        {tx.label}
                       </button>
                     ))}
                   </div>
                 </div>
 
                 <div className="settings-row">
-                  <strong>Also during</strong>
+                  <strong>{langCode === 'tr' ? 'Ayrıca şu sırada' : 'Also during'}</strong>
                   <div className="row-right-group">
-                    <span className="inline-toggle-label">Focus</span>
+                    <span className="inline-toggle-label">{langCode === 'tr' ? 'Odak' : 'Focus'}</span>
                     <button
                       type="button"
                       className={`settings-switch ${settings.notifDuringFocus ? 'on' : ''}`}
@@ -2642,14 +2775,34 @@ export default function SettingsApp() {
         {/* ============================================================
             PAGE 10: ISLAND
             ============================================================ */}
-        {activePage === 'island' && (
+        {activePage === 'island' && (() => {
+          const optMap = {
+            Compact: langCode === 'tr' ? 'Kompakt' : 'Compact',
+            Normal: 'Normal',
+            Large: langCode === 'tr' ? 'Büyük' : 'Large',
+            Attached: langCode === 'tr' ? 'Yapışık' : 'Attached',
+            Floating: langCode === 'tr' ? 'Yüzen' : 'Floating',
+            'On hover': langCode === 'tr' ? 'Üzerine gelince' : 'On hover',
+            'On click': langCode === 'tr' ? 'Tıklayınca' : 'On click',
+            Nothing: langCode === 'tr' ? 'Hiçbiri' : 'Nothing',
+            Time: langCode === 'tr' ? 'Saat' : 'Time',
+            Battery: langCode === 'tr' ? 'Pil' : 'Battery',
+            CPU: 'CPU',
+            RAM: 'RAM',
+            'Wi-Fi': 'Wi-Fi',
+            Bluetooth: 'Bluetooth',
+            Automatic: langCode === 'tr' ? 'Otomatik' : 'Automatic',
+            '12-hour · 6:30 PM': langCode === 'tr' ? '12 saat · 6:30 PM' : '12-hour · 6:30 PM',
+            '24-hour · 18:30': langCode === 'tr' ? '24 saat · 18:30' : '24-hour · 18:30',
+          };
+          return (
           <div className="settings-page-body narrow-body">
-            <span className="section-eyebrow">LOOK</span>
+            <span className="section-eyebrow">{langCode === 'tr' ? 'GÖRÜNÜM' : 'LOOK'}</span>
             <div className="settings-card">
               <div className="settings-row">
                 <div className="row-text-col">
-                  <strong>Size</strong>
-                  <span>How big the island is</span>
+                  <strong>{langCode === 'tr' ? 'Boyut' : 'Size'}</strong>
+                  <span>{langCode === 'tr' ? 'Adanın ne kadar büyük olacağı' : 'How big the island is'}</span>
                 </div>
                 <div className="seg-btn-group">
                   {['Compact', 'Normal', 'Large'].map((sz) => (
@@ -2659,7 +2812,7 @@ export default function SettingsApp() {
                       className={`seg-choice-btn ${settings.islandSize === sz ? 'active' : ''}`}
                       onClick={() => updateSetting({ islandSize: sz })}
                     >
-                      {sz}
+                      {optMap[sz]}
                     </button>
                   ))}
                 </div>
@@ -2667,10 +2820,11 @@ export default function SettingsApp() {
 
               <div className="settings-row">
                 <div className="row-text-col">
-                  <strong>Style</strong>
+                  <strong>{langCode === 'tr' ? 'Stil' : 'Style'}</strong>
                   <span>
-                    Attached to the top edge like a laptop&apos;s notch, or floating just below it
-                    like on an iPhone
+                    {langCode === 'tr'
+                      ? 'Dizüstü bilgisayar çentiği gibi üst kenara yapışık veya iPhone’daki gibi hemen altında yüzen'
+                      : "Attached to the top edge like a laptop's notch, or floating just below it like on an iPhone"}
                   </span>
                 </div>
                 <div className="seg-btn-group">
@@ -2681,7 +2835,7 @@ export default function SettingsApp() {
                       className={`seg-choice-btn ${settings.islandStyle === st ? 'active' : ''}`}
                       onClick={() => updateSetting({ islandStyle: st })}
                     >
-                      {st}
+                      {optMap[st]}
                     </button>
                   ))}
                 </div>
@@ -2689,8 +2843,8 @@ export default function SettingsApp() {
 
               <div className="settings-row">
                 <div className="row-text-col">
-                  <strong>See-through</strong>
-                  <span>How much you see through the island</span>
+                  <strong>{langCode === 'tr' ? 'Saydamlık' : 'See-through'}</strong>
+                  <span>{langCode === 'tr' ? 'Adanın arkasının ne kadar görüneceği' : 'How much you see through the island'}</span>
                 </div>
                 <div className="slider-with-val">
                   <input
@@ -2708,10 +2862,11 @@ export default function SettingsApp() {
 
               <div className="settings-row">
                 <div className="row-text-col">
-                  <strong>Music colour</strong>
+                  <strong>{langCode === 'tr' ? 'Müzik rengi' : 'Music colour'}</strong>
                   <span>
-                    When the island is see-through, it takes on the colour of the album cover that
-                    is playing
+                    {langCode === 'tr'
+                      ? 'Ada saydamken çalan albüm kapağının rengini alır'
+                      : 'When the island is see-through, it takes on the colour of the album cover that is playing'}
                   </span>
                 </div>
                 <button
@@ -2725,9 +2880,11 @@ export default function SettingsApp() {
 
               <div className="settings-row">
                 <div className="row-text-col">
-                  <strong>Open</strong>
+                  <strong>{langCode === 'tr' ? 'Açılma' : 'Open'}</strong>
                   <span>
-                    Opens the island when your mouse moves over it, or only when you click it
+                    {langCode === 'tr'
+                      ? 'Fare üzerine geldiğinde mi yoksa yalnızca tıkladığında mı açılsın'
+                      : 'Opens the island when your mouse moves over it, or only when you click it'}
                   </span>
                 </div>
                 <div className="seg-btn-group">
@@ -2738,7 +2895,7 @@ export default function SettingsApp() {
                       className={`seg-choice-btn ${settings.islandOpenMode === op ? 'active' : ''}`}
                       onClick={() => updateSetting({ islandOpenMode: op })}
                     >
-                      {op}
+                      {optMap[op]}
                     </button>
                   ))}
                 </div>
@@ -2746,13 +2903,13 @@ export default function SettingsApp() {
             </div>
 
             <span className="section-eyebrow" style={{ marginTop: 20 }}>
-              RESTING ISLAND
+              {langCode === 'tr' ? 'BEKLEME ADASI' : 'RESTING ISLAND'}
             </span>
             <div className="settings-card">
               <div className="settings-row">
                 <div className="row-text-col">
-                  <strong>Left of Robo</strong>
-                  <span>What it shows when nothing is going on</span>
+                  <strong>{langCode === 'tr' ? 'Robo’nun solu' : 'Left of Robo'}</strong>
+                  <span>{langCode === 'tr' ? 'Hiçbir şey yokken sol tarafta ne gösterilsin' : 'What it shows when nothing is going on'}</span>
                 </div>
                 <div className="seg-btn-group">
                   {['Nothing', 'Time', 'Battery', 'CPU', 'RAM', 'Wi-Fi', 'Bluetooth'].map((opt) => (
@@ -2762,7 +2919,7 @@ export default function SettingsApp() {
                       className={`seg-choice-btn ${settings.leftOfRobo === opt ? 'active' : ''}`}
                       onClick={() => updateSetting({ leftOfRobo: opt })}
                     >
-                      {opt}
+                      {optMap[opt]}
                     </button>
                   ))}
                 </div>
@@ -2770,8 +2927,8 @@ export default function SettingsApp() {
 
               <div className="settings-row">
                 <div className="row-text-col">
-                  <strong>Robo&apos;s eyes</strong>
-                  <span>In the middle, where your laptop&apos;s camera is</span>
+                  <strong>{langCode === 'tr' ? 'Robo’nun gözleri' : "Robo's eyes"}</strong>
+                  <span>{langCode === 'tr' ? 'Ortada, dizüstü bilgisayarının kamerasının olduğu yerde' : "In the middle, where your laptop's camera is"}</span>
                 </div>
                 <button
                   type="button"
@@ -2784,8 +2941,8 @@ export default function SettingsApp() {
 
               <div className="settings-row">
                 <div className="row-text-col">
-                  <strong>Right of Robo</strong>
-                  <span>What it shows when nothing is going on</span>
+                  <strong>{langCode === 'tr' ? 'Robo’nun sağı' : 'Right of Robo'}</strong>
+                  <span>{langCode === 'tr' ? 'Hiçbir şey yokken sağ tarafta ne gösterilsin' : 'What it shows when nothing is going on'}</span>
                 </div>
                 <div className="seg-btn-group">
                   {['Nothing', 'Time', 'Battery', 'CPU', 'RAM', 'Wi-Fi', 'Bluetooth'].map((opt) => (
@@ -2795,7 +2952,7 @@ export default function SettingsApp() {
                       className={`seg-choice-btn ${settings.rightOfRobo === opt ? 'active' : ''}`}
                       onClick={() => updateSetting({ rightOfRobo: opt })}
                     >
-                      {opt}
+                      {optMap[opt]}
                     </button>
                   ))}
                 </div>
@@ -2803,8 +2960,8 @@ export default function SettingsApp() {
 
               <div className="settings-row">
                 <div className="row-text-col">
-                  <strong>Clock</strong>
-                  <span>How the time looks, in the island and on Home</span>
+                  <strong>{langCode === 'tr' ? 'Saat' : 'Clock'}</strong>
+                  <span>{langCode === 'tr' ? 'Adada ve Ana Sayfa’da saatin nasıl görüneceği' : 'How the time looks, in the island and on Home'}</span>
                 </div>
                 <div className="seg-btn-group">
                   {['Automatic', '12-hour · 6:30 PM', '24-hour · 18:30'].map((cf) => (
@@ -2814,7 +2971,7 @@ export default function SettingsApp() {
                       className={`seg-choice-btn ${settings.clockFormat === cf ? 'active' : ''}`}
                       onClick={() => updateSetting({ clockFormat: cf })}
                     >
-                      {cf}
+                      {optMap[cf]}
                     </button>
                   ))}
                 </div>
@@ -2822,15 +2979,16 @@ export default function SettingsApp() {
             </div>
 
             <span className="section-eyebrow" style={{ marginTop: 20 }}>
-              ON THE ISLAND
+              {langCode === 'tr' ? 'ADA ÜZERİNDE' : 'ON THE ISLAND'}
             </span>
             <div className="settings-card">
               <div className="settings-row">
                 <div className="row-text-col">
-                  <strong>Lyrics</strong>
+                  <strong>{langCode === 'tr' ? 'Şarkı sözleri' : 'Lyrics'}</strong>
                   <span>
-                    The line that is sung, in the island. From lrclib.net or NetEase (only the
-                    song&apos;s name goes there)
+                    {langCode === 'tr'
+                      ? 'Çalan şarkının sözleri adada görünür. lrclib.net veya NetEase kaynaklı (yalnızca şarkı adı gönderilir)'
+                      : "The line that is sung, in the island. From lrclib.net or NetEase (only the song's name goes there)"}
                   </span>
                 </div>
                 <button
@@ -2843,21 +3001,23 @@ export default function SettingsApp() {
               </div>
             </div>
           </div>
-        )}
+          );
+        })()}
 
         {/* ============================================================
             PAGE 11: FOCUS GUARD
             ============================================================ */}
         {activePage === 'focusguard' && (
           <div className="settings-page-body narrow-body">
-            <span className="section-eyebrow">FOCUS GUARD</span>
+            <span className="section-eyebrow">{langCode === 'tr' ? 'ODAK KORUMASI' : 'FOCUS GUARD'}</span>
             <div className="settings-card">
               <div className="settings-row">
                 <div className="row-text-col">
-                  <strong>Focus guard</strong>
+                  <strong>{langCode === 'tr' ? 'Odak koruması' : 'Focus guard'}</strong>
                   <span>
-                    Open something that distracts you and Robo stops you for a moment: breathe
-                    first, then you choose. Like &quot;one sec&quot; on your phone.
+                    {langCode === 'tr'
+                      ? 'Dikkatinizi dağıtan bir şey açtığınızda Robo sizi bir an durdurur: önce nefes alın, sonra karar verin. Telefonunuzdaki "one sec" gibi.'
+                      : 'Open something that distracts you and Robo stops you for a moment: breathe first, then you choose. Like "one sec" on your phone.'}
                   </span>
                 </div>
                 <button
@@ -2871,8 +3031,8 @@ export default function SettingsApp() {
 
               <div className="settings-row align-top">
                 <div className="row-text-col">
-                  <strong>Apps and sites</strong>
-                  <span>Pick what distracts you</span>
+                  <strong>{langCode === 'tr' ? 'Uygulamalar ve siteler' : 'Apps and sites'}</strong>
+                  <span>{langCode === 'tr' ? 'Dikkatinizi neyin dağıttığını seçin' : 'Pick what distracts you'}</span>
                 </div>
                 <div className="seg-btn-group wrap-right">
                   {[
@@ -2907,8 +3067,8 @@ export default function SettingsApp() {
 
               <div className="settings-row">
                 <div className="row-text-col">
-                  <strong>Your own app or site</strong>
-                  <span>Words from its name, with commas in between (e.g. roblox, fortnite)</span>
+                  <strong>{langCode === 'tr' ? 'Kendi uygulamanız veya siteniz' : 'Your own app or site'}</strong>
+                  <span>{langCode === 'tr' ? 'Adından kelimeler, aralarına virgül koyarak (ör. roblox, fortnite)' : 'Words from its name, with commas in between (e.g. roblox, fortnite)'}</span>
                 </div>
                 <div className="row-right-group">
                   <input
@@ -2919,15 +3079,15 @@ export default function SettingsApp() {
                     onChange={(e) => updateSetting({ focusGuardCustom: e.target.value })}
                   />
                   <button type="button" className="dark-pill-btn sm">
-                    Save
+                    {t('common.save')}
                   </button>
                 </div>
               </div>
 
               <div className="settings-row">
                 <div className="row-text-col">
-                  <strong>Wait</strong>
-                  <span>How long you breathe in and out first</span>
+                  <strong>{langCode === 'tr' ? 'Bekleme' : 'Wait'}</strong>
+                  <span>{langCode === 'tr' ? 'Önce ne kadar süre nefes alıp vereceğiniz' : 'How long you breathe in and out first'}</span>
                 </div>
                 <div className="seg-btn-group">
                   {[3, 5, 10].map((s) => (
@@ -2939,7 +3099,7 @@ export default function SettingsApp() {
                       }`}
                       onClick={() => updateSetting({ focusGuardWaitSec: s })}
                     >
-                      {s} sec
+                      {langCode === 'tr' ? `${s} sn` : `${s} sec`}
                     </button>
                   ))}
                 </div>
@@ -2947,8 +3107,8 @@ export default function SettingsApp() {
 
               <div className="settings-row">
                 <div className="row-text-col">
-                  <strong>Then leave you alone for</strong>
-                  <span>How long Robo lets you be when you open it anyway</span>
+                  <strong>{langCode === 'tr' ? 'Sonra şu kadar rahat bırak' : 'Then leave you alone for'}</strong>
+                  <span>{langCode === 'tr' ? 'Yine de açtığınızda Robo’nun sizi ne kadar süre rahatsız etmeyeceği' : 'How long Robo lets you be when you open it anyway'}</span>
                 </div>
                 <div className="seg-btn-group">
                   {[5, 15, 30].map((m) => (
@@ -2960,7 +3120,7 @@ export default function SettingsApp() {
                       }`}
                       onClick={() => updateSetting({ focusGuardLeaveMin: m })}
                     >
-                      {m} min
+                      {langCode === 'tr' ? `${m} dk` : `${m} min`}
                     </button>
                   ))}
                 </div>
@@ -2968,17 +3128,18 @@ export default function SettingsApp() {
 
               <div className="settings-row">
                 <div className="row-text-col">
-                  <strong>Today</strong>
-                  <span>You went back 0× · opened it anyway 0×</span>
+                  <strong>{t('common.today')}</strong>
+                  <span>{langCode === 'tr' ? '0× geri döndünüz · 0× yine de açtınız' : 'You went back 0× · opened it anyway 0×'}</span>
                 </div>
               </div>
 
               <div className="settings-row">
                 <div className="row-text-col">
-                  <strong>Privacy</strong>
+                  <strong>{langCode === 'tr' ? 'Gizlilik' : 'Privacy'}</strong>
                   <span>
-                    TwoCode only looks at the name of the window in front, on your own PC. Nothing
-                    is stored or sent.
+                    {langCode === 'tr'
+                      ? 'TwoCode yalnızca kendi PC’nizdeki ön pencerenin adına bakar. Hiçbir şey saklanmaz veya gönderilmez.'
+                      : 'TwoCode only looks at the name of the window in front, on your own PC. Nothing is stored or sent.'}
                   </span>
                 </div>
               </div>
@@ -2998,8 +3159,8 @@ export default function SettingsApp() {
                     <Check size={16} strokeWidth={2.5} />
                   </div>
                   <div className="row-text-col">
-                    <strong>You have TwoCode 1.2.0-beta.93</strong>
-                    <span>You are up to date · Newest version: v1.2.0-beta.93</span>
+                    <strong>{langCode === 'tr' ? 'TwoCode 1.2.0-beta.93 kullanıyorsunuz' : 'You have TwoCode 1.2.0-beta.93'}</strong>
+                    <span>{langCode === 'tr' ? 'Güncelsiniz · En yeni sürüm: v1.2.0-beta.93' : 'You are up to date · Newest version: v1.2.0-beta.93'}</span>
                   </div>
                 </div>
                 <button
@@ -3007,7 +3168,7 @@ export default function SettingsApp() {
                   className="dark-pill-btn"
                   onClick={() => window.twocode?.openExternal('https://twocode.nl/')}
                 >
-                  <Download size={13} style={{ marginRight: 6 }} /> Download
+                  <Download size={13} style={{ marginRight: 6 }} /> {langCode === 'tr' ? 'İndir' : 'Download'}
                 </button>
               </div>
             </div>
@@ -3017,33 +3178,45 @@ export default function SettingsApp() {
                 {
                   ver: 'TwoCode 1.2.0-beta.93',
                   newest: true,
-                  date: '6 November 2026',
-                  desc: "Other apps' notifications always name their app, and Discord messages show who and where without the channel",
+                  date: langCode === 'tr' ? '6 Kasım 2026' : '6 November 2026',
+                  desc: langCode === 'tr'
+                    ? 'Diğer uygulama bildirimleri her zaman kendi uygulamasının adını gösterir ve Discord mesajları kanal adı olmadan kimden ve nereden geldiğini gösterir'
+                    : "Other apps' notifications always name their app, and Discord messages show who and where without the channel",
                 },
                 {
                   ver: 'TwoCode 1.2.0-beta.92',
-                  date: '6 November 2026',
-                  desc: 'Song line and lyrics centred, the sound wave also moves on soft music and any speaker, notifications from other apps are not lost when unreadable and come faster, own card fades out and is see-through, Settings shows the last notification',
+                  date: langCode === 'tr' ? '6 Kasım 2026' : '6 November 2026',
+                  desc: langCode === 'tr'
+                    ? 'Şarkı satırı ve sözleri ortalandı, ses dalgası kısık müzikte ve her hoparlörde hareket eder, diğer uygulamalardan gelen bildirimler kaybolmaz ve daha hızlı gelir, özel kart solar ve saydamdır, Ayarlar son bildirimi gösterir'
+                    : 'Song line and lyrics centred, the sound wave also moves on soft music and any speaker, notifications from other apps are not lost when unreadable and come faster, own card fades out and is see-through, Settings shows the last notification',
                 },
                 {
                   ver: 'TwoCode 1.2.0-beta.91',
-                  date: '6 November 2026',
-                  desc: "A real gear icon in the menu, and Settings now shows whether other apps' notifications are working.",
+                  date: langCode === 'tr' ? '6 Kasım 2026' : '6 November 2026',
+                  desc: langCode === 'tr'
+                    ? 'Menüde gerçek bir dişli simgesi ve Ayarlar artık diğer uygulama bildirimlerinin çalışıp çalışmadığını gösteriyor.'
+                    : "A real gear icon in the menu, and Settings now shows whether other apps' notifications are working.",
                 },
                 {
                   ver: 'TwoCode 1.2.0-beta.90',
-                  date: '6 November 2026',
-                  desc: 'Sign in with Google: your calendar in the island, add events, see how many new mails you have, and drag a file onto the island to mail it.',
+                  date: langCode === 'tr' ? '6 Kasım 2026' : '6 November 2026',
+                  desc: langCode === 'tr'
+                    ? 'Google ile giriş yapın: adada takviminiz, etkinlik ekleyin, kaç yeni postanız olduğunu görün ve postalamak için adaya dosya sürükleyin.'
+                    : 'Sign in with Google: your calendar in the island, add events, see how many new mails you have, and drag a file onto the island to mail it.',
                 },
                 {
                   ver: 'TwoCode 1.2.0-beta.89',
-                  date: '6 November 2026',
-                  desc: "Pick your own font, thickness and colour for the clock, add apps under music and Claude, the sound wave is back, the menu's bar is your PC's volume, and other apps' notifications can show in the island.",
+                  date: langCode === 'tr' ? '6 Kasım 2026' : '6 November 2026',
+                  desc: langCode === 'tr'
+                    ? 'Saat için kendi yazı tipinizi, kalınlığınızı ve renginizi seçin, müzik ve Claude altına uygulamalar ekleyin, ses dalgası geri döndü, menü çubuğu PC’nizin ses düzeyidir ve diğer uygulama bildirimleri adada gösterilebilir.'
+                    : "Pick your own font, thickness and colour for the clock, add apps under music and Claude, the sound wave is back, the menu's bar is your PC's volume, and other apps' notifications can show in the island.",
                 },
                 {
                   ver: 'TwoCode 1.2.0-beta.88',
-                  date: '6 November 2026',
-                  desc: 'Faster startup, smoother island hover animation, and improved Spotify and browser media detection.',
+                  date: langCode === 'tr' ? '6 Kasım 2026' : '6 November 2026',
+                  desc: langCode === 'tr'
+                    ? 'Daha hızlı açılış, daha akıcı ada üzerine gelme animasyonu ve geliştirilmiş Spotify ve tarayıcı medya algılaması.'
+                    : 'Faster startup, smoother island hover animation, and improved Spotify and browser media detection.',
                 },
               ].map((rel) => (
                 <div key={rel.ver} className="news-item">
@@ -3054,7 +3227,7 @@ export default function SettingsApp() {
                   <div className="news-content-col">
                     <div className="news-meta-row">
                       <strong>{rel.ver}</strong>
-                      {rel.newest && <span className="news-tag">Newest</span>}
+                      {rel.newest && <span className="news-tag">{langCode === 'tr' ? 'En yeni' : 'Newest'}</span>}
                       <span className="news-tag amber">beta</span>
                       <span className="news-date">{rel.date}</span>
                     </div>
@@ -3077,11 +3250,11 @@ export default function SettingsApp() {
               <div className="stat-icon-sq pink">
                 <Heart size={18} />
               </div>
-              <h3>Enjoying TwoCode?</h3>
+              <h3>{langCode === 'tr' ? 'TwoCode hoşunuza gidiyor mu?' : 'Enjoying TwoCode?'}</h3>
               <p>
-                TwoCode is made by one person in the Netherlands. Everything is free during the
-                beta, and it stays that way whether you donate or not. If TwoCode saves you time, a
-                small donation helps me keep building it.
+                {langCode === 'tr'
+                  ? 'TwoCode Hollanda’da tek bir kişi tarafından geliştiriliyor. Beta sürecinde her şey ücretsizdir ve bağış yapsanız da yapmasanız da öyle kalacaktır. TwoCode size zaman kazandırıyorsa, küçük bir bağış geliştirmeye devam etmeme yardımcı olur.'
+                  : 'TwoCode is made by one person in the Netherlands. Everything is free during the beta, and it stays that way whether you donate or not. If TwoCode saves you time, a small donation helps me keep building it.'}
               </p>
               <div className="support-donate-row">
                 <button
@@ -3089,14 +3262,14 @@ export default function SettingsApp() {
                   className="white-pill-btn"
                   onClick={() => window.twocode?.openExternal('https://twocode.nl/')}
                 >
-                  ♡ Donate ↗
+                  {langCode === 'tr' ? '♡ Bağış yap ↗' : '♡ Donate ↗'}
                 </button>
-                <span>You choose the amount · secure payment by Stripe</span>
+                <span>{langCode === 'tr' ? 'Tutarı siz seçersiniz · Stripe ile güvenli ödeme' : 'You choose the amount · secure payment by Stripe'}</span>
               </div>
             </div>
 
             <span className="section-eyebrow" style={{ marginTop: 22 }}>
-              OTHER WAYS TO HELP
+              {langCode === 'tr' ? 'YARDIM ETMENİN DİĞER YOLLARI' : 'OTHER WAYS TO HELP'}
             </span>
             <div className="settings-card">
               <div className="settings-row">
@@ -3105,7 +3278,7 @@ export default function SettingsApp() {
                     <Sparkles size={15} />
                   </div>
                   <div className="row-text-col">
-                    <strong>Tell a friend about TwoCode</strong>
+                    <strong>{langCode === 'tr' ? 'Bir arkadaşınıza TwoCode’dan bahsedin' : 'Tell a friend about TwoCode'}</strong>
                     <span>twocode.nl</span>
                   </div>
                 </div>
@@ -3118,7 +3291,7 @@ export default function SettingsApp() {
                     setTimeout(() => setCopiedLink(false), 1500);
                   }}
                 >
-                  {copiedLink ? '✓ Copied' : 'Copy link'}
+                  {copiedLink ? (langCode === 'tr' ? '✓ Kopyalandı' : '✓ Copied') : (langCode === 'tr' ? 'Bağlantıyı kopyala' : 'Copy link')}
                 </button>
               </div>
 
@@ -3128,8 +3301,8 @@ export default function SettingsApp() {
                     <MessageSquare size={15} />
                   </div>
                   <div className="row-text-col">
-                    <strong>An idea, or found a bug?</strong>
-                    <span>Let me know, I read everything</span>
+                    <strong>{langCode === 'tr' ? 'Bir fikriniz mi var veya hata mı buldunuz?' : 'An idea, or found a bug?'}</strong>
+                    <span>{langCode === 'tr' ? 'Bana bildirin, her şeyi okuyorum' : 'Let me know, I read everything'}</span>
                   </div>
                 </div>
                 <button
@@ -3137,7 +3310,7 @@ export default function SettingsApp() {
                   className="dark-pill-btn"
                   onClick={() => window.twocode?.openExternal('https://twocode.nl/')}
                 >
-                  Contact ↗
+                  {langCode === 'tr' ? 'İletişim ↗' : 'Contact ↗'}
                 </button>
               </div>
             </div>
@@ -3145,5 +3318,6 @@ export default function SettingsApp() {
         )}
       </div>
     </div>
+    </LanguageProvider>
   );
 }

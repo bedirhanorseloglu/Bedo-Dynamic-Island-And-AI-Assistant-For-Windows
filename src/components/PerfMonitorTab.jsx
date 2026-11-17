@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Cpu, Flame, MemoryStick, Monitor } from 'lucide-react';
+import { useI18n } from '../i18n';
 
 const MAX_POINTS = 22;
 
@@ -41,6 +42,7 @@ function Sparkline({ data, color, id }) {
 }
 
 export default function PerfMonitorTab() {
+  const { t } = useI18n();
   const [stats, setStats] = useState({
     cpuPct: 0,
     cpuGHz: 0,
@@ -95,7 +97,7 @@ export default function PerfMonitorTab() {
         <div
           className="perf-card perf-cpu is-clickable"
           onClick={() => openSection('cpu')}
-          title="Görev Yöneticisi → CPU aç"
+          title={t('perf.openCpu')}
         >
           <div className="perf-card-head">
             <span className="perf-label"><Cpu size={12} /> CPU</span>
@@ -111,7 +113,7 @@ export default function PerfMonitorTab() {
         <div
           className="perf-card perf-ram is-clickable"
           onClick={() => openSection('ram')}
-          title="Görev Yöneticisi → Bellek aç"
+          title={t('perf.openRam')}
         >
           <div className="perf-card-head">
             <span className="perf-label"><MemoryStick size={12} /> RAM</span>
@@ -124,7 +126,7 @@ export default function PerfMonitorTab() {
         <div
           className="perf-card perf-gpu is-clickable"
           onClick={() => openSection('igpu')}
-          title="Görev Yöneticisi → iGPU aç"
+          title={t('perf.openIgpu')}
         >
           <div className="perf-card-head">
             <span className="perf-label"><Monitor size={12} /> iGPU</span>
@@ -137,18 +139,18 @@ export default function PerfMonitorTab() {
         <div
           className={`perf-card perf-dgpu is-clickable ${stats.dgpuActive ? 'is-active' : 'is-eco'}`}
           onClick={() => openSection('dgpu')}
-          title="Görev Yöneticisi → dGPU aç"
+          title={t('perf.openDgpu')}
         >
           <div className="perf-card-head">
             <span className="perf-label"><Flame size={12} /> dGPU</span>
             <span className="perf-sub mono">
               {stats.dgpuActive
                 ? `${stats.dgpuTemp != null ? `${stats.dgpuTemp}°C` : ''}${stats.dgpuVram ? ` • ${stats.dgpuVram}` : ''}`
-                : 'Eco'}
+                : t('perf.eco')}
             </span>
           </div>
           <div className="perf-value mono">
-            {stats.dgpuActive ? `${stats.dgpuPct}%` : 'Kapalı'}
+            {stats.dgpuActive ? `${stats.dgpuPct}%` : t('perf.off')}
           </div>
           <Sparkline
             data={history.dgpu}

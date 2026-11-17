@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Calendar, Check, ChevronLeft, ChevronRight, Plus, Trash2, X } from 'lucide-react';
+import { useI18n } from './i18n';
 
 function toLocalDateKey(date) {
   const year = date.getFullYear();
@@ -14,6 +15,7 @@ function makeDefaultEventTime() {
 }
 
 export default function AgendaCalendar({ events = [], onAddEvent, onDeleteEvent, onToggleEvent }) {
+  const { t, locale } = useI18n();
   const [viewMode, setViewMode] = useState('Day');
   const [selectedDate, setSelectedDate] = useState(() => toLocalDateKey(new Date()));
   const [isAdding, setIsAdding] = useState(false);
@@ -22,7 +24,7 @@ export default function AgendaCalendar({ events = [], onAddEvent, onDeleteEvent,
 
   const todayKey = toLocalDateKey(new Date());
   const selectedDateObject = new Date(`${selectedDate}T12:00:00`);
-  const monthTitle = selectedDateObject.toLocaleDateString('tr-TR', { month: 'long' });
+  const monthTitle = selectedDateObject.toLocaleDateString(locale, { month: 'long' });
   const monthYear = selectedDateObject.getFullYear();
 
   const weekDays = useMemo(() => {
@@ -47,7 +49,7 @@ export default function AgendaCalendar({ events = [], onAddEvent, onDeleteEvent,
     });
   }, [selectedDate]);
 
-  const eventDateKey = (event) => event?.date === 'Bugün' || !event?.date ? todayKey : String(event.date).slice(0, 10);
+  const eventDateKey = (event) => event?.date === 'Bugün' || event?.date === 'Today' || !event?.date ? todayKey : String(event.date).slice(0, 10);
   const eventsForDate = events
     .filter((event) => eventDateKey(event) === selectedDate)
     .sort((a, b) => String(a?.time || '').localeCompare(String(b?.time || '')));
@@ -74,19 +76,19 @@ export default function AgendaCalendar({ events = [], onAddEvent, onDeleteEvent,
     <div className="agenda-tab-view">
       <div className="agenda-top-row">
         <div className="agenda-title-group">
-          <span className="agenda-eyebrow">TAKVİM</span>
+          <span className="agenda-eyebrow">{t('agenda.eyebrow')}</span>
           <div className="agenda-month-heading">
             <h2>{monthTitle} <span className="clock-number-text">{monthYear}</span></h2>
-            <button type="button" className="agenda-nav-btn" onClick={() => moveDate(-1)} aria-label="Önceki dönem"><ChevronLeft size={15} /></button>
-            <button type="button" className="agenda-nav-btn" onClick={() => moveDate(1)} aria-label="Sonraki dönem"><ChevronRight size={15} /></button>
-            <button type="button" className="agenda-today-btn" onClick={() => setSelectedDate(todayKey)}>Bugün</button>
+            <button type="button" className="agenda-nav-btn" onClick={() => moveDate(-1)} aria-label={t('agenda.prevPeriod')}><ChevronLeft size={15} /></button>
+            <button type="button" className="agenda-nav-btn" onClick={() => moveDate(1)} aria-label={t('agenda.nextPeriod')}><ChevronRight size={15} /></button>
+            <button type="button" className="agenda-today-btn" onClick={() => setSelectedDate(todayKey)}>{t('agenda.today')}</button>
           </div>
         </div>
 
         <div className="agenda-controls-right">
           <div className="agenda-day-month-pill">
-            <button type="button" className={`dm-btn ${viewMode === 'Day' ? 'active' : ''}`} onClick={() => setViewMode('Day')} aria-pressed={viewMode === 'Day'}>Gün</button>
-            <button type="button" className={`dm-btn ${viewMode === 'Month' ? 'active' : ''}`} onClick={() => setViewMode('Month')} aria-pressed={viewMode === 'Month'}>Ay</button>
+            <button type="button" className={`dm-btn ${viewMode === 'Day' ? 'active' : ''}`} onClick={() => setViewMode('Day')} aria-pressed={viewMode === 'Day'}>{t('agenda.day')}</button>
+            <button type="button" className={`dm-btn ${viewMode === 'Month' ? 'active' : ''}`} onClick={() => setViewMode('Month')} aria-pressed={viewMode === 'Month'}>{t('agenda.month')}</button>
           </div>
           <button
             type="button"
@@ -96,8 +98,8 @@ export default function AgendaCalendar({ events = [], onAddEvent, onDeleteEvent,
               setViewMode('Day');
               setIsAdding((value) => !value);
             }}
-            title="Etkinlik ekle"
-            aria-label="Etkinlik ekle"
+            title={t('agenda.addEvent')}
+            aria-label={t('agenda.addEvent')}
           >
             {isAdding ? <X size={15} color="#fff" /> : <Plus size={16} strokeWidth={2.5} color="#eaf2f9" />}
           </button>
@@ -111,7 +113,7 @@ export default function AgendaCalendar({ events = [], onAddEvent, onDeleteEvent,
               const key = toLocalDateKey(date);
               return (
                 <button key={key} type="button" className={`agenda-date-cell ${key === selectedDate ? 'selected' : ''} ${key === todayKey ? 'today' : ''}`} onClick={() => setSelectedDate(key)} aria-pressed={key === selectedDate}>
-                  <span>{date.toLocaleDateString('tr-TR', { weekday: 'short' }).replace('.', '')}</span>
+                  <span>{date.toLocaleDateString(locale, { weekday: 'short' }).replace('.', '')}</span>
                   <strong>{date.getDate()}</strong>
                   {hasEventsOn(date) && <i />}
                 </button>
@@ -120,40 +122,43 @@ export default function AgendaCalendar({ events = [], onAddEvent, onDeleteEvent,
           </div>
           {isAdding && (
             <form className="agenda-quick-add" onSubmit={addEvent}>
-              <input autoFocus value={eventTitle} onChange={(event) => setEventTitle(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') setIsAdding(false); }} placeholder="Etkinlik adı" aria-label="Etkinlik adı" />
-              <input type="time" value={eventTime} onChange={(event) => setEventTime(event.target.value)} aria-label="Etkinlik saati" />
-              <button type="submit" disabled={!eventTitle.trim()}><Check size={14} /> Ekle</button>
+              <input autoFocus value={eventTitle} onChange={(event) => setEventTitle(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') setIsAdding(false); }} placeholder={t('agenda.eventNamePlaceholder')} aria-label={t('agenda.eventNamePlaceholder')} />
+              <input type="time" value={eventTime} onChange={(event) => setEventTime(event.target.value)} aria-label={t('agenda.eventTimeAria')} />
+              <button type="submit" disabled={!eventTitle.trim()}><Check size={14} /> {t('agenda.add')}</button>
             </form>
           )}
           <div className="agenda-event-list">
-            {eventsForDate.length ? eventsForDate.map((event, index) => (
+            {eventsForDate.length ? eventsForDate.map((event, index) => {
+              const titleText = event.title || t('agenda.eventFallback');
+              return (
               <div className={`agenda-event-card ${event.completed ? 'is-completed' : ''}`} key={event.id || `${event.title}-${index}`}>
                 <button
                   type="button"
                   className={`agenda-event-check ${event.completed ? 'is-checked' : ''}`}
                   onClick={() => onToggleEvent?.(event.id)}
-                  aria-label={event.completed ? `${event.title || 'Etkinlik'} tamamlanmadı olarak işaretle` : `${event.title || 'Etkinlik'} tamamlandı olarak işaretle`}
+                  aria-label={event.completed ? t('agenda.markIncomplete', { title: titleText }) : t('agenda.markComplete', { title: titleText })}
                   aria-pressed={Boolean(event.completed)}
-                  title={event.completed ? 'Tamamlandı' : 'Tamamlandı olarak işaretle'}
+                  title={event.completed ? t('agenda.completed') : t('agenda.markAsCompleted')}
                 >
                   {event.completed && <Check size={11} strokeWidth={3} />}
                 </button>
                 <span className="agenda-event-time">{event.time || '09:00'}</span>
                 <i className="agenda-event-accent" />
-                <div><strong title={event.title || String(event)}>{event.title || event}</strong><small className={selectedDate === todayKey ? '' : 'clock-number-text'}>{selectedDate === todayKey ? 'Bugün' : selectedDateObject.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })}</small></div>
-                <button type="button" className="agenda-event-delete" onClick={() => onDeleteEvent?.(event.id)} aria-label={`${event.title || 'Etkinlik'} etkinliğini sil`} title="Etkinliği sil"><Trash2 size={14} /></button>
+                <div><strong title={event.title || String(event)}>{event.title || event}</strong><small className={selectedDate === todayKey ? '' : 'clock-number-text'}>{selectedDate === todayKey ? t('agenda.today') : selectedDateObject.toLocaleDateString(locale, { day: 'numeric', month: 'long' })}</small></div>
+                <button type="button" className="agenda-event-delete" onClick={() => onDeleteEvent?.(event.id)} aria-label={t('agenda.deleteEventAria', { title: titleText })} title={t('agenda.deleteEvent')}><Trash2 size={14} /></button>
               </div>
-            )) : (
+              );
+            }) : (
               <div className="agenda-empty-state">
                 <span className="agenda-empty-icon"><Calendar size={19} strokeWidth={1.8} /></span>
-                <span>Bu gün için etkinlik yok</span>
+                <span>{t('agenda.noEvents')}</span>
               </div>
             )}
           </div>
         </>
       ) : (
         <div className="agenda-month-grid" style={{ gridTemplateRows: `14px repeat(${monthDays.length / 7}, minmax(0, 1fr))` }}>
-          {['Pt', 'Sa', 'Ça', 'Pe', 'Cu', 'Ct', 'Pa'].map((day, index) => <span className="agenda-weekday-label" key={`${day}-${index}`}>{day}</span>)}
+          {t('agenda.weekdays').map((day, index) => <span className="agenda-weekday-label" key={`${day}-${index}`}>{day}</span>)}
           {monthDays.map((date) => {
             const key = toLocalDateKey(date);
             return (
@@ -165,7 +170,7 @@ export default function AgendaCalendar({ events = [], onAddEvent, onDeleteEvent,
         </div>
       )}
 
-      <div className="agenda-local-label">Takvim bu cihazda saklanır</div>
+      <div className="agenda-local-label">{t('agenda.localLabel')}</div>
     </div>
   );
 }

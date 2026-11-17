@@ -23,6 +23,7 @@ const https = require('https');
 const os = require('os');
 const fs = require('fs');
 const { DropShareServer } = require('./drop-share-server.cjs');
+const { normalizeLanguage, getLocale, t: trMain } = require('./i18n.cjs');
 const {
   GHelperBridgeClient,
   checkScheduledTaskStatus: checkGHelperTaskStatus,
@@ -33,7 +34,34 @@ const {
 } = require('./ghelper-service.cjs');
 const { createLiveActivityWatcher } = require('./live-activity-watcher.cjs');
 const { createPerfMonitor } = require('./perf-monitor.cjs');
+const { BedoService } = require('./bedo-service.cjs');
 const perfMonitor = createPerfMonitor();
+let bedoService = null;
+
+function getBedoService() {
+  if (bedoService) return bedoService;
+  bedoService = new BedoService();
+  bedoService.on('event', (msg) => {
+    if (msg?.type === 'wake' && mainWindow && !mainWindow.isDestroyed()) {
+      try {
+        if (!mainWindow.isVisible()) mainWindow.show();
+        mainWindow.setAlwaysOnTop(true, 'screen-saver');
+      } catch {}
+    }
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('bedo-event', msg);
+    }
+  });
+  bedoService.on('status', (status) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('bedo-status', status);
+    }
+  });
+  bedoService.on('stderr', (line) => {
+    console.warn('[Bedo]', line);
+  });
+  return bedoService;
+}
 
 app.commandLine.appendSwitch('no-sandbox');
 app.commandLine.appendSwitch('js-flags', '--expose-gc --max-old-space-size=192');
@@ -84,6 +112,7 @@ const MODE_DIMENSIONS = {
   'music-bar': { bodyWidth: 350, height: 26, earRadius: 9, bottomRadius: 13, droplet: 0 },
   'focus-bar': { bodyWidth: 110, height: 26, earRadius: 8, bottomRadius: 13, droplet: 0 },
   'focus-bar-media': { bodyWidth: 104, height: 26, earRadius: 8, bottomRadius: 13, droplet: 1 },
+  'bedo-live': { bodyWidth: 416, height: 76, earRadius: 0, bottomRadius: 24, droplet: 0 },
   expanded: { bodyWidth: 620, height: 286, earRadius: 0, bottomRadius: 24, droplet: 0 },
 };
 
@@ -270,6 +299,7 @@ let currentShape = { ...MODE_DIMENSIONS.idle };
 // Persistent settings state shared between Dynamic Island & TwoCode Settings window
 let userSettings = {
   userName: os.userInfo().username || 'User',
+  language: 'English',
   googleConnected: false,
   googleEmail: '',
   apps: [],
@@ -450,9 +480,25 @@ function loadSettingsFromDisk() {
 }
 
 function saveSettingsToDisk(nextSettings) {
+  const prevLang = normalizeLanguage(userSettings.language);
   userSettings = { ...userSettings, ...(nextSettings || {}) };
   if (Object.prototype.hasOwnProperty.call(nextSettings || {}, 'startWithWindows')) {
     applyStartWithWindows(userSettings.startWithWindows !== false);
+  }
+  if (Object.prototype.hasOwnProperty.call(nextSettings || {}, 'geminiApiKey') && bedoService) {
+    bedoService.setApiKey(userSettings.geminiApiKey || '');
+  }
+  if (Object.prototype.hasOwnProperty.call(nextSettings || {}, 'bedoVoice') && bedoService && bedoService.getStatus().running) {
+    const wasPaused = bedoService.getStatus().paused;
+    bedoService.stop().then(() => {
+      bedoService.start({
+        apiKey: userSettings.geminiApiKey || process.env.GEMINI_API_KEY || '',
+        voice: userSettings.bedoVoice || 'Charon',
+        startPaused: wasPaused,
+        enableWake: true,
+        enableClap: false,
+      });
+    }).catch(() => {});
   }
   try {
     fs.writeFileSync(
@@ -466,6 +512,9 @@ function saveSettingsToDisk(nextSettings) {
   }
   if (settingsWindow && !settingsWindow.isDestroyed()) {
     settingsWindow.webContents.send('settings-updated', userSettings);
+  }
+  if (normalizeLanguage(userSettings.language) !== prevLang && tray) {
+    buildTrayContextMenu();
   }
   const startupMenuItem = trayContextMenu?.getMenuItemById('start-with-windows');
   if (startupMenuItem) startupMenuItem.checked = userSettings.startWithWindows !== false;
@@ -1346,7 +1395,12 @@ function createTray() {
       mainWindow.webContents.send('notch-hover-change', true);
     }
   });
+  buildTrayContextMenu();
+}
 
+function buildTrayContextMenu() {
+  if (!tray) return;
+  const lang = userSettings.language;
   const contextMenu = Menu.buildFromTemplate([
     {
       label: 'TwoCode',
@@ -1354,7 +1408,7 @@ function createTray() {
     },
     { type: 'separator' },
     {
-      label: 'Open the island\tAlt+Ctrl+T',
+      label: trMain(lang, 'trayOpenIsland'),
       accelerator: 'Alt+CommandOrControl+T',
       click: () => {
         if (!mainWindow || mainWindow.isDestroyed()) return;
@@ -1363,7 +1417,7 @@ function createTray() {
       },
     },
     {
-      label: 'Tuck the island away / back\tAlt+Ctrl+H',
+      label: trMain(lang, 'trayTuckIsland'),
       accelerator: 'Alt+CommandOrControl+H',
       click: () => {
         if (!mainWindow || mainWindow.isDestroyed()) return;
@@ -1371,16 +1425,16 @@ function createTray() {
       },
     },
     {
-      label: 'Settings',
+      label: trMain(lang, 'traySettings'),
       click: () => openOrFocusSettingsWindow('home'),
     },
     {
-      label: 'Set up TwoCode...',
+      label: trMain(lang, 'traySetup'),
       click: () => openOrFocusSettingsWindow('connections'),
     },
     { type: 'separator' },
     {
-      label: 'Start with Windows',
+      label: trMain(lang, 'trayStartWithWindows'),
       id: 'start-with-windows',
       type: 'checkbox',
       checked: userSettings.startWithWindows !== false,
@@ -1389,28 +1443,28 @@ function createTray() {
       },
     },
     {
-      label: 'Safe graphics (fixes a black box)',
+      label: trMain(lang, 'traySafeGraphics'),
       type: 'checkbox',
       checked: true,
     },
     {
-      label: 'Graphics card',
+      label: trMain(lang, 'trayGraphicsCard'),
       submenu: [
-        { label: 'Default', type: 'radio', checked: true },
-        { label: 'Discrete GPU (NVIDIA / AMD)', type: 'radio', checked: false },
-        { label: 'Integrated GPU', type: 'radio', checked: false },
+        { label: trMain(lang, 'trayGpuDefault'), type: 'radio', checked: true },
+        { label: trMain(lang, 'trayGpuDiscrete'), type: 'radio', checked: false },
+        { label: trMain(lang, 'trayGpuIntegrated'), type: 'radio', checked: false },
       ],
     },
     { type: 'separator' },
     {
-      label: 'Restart',
+      label: trMain(lang, 'trayRestart'),
       click: () => {
         app.relaunch();
         app.exit(0);
       },
     },
     {
-      label: 'Quit TwoCode',
+      label: trMain(lang, 'trayQuit'),
       click: () => app.quit(),
     },
   ]);
@@ -2007,6 +2061,9 @@ app.on('will-quit', () => {
       systemWatcherProc.kill();
     } catch {}
   }
+  if (bedoService) {
+    try { bedoService.stop(); } catch {}
+  }
   if (gmailPollTimer) clearInterval(gmailPollTimer);
 });
 
@@ -2237,7 +2294,7 @@ ipcMain.on('trigger-test-notification', (_event, notif) => {
       id: 'notif_' + Date.now(),
       app: resolvedApp,
       title: notif?.title || 'TwoCode Bildirim',
-      body: notif?.subtitle || notif?.body || 'Bildirim içeriği başarıyla görüntülendi',
+      body: notif?.subtitle || notif?.body || trMain(userSettings.language, 'testNotifDefaultBody'),
       accentHex: notif?.accentHex,
       logo: notif?.logo || notif?.appLogoUri || '',
       appLogoUri: notif?.appLogoUri,
@@ -2262,7 +2319,7 @@ ipcMain.handle('connect-agent-integrations', async () => {
 });
 
 ipcMain.handle('test-agent-integration', async (_event, agent = 'Codex') => {
-  const payload = JSON.stringify({ agent, type: 'done', title: `${agent} bağlantı testi`, event: 'test' });
+  const payload = JSON.stringify({ agent, type: 'done', title: trMain(userSettings.language, 'agentTestTitle', { agent }), event: 'test' });
   return new Promise((resolve) => {
     const request = http.request({ hostname: '127.0.0.1', port: 4242, path: '/api/agent', method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }, timeout: 2500 }, (response) => {
       let body = '';
@@ -2539,8 +2596,8 @@ function transcribeWithWarmPythonWorker(wavPath, lang) {
 
 ipcMain.handle('transcribe-audio', async (_event, payload = {}) => {
   const wavBase64 = typeof payload.wavBase64 === 'string' ? payload.wavBase64 : '';
-  const lang = typeof payload.lang === 'string' && payload.lang ? payload.lang : 'tr-TR';
-  if (!wavBase64) return { ok: false, error: 'Ses verisi boş.' };
+  const lang = typeof payload.lang === 'string' && payload.lang ? payload.lang : getLocale(userSettings.language);
+  if (!wavBase64) return { ok: false, error: trMain(userSettings.language, 'speechEmptyAudio') };
 
   const geminiKey = userSettings.geminiApiKey || process.env.GEMINI_API_KEY;
   if (geminiKey) {
@@ -2557,7 +2614,7 @@ ipcMain.handle('transcribe-audio', async (_event, payload = {}) => {
             body: JSON.stringify({
               contents: [{
                 parts: [
-                  { text: 'Bu ses kaydını Türkçe (veya konuşulan dilde) doğru noktalama ile yazıya dök. Sadece dökülen metni döndür, tırnak veya ek açıklama yazma.' },
+                  { text: trMain(userSettings.language, 'speechGeminiPrompt') },
                   { inline_data: { mime_type: 'audio/wav', data: wavBase64 } },
                 ],
               }],
@@ -2815,7 +2872,11 @@ let dropShareServerInstance = null;
 function getDropShareServer() {
   if (!dropShareServerInstance) {
     const uploadDir = path.join(app.getPath('downloads'), 'TwoCode Drop');
-    dropShareServerInstance = new DropShareServer({ uploadDir, port: 4343 });
+    dropShareServerInstance = new DropShareServer({
+    uploadDir,
+    port: 4343,
+    getLanguage: () => userSettings.language,
+  });
     dropShareServerInstance.on('change', (files) => {
       cacheDropFileIcons(files.map((f) => f.path));
       if (mainWindow && !mainWindow.isDestroyed()) {
@@ -2865,7 +2926,7 @@ ipcMain.handle('add-drop-files', async (_event, paths = []) => {
 
 ipcMain.handle('pick-drop-files', async () => {
   const res = await dialog.showOpenDialog(mainWindow || undefined, {
-    title: 'Dosya Seç — TwoCode Drop',
+    title: trMain(userSettings.language, 'dropPickTitle'),
     properties: ['openFile', 'multiSelections'],
   });
   if (res.canceled || !res.filePaths?.length) return getDropShareServer().getFiles();
@@ -2907,7 +2968,7 @@ ipcMain.handle('save-all-drop-files', async () => {
   if (!files.length) return { ok: false, canceled: false, count: 0 };
 
   const res = await dialog.showOpenDialog(mainWindow || undefined, {
-    title: 'Toplu İndir — Hedef Klasör Seç',
+    title: trMain(userSettings.language, 'dropSaveAllTitle'),
     defaultPath: app.getPath('desktop'),
     properties: ['openDirectory', 'createDirectory'],
   });
@@ -3960,7 +4021,7 @@ function callGeminiApi(apiKey, prompt) {
         {
           parts: [
             {
-              text: `Sen TwoCode Robo'sun; masaüstünde çalışan hızlı, yardımsever, akıllı ve arkadaş canlısı bir yapay zeka asistanısın. Türkçe konuş, kısa, net ve doğrudan cevaplar ver.\n\nKullanıcı sorusu: ${prompt}`,
+              text: `${trMain(userSettings.language, 'roboSystemPrompt')}\n\n${trMain(userSettings.language, 'roboUserQuestionPrefix')}: ${prompt}`,
             },
           ],
         },
@@ -4021,7 +4082,7 @@ function callClaudeApi(apiKey, prompt) {
       messages: [
         {
           role: 'user',
-          content: `Sen TwoCode Robo'sun; masaüstünde çalışan hızlı, yardımsever, akıllı bir yapay zeka asistanısın. Türkçe konuş, kısa, net ve doğrudan cevaplar ver.\n\nKullanıcı sorusu: ${prompt}`,
+          content: `${trMain(userSettings.language, 'roboSystemPrompt')}\n\n${trMain(userSettings.language, 'roboUserQuestionPrefix')}${prompt}`,
         },
       ],
     });
@@ -4072,8 +4133,7 @@ function callOpenAiApi(apiKey, prompt) {
       messages: [
         {
           role: 'system',
-          content:
-            "Sen TwoCode Robo'sun; masaüstünde çalışan hızlı, yardımsever, akıllı bir yapay zeka asistanısın. Türkçe konuş, kısa, net ve doğrudan cevaplar ver.",
+          content: trMain(userSettings.language, 'roboSystemPrompt'),
         },
         { role: 'user', content: prompt },
       ],
@@ -4244,6 +4304,7 @@ ipcMain.handle('ask-robo', async (_event, payload = {}) => {
   }
 
   // Route only to the provider selected in Robo. Never disguise API failures as AI answers.
+  const lang = userSettings.language;
   const selected = String(provider || 'Claude').toLowerCase();
   const providers = {
     claude: {
@@ -4251,21 +4312,21 @@ ipcMain.handle('ask-robo', async (_event, payload = {}) => {
       enabled: userSettings.claudeEnabled !== false,
       key: userSettings.claudeApiKey || process.env.ANTHROPIC_API_KEY,
       call: callClaudeApi,
-      setup: 'Ayarlar > Connections bölümüne Claude API anahtarınızı ekleyin.',
+      setup: trMain(lang, 'roboSetupClaude'),
     },
     codex: {
       label: 'OpenAI',
       enabled: userSettings.codexEnabled !== false,
       key: userSettings.codexApiKey || userSettings.openaiApiKey || process.env.OPENAI_API_KEY,
       call: callOpenAiApi,
-      setup: 'Ayarlar > Connections bölümüne OpenAI API anahtarınızı ekleyin. Codex uygulama oturumu API erişimi sağlamaz.',
+      setup: trMain(lang, 'roboSetupCodex'),
     },
     gemini: {
       label: 'Gemini',
       enabled: userSettings.geminiEnabled !== false,
       key: userSettings.geminiApiKey || process.env.GEMINI_API_KEY,
       call: callGeminiApi,
-      setup: 'Ayarlar > Connections bölümüne Gemini API anahtarınızı ekleyin.',
+      setup: trMain(lang, 'roboSetupGemini'),
     },
   };
   const selectedProvider = selected.includes('claude')
@@ -4277,32 +4338,79 @@ ipcMain.handle('ask-robo', async (_event, payload = {}) => {
     : null;
 
   if (!selectedProvider) {
-    return { error: 'Bu sağlayıcı Robo sohbetinde desteklenmiyor. Claude, Codex veya Gemini seçin.' };
+    return { error: trMain(lang, 'roboUnsupportedProvider') };
   }
   if (!selectedProvider.enabled) {
-    return { error: `${selectedProvider.label} bağlantısı Ayarlar > Connections bölümünde kapalı.` };
+    return { error: trMain(lang, 'roboProviderDisabled', { provider: selectedProvider.label }) };
   }
   if (!selectedProvider.key) {
     const localReply = getLocalSmartReply(q, mode);
     if (localReply) return { text: localReply, provider: 'Robo' };
-    return { error: `${selectedProvider.label} için API anahtarı bulunamadı. ${selectedProvider.setup}` };
+    return { error: trMain(lang, 'roboMissingApiKey', { provider: selectedProvider.label, setup: selectedProvider.setup }) };
   }
 
   try {
     const reply = await selectedProvider.call(selectedProvider.key, q);
     if (reply) return { text: reply, provider: selectedProvider.label };
-    return { error: `${selectedProvider.label} boş yanıt verdi. Tekrar deneyin.` };
+    return { error: trMain(lang, 'roboEmptyReply', { provider: selectedProvider.label }) };
   } catch (err) {
     console.error(`${selectedProvider.label} API call failed:`, err.message);
     const reason = /TIMEOUT/i.test(err.message)
-      ? `${selectedProvider.label} hızlı model denemeleri 36 saniye içinde yanıt vermedi. İnternet/proxy bağlantınızı kontrol edip yeniden deneyin.`
+      ? trMain(lang, 'roboTimeout', { provider: selectedProvider.label })
       : /^(429|500|502|503|504):/.test(err.message)
-        ? `${selectedProvider.label} şu anda yoğun. Otomatik yedek modeller de yanıt vermedi; birkaç dakika sonra yeniden deneyin.`
+        ? trMain(lang, 'roboBusy', { provider: selectedProvider.label })
       : /401|403|API.?KEY.?INVALID|invalid API key|unauthorized/i.test(err.message)
-        ? 'API anahtarı reddedildi. Sağlayıcı hesabındaki anahtarı kontrol edin.'
-        : `API isteği başarısız oldu (${err.message}).`;
+        ? trMain(lang, 'roboBadApiKey')
+        : trMain(lang, 'roboRequestFailed', { message: err.message });
     return { error: `${selectedProvider.label}: ${reason}` };
   }
+});
+
+ipcMain.handle('bedo:start', async (_event, opts = {}) => {
+  const svc = getBedoService();
+  return svc.start({
+    apiKey: opts.apiKey || userSettings.geminiApiKey || process.env.GEMINI_API_KEY || '',
+    voice: opts.voice || userSettings.bedoVoice || 'Charon',
+    startPaused: Boolean(opts.startPaused),
+    enableWake: opts.enableWake !== false,
+    enableClap: Boolean(opts.enableClap),
+    dryRun: Boolean(opts.dryRun),
+  });
+});
+
+ipcMain.handle('bedo:stop', async () => {
+  if (!bedoService) return { ok: true };
+  await bedoService.stop();
+  return { ok: true, status: bedoService.getStatus() };
+});
+
+ipcMain.handle('bedo:status', async () => {
+  return getBedoService().getStatus();
+});
+
+ipcMain.handle('bedo:send-text', async (_event, text) => {
+  const ok = getBedoService().sendText(text);
+  return { ok };
+});
+
+ipcMain.handle('bedo:set-muted', async (_event, muted) => {
+  const ok = getBedoService().setMuted(Boolean(muted));
+  return { ok };
+});
+
+ipcMain.handle('bedo:set-paused', async (_event, paused) => {
+  const ok = getBedoService().setPaused(Boolean(paused));
+  return { ok };
+});
+
+ipcMain.handle('bedo:set-webcam', async (_event, active) => {
+  const ok = getBedoService().setWebcam(Boolean(active));
+  return { ok };
+});
+
+ipcMain.handle('bedo:island-state', async (_event, state) => {
+  const ok = getBedoService().syncIslandState(state);
+  return { ok };
 });
 
 ipcMain.on('quit-app', () => {

@@ -1,5 +1,6 @@
 import React from 'react';
 import { ArrowDown, Check, Gamepad2, Video } from 'lucide-react';
+import { useI18n } from '../i18n';
 
 function useAnimatedPercent(targetPct) {
   const [displayPct, setDisplayPct] = React.useState(targetPct);
@@ -39,6 +40,7 @@ function useAnimatedPercent(targetPct) {
 }
 
 export function IdleLiveActivityPill({ liveActivity }) {
+  const { lang } = useI18n();
   const hasPercent = typeof liveActivity?.percent === 'number' && Number.isFinite(liveActivity.percent);
   const pct = liveActivity?.done ? 100 : hasPercent ? Math.max(0, Math.min(100, Math.round(liveActivity.percent))) : null;
   const displayPct = useAnimatedPercent(pct);
@@ -46,6 +48,7 @@ export function IdleLiveActivityPill({ liveActivity }) {
   if (!liveActivity?.active) return null;
   const isIndeterminate = pct == null && !liveActivity.done;
   const pctWidth = liveActivity.done ? 100 : (pct ?? 42);
+  const fmtPct = (v) => (lang === 'tr' ? `%${v}` : `${v}%`);
 
   return (
     <div
@@ -72,9 +75,9 @@ export function IdleLiveActivityPill({ liveActivity }) {
 
       <span className="idle-live-pct mono">
         {liveActivity.done
-          ? '%100'
+          ? fmtPct(100)
           : displayPct != null
-          ? `%${displayPct}`
+          ? fmtPct(displayPct)
           : '%'}
       </span>
     </div>
@@ -82,6 +85,7 @@ export function IdleLiveActivityPill({ liveActivity }) {
 }
 
 export function InlineDownloadOrb({ liveActivity }) {
+  const { t, lang } = useI18n();
   const hasPercent = typeof liveActivity?.percent === 'number' && Number.isFinite(liveActivity.percent);
   const pct = liveActivity?.done
     ? 100
@@ -93,8 +97,9 @@ export function InlineDownloadOrb({ liveActivity }) {
   if (!liveActivity?.active) return null;
   const isIndeterminate = pct == null && !liveActivity.done;
   const fillPct = liveActivity.done ? 100 : (pct ?? 44);
-  const tooltipText = `${liveActivity.title || 'İndirme'} • ${
-    liveActivity.done ? '%100' : pct != null ? `%${pct}` : `${liveActivity.downloadedMB ?? 0} MB`
+  const fmtPct = (v) => (lang === 'tr' ? `%${v}` : `${v}%`);
+  const tooltipText = `${liveActivity.title || t('live.downloadFallback')} • ${
+    liveActivity.done ? fmtPct(100) : pct != null ? fmtPct(pct) : `${liveActivity.downloadedMB ?? 0} MB`
   }`;
 
   return (
@@ -125,7 +130,7 @@ export function InlineDownloadOrb({ liveActivity }) {
             <Gamepad2 size={11} strokeWidth={2.3} />
           ) : (
             <span className="download-droplet-pct-text mono">
-              {displayPct != null ? `%${displayPct}` : '%'}
+              {displayPct != null ? fmtPct(displayPct) : '%'}
             </span>
           )}
         </span>
@@ -135,22 +140,23 @@ export function InlineDownloadOrb({ liveActivity }) {
 }
 
 export function HomeLiveAndContextStrip({ appContext, onOpenMirror }) {
+  const { t } = useI18n();
   if (!appContext || appContext.category !== 'meeting') return null;
 
   return (
     <div className="home-context-strip">
       <span className="home-context-label">
-        Toplantı Modu{appContext.app ? ` • ${appContext.app}` : ''}
+        {t('live.meetingMode')}{appContext.app ? ` • ${appContext.app}` : ''}
       </span>
       <div className="home-context-actions">
         <button
           type="button"
           className="home-ctx-btn"
           onClick={onOpenMirror}
-          title="Hızlı Ayna aç"
+          title={t('live.openMirrorTitle')}
         >
           <Video size={12} />
-          <span>Ayna</span>
+          <span>{t('live.mirror')}</span>
         </button>
       </div>
     </div>

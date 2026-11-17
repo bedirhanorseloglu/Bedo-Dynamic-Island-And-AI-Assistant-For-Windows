@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { playRoboSound } from './sounds';
 
-export default function RoboEyes({ mood = 'normal', reaction = null, active = true, trackCursor = true, onPoke, size = 'normal', batteryPercent, batteryCharging = false, unreadNotificationCount = 0, pendingAgendaCount = 0 }) {
+export default function RoboEyes({ mood = 'normal', reaction = null, active = true, trackCursor = true, onPoke, size = 'normal', micLevel = 0, showMouth = false, batteryPercent, batteryCharging = false, unreadNotificationCount = 0, pendingAgendaCount = 0 }) {
   const [blink, setBlink] = useState(false);
   const [wakePhase, setWakePhase] = useState('closed'); // 'closed' | 'flutter' | 'look-left' | 'look-right' | 'happy' | 'done'
   const [lookOffset, setLookOffset] = useState({ x: 0, y: 0 });
@@ -104,7 +104,7 @@ export default function RoboEyes({ mood = 'normal', reaction = null, active = tr
     : normalizedMood;
   const activeReaction = isDizzy ? '' : pokeAction || (active ? reaction?.name || '' : '');
 
-  const scale = size === 'large' ? 1.55 : size === 'small' ? 0.82 : 1;
+  const scale = size === 'mini' ? 0.58 : size === 'large' ? 1.6 : size === 'small' ? 0.82 : 1;
 
   const wakeShiftX =
     wakePhase === 'look-left' ? -3.5 : wakePhase === 'look-right' ? 3.5 : lookOffset.x;
@@ -116,6 +116,7 @@ export default function RoboEyes({ mood = 'normal', reaction = null, active = tr
   const isDndSleep = activeMood === 'dnd-sleep';
   const isTurbo = activeMood === 'turbo';
   const isThinking = activeMood === 'thinking' || activeReaction === 'thinking';
+  const isSpeaking = activeMood === 'speaking' || activeReaction === 'speaking';
   const isBellAlert = activeReaction === 'notification';
   const hasUnread = unreadNotificationCount > 0;
   const hasPendingAgenda = pendingAgendaCount > 0;
@@ -162,6 +163,31 @@ export default function RoboEyes({ mood = 'normal', reaction = null, active = tr
           <span className={`robo-eye left ${blink ? 'blinking' : ''} ${activeMood}`} />
           <span className={`robo-eye right ${blink ? 'blinking' : ''} ${activeMood}`} />
         </>
+      )}
+      {showMouth && (
+        isSpeaking ? (
+          <span className="robo-talking-mouth" aria-hidden="true">
+            <span className="robo-talking-mouth-inner" />
+          </span>
+        ) : (
+          <svg
+            className={`robo-face-mouth ${activeMood} ${micLevel > 0.14 ? 'is-hearing' : ''}`}
+            viewBox="0 0 24 10"
+            aria-hidden="true"
+          >
+            {activeMood === 'happy' || activeMood === 'inlove' || activeReaction === 'happy' ? (
+              <path d="M5 3.5 Q12 9 19 3.5" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+            ) : activeMood === 'sad' || activeReaction === 'error' ? (
+              <path d="M6 7.5 Q12 3 18 7.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+            ) : activeMood === 'thinking' || activeReaction === 'thinking' ? (
+              <path d="M7 5.5 Q12 4.5 17 5.5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+            ) : activeMood === 'sleepy' || isDndSleep ? (
+              <circle cx="12" cy="5.5" r="1.7" fill="none" stroke="currentColor" strokeWidth="1.5" />
+            ) : (
+              <path d="M7.5 4.5 Q12 7.4 16.5 4.5" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+            )}
+          </svg>
+        )
       )}
     </div>
   );

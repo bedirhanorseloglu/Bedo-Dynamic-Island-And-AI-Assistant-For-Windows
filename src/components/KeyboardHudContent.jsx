@@ -1,6 +1,7 @@
 import React from 'react';
 import { Sunrise } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useI18n } from '../i18n';
 
 const SPRING_FLUID = { type: 'spring', stiffness: 320, damping: 24, mass: 0.8 };
 const SPRING_TEXT = { type: 'spring', stiffness: 380, damping: 26, mass: 0.72 };
@@ -100,13 +101,14 @@ function AnimatedModeLabel({ kicker, label }) {
 }
 
 export default function KeyboardHudContent({ ghelper }) {
+  const { t } = useI18n();
   const isAura = ghelper?.category === 'aura';
 
   if (isAura) {
     const effect = ghelper.effectType || 'static';
     const c1 = ghelper.color || '#e2e8f0';
     const c2 = ghelper.color2 || c1;
-    const label = ghelper.valueText || 'Sabit';
+    const label = ghelper.valueText || t('hud.kb.staticFallback');
 
     return (
       <motion.div
@@ -140,7 +142,7 @@ export default function KeyboardHudContent({ ghelper }) {
             <KeyboardMatrixGlyph effect={effect} c1={c1} c2={c2} />
           </motion.div>
 
-          <AnimatedModeLabel kicker="Klavye" label={label} />
+          <AnimatedModeLabel kicker={t('hud.kb.keyboard')} label={label} />
         </div>
 
         {/* Right: Minimal live aura lightbar */}
@@ -154,7 +156,7 @@ export default function KeyboardHudContent({ ghelper }) {
   // Backlight brightness levels (0..3)
   const level = typeof ghelper?.level === 'number' ? Math.max(0, Math.min(3, ghelper.level)) : 0;
   const isOff = level === 0;
-  const label = ghelper?.valueText || (isOff ? 'Kapalı' : `${level}/3`);
+  const label = ghelper?.valueText || (isOff ? t('hud.kb.off') : `${level}/3`);
   const iconScale = isOff ? 0.9 : 0.95 + level * 0.035;
 
   return (
@@ -184,7 +186,7 @@ export default function KeyboardHudContent({ ghelper }) {
           <Sunrise size={17} strokeWidth={2} className="hud-kb-glyph" />
         </motion.div>
 
-        <AnimatedModeLabel kicker="Işık" label={label} />
+        <AnimatedModeLabel kicker={t('hud.kb.light')} label={label} />
       </div>
 
       {/* Right: 3-step segmented brightness pill */}

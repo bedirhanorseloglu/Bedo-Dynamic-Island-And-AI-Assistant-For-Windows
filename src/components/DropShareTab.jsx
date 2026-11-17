@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Download, FolderOpen, Image as ImageIcon, File as FileIcon, Plus, QrCode, Smartphone, Trash2, UploadCloud, X } from 'lucide-react';
 import { generateQrMatrix } from '../qrGenerator';
+import { useI18n } from '../i18n';
 
 function formatFileSize(bytes) {
   const n = Number(bytes) || 0;
@@ -25,6 +26,7 @@ function buildQrSvgPath(matrix) {
 }
 
 export default function DropShareTab() {
+  const { t } = useI18n();
   const [files, setFiles] = useState([]);
   const [shareStatus, setShareStatus] = useState({ running: false, url: '', lanIp: '', port: 0 });
   const [isDragOver, setIsDragOver] = useState(false);
@@ -149,19 +151,19 @@ export default function DropShareTab() {
               type="button"
               className="drop-pick-btn"
               onClick={handlePickFiles}
-              title="Dosya seç"
+              title={t('drop.pickFileTitle')}
             >
               <span className="drop-float-icon">
                 <UploadCloud size={22} strokeWidth={1.9} />
               </span>
-              <span>Drop</span>
+              <span>{t('drop.drop')}</span>
             </button>
             <button
               type="button"
               className="drop-share-btn"
               onClick={handleToggleShare}
               disabled={busyToggle}
-              title="Telefona QR ile bağlan"
+              title={t('drop.connectPhoneQr')}
             >
               <QrCode size={13} />
               <span>QR</span>
@@ -180,7 +182,7 @@ export default function DropShareTab() {
             <span className="drop-empty-pulse">
               <UploadCloud size={20} strokeWidth={1.8} />
             </span>
-            <span>Sürükle veya seç</span>
+            <span>{t('drop.dragOrSelect')}</span>
           </button>
         ) : (
           <>
@@ -193,7 +195,7 @@ export default function DropShareTab() {
                     e.preventDefault();
                     window.twocode?.startDropDrag?.(files.map((f) => f.path));
                   }}
-                  title="Tüm dosyaları sürükle"
+                  title={t('drop.dragAllTitle')}
                 >
                   {files.length}
                 </span>
@@ -204,18 +206,18 @@ export default function DropShareTab() {
                   className={`drop-mini-btn is-batch ${savedAllCount !== null ? 'is-done' : ''}`}
                   onClick={handleSaveAll}
                   disabled={savingAll}
-                  title="Tüm dosyaları seçilen klasöre kaydet (Masaüstü varsayılan)"
+                  title={t('drop.saveAllTitle')}
                 >
                   {savedAllCount !== null ? <Check size={12} /> : <Download size={12} />}
                   <span>
                     {savingAll
-                      ? 'Kaydediliyor...'
+                      ? t('drop.saving')
                       : savedAllCount !== null
-                        ? `${savedAllCount} kaydedildi`
-                        : 'Toplu İndir'}
+                        ? t('drop.savedCount', { count: savedAllCount })
+                        : t('drop.saveAll')}
                   </span>
                 </button>
-                <button type="button" className="drop-mini-btn" onClick={handlePickFiles} title="Ekle">
+                <button type="button" className="drop-mini-btn" onClick={handlePickFiles} title={t('drop.add')}>
                   <Plus size={12} />
                 </button>
                 <button
@@ -225,7 +227,7 @@ export default function DropShareTab() {
                     const res = await window.twocode?.clearDropShelf?.();
                     if (Array.isArray(res)) setFiles(res);
                   }}
-                  title="Temizle"
+                  title={t('drop.clear')}
                 >
                   <Trash2 size={12} />
                 </button>
@@ -255,7 +257,7 @@ export default function DropShareTab() {
                           e.stopPropagation();
                           setPreviewItem({ ...item, thumbUrl });
                         }}
-                        title={thumbUrl ? 'Önizle' : undefined}
+                        title={thumbUrl ? t('drop.preview') : undefined}
                       >
                         {thumbUrl ? (
                           <img
@@ -287,7 +289,7 @@ export default function DropShareTab() {
                           type="button"
                           className="drop-icon-btn"
                           onClick={() => window.twocode?.openDropFile?.(item.path)}
-                          title="Klasör"
+                          title={t('drop.folder')}
                         >
                           <FolderOpen size={13} />
                         </button>
@@ -298,7 +300,7 @@ export default function DropShareTab() {
                             const res = await window.twocode?.removeDropFile?.(item.id);
                             if (Array.isArray(res)) setFiles(res);
                           }}
-                          title="Kaldır"
+                          title={t('drop.remove')}
                         >
                           <X size={13} />
                         </button>
@@ -324,7 +326,7 @@ export default function DropShareTab() {
                 type="button"
                 className="drop-preview-pill-btn"
                 onClick={() => window.twocode?.openDropFile?.(previewItem.path)}
-                title="Klasörde Göster"
+                title={t('drop.showInFolder')}
               >
                 <FolderOpen size={13} />
               </button>
@@ -332,7 +334,7 @@ export default function DropShareTab() {
                 type="button"
                 className="drop-preview-pill-btn is-close"
                 onClick={() => setPreviewItem(null)}
-                title="Kapat"
+                title={t('drop.close')}
               >
                 <X size={13} />
               </button>

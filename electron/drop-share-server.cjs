@@ -74,7 +74,35 @@ function escapeHtml(str) {
   return String(str || '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
 
-function renderMobileHtml(token, initialFiles = []) {
+const { normalizeLanguage } = require('./i18n.cjs');
+
+function renderMobileHtml(token, initialFiles = [], lang = 'tr') {
+  const isTr = normalizeLanguage(lang) === 'tr';
+  const labels = isTr
+    ? {
+        langAttr: 'tr',
+        fileUnit: 'dosya',
+        sendToPc: "+ PC'ye Gönder",
+        empty: 'Henüz dosya yok',
+        open: 'Aç',
+        download: 'İndir',
+        sending: 'Gönderiliyor',
+        sent: 'Gönderildi ✓',
+        errorPrefix: 'Hata: ',
+        uploadFailed: 'Yüklenemedi',
+      }
+    : {
+        langAttr: 'en',
+        fileUnit: 'files',
+        sendToPc: '+ Send to PC',
+        empty: 'No files yet',
+        open: 'Open',
+        download: 'Download',
+        sending: 'Sending',
+        sent: 'Sent ✓',
+        errorPrefix: 'Error: ',
+        uploadFailed: 'Upload failed',
+      };
   const safeInitial = initialFiles.map(({ id, name, size, ext, isImage, source, addedAt }) => ({
     id,
     name,
@@ -86,7 +114,7 @@ function renderMobileHtml(token, initialFiles = []) {
   }));
 
   return `<!doctype html>
-<html lang="tr">
+<html lang="${labels.langAttr}">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover" />
@@ -260,20 +288,21 @@ function renderMobileHtml(token, initialFiles = []) {
         </div>
         <div class="hdr-title">TwoCode Drop</div>
       </div>
-      <span id="countPill" class="count-pill">${safeInitial.length} dosya</span>
+      <span id="countPill" class="count-pill">${safeInitial.length} ${labels.fileUnit}</span>
     </div>
 
     <div id="list" class="list"></div>
 
     <label class="upload-card">
       <input id="fileInput" type="file" multiple hidden />
-      <div class="upload-label">+ PC'ye Gönder</div>
+      <div class="upload-label">${labels.sendToPc}</div>
       <div id="status" class="status"></div>
     </label>
   </div>
   <script>
     const TOKEN = ${JSON.stringify(token)};
     const INITIAL_FILES = ${JSON.stringify(safeInitial).replace(/</g, '\\u003c')};
+    const UI = ${JSON.stringify(labels)};
     const listEl = document.getElementById('list');
     const countEl = document.getElementById('countPill');
     const statusEl = document.getElementById('status');
@@ -298,9 +327,9 @@ function renderMobileHtml(token, initialFiles = []) {
       const sig = items.map((f) => f.id + ':' + f.size).join('|');
       if (sig === lastSignature) return;
       lastSignature = sig;
-      countEl.textContent = items.length + ' dosya';
+      countEl.textContent = items.length + ' ' + UI.fileUnit;
       if (!items.length) {
-        listEl.innerHTML = '<div class="empty">Henüz dosya yok</div>';
+        listEl.innerHTML = '<div class="empty">' + UI.empty + '</div>';
         return;
       }
       listEl.innerHTML = items.map((f, idx) => {
@@ -310,13 +339,13 @@ function renderMobileHtml(token, initialFiles = []) {
           ? '<a class="preview-wrap" href="' + inlineUrl + '" target="_blank"><img src="' + inlineUrl + '" alt="" loading="lazy" /></a>'
           : '';
         const viewBtn = canPreviewInline(f.ext)
-          ? '<a class="btn btn-ghost" href="' + inlineUrl + '" target="_blank">Aç</a>'
+          ? '<a class="btn btn-ghost" href="' + inlineUrl + '" target="_blank">' + UI.open + '</a>'
           : '';
         return '<div class="file-card" style="animation-delay:' + Math.min(idx * 45, 220) + 'ms">' +
           preview +
           '<div class="file-body">' +
             '<div class="meta"><div class="name">' + esc(f.name) + '</div><div class="sub">' + fmt(f.size) + '</div></div>' +
-            '<div class="actions">' + viewBtn + '<a class="btn btn-primary" href="' + dlUrl + '">İndir</a></div>' +
+            '<div class="actions">' + viewBtn + '<a class="btn btn-primary" href="' + dlUrl + '">' + UI.download + '</a></div>' +
           '</div>' +
         '</div>';
       }).join('');
@@ -336,7 +365,7 @@ function renderMobileHtml(token, initialFiles = []) {
       if (!files.length) return;
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
-        statusEl.textContent = 'Gönderiliyor (' + (i + 1) + '/' + files.length + ')';
+        statusEl.textContent = UI.sending + ' (' + (i + 1) + '/' + files.length + ')';
         try {
           const res = await fetch('/s/' + TOKEN + '/upload', {
             method: 'POST',
@@ -347,14 +376,14 @@ function renderMobileHtml(token, initialFiles = []) {
             body: file,
           });
           if (!res.ok) throw new Error('HTTP ' + res.status);
-          statusEl.textContent = 'Gönderildi ✓';
+          statusEl.textContent = UI.sent;
           const eyes = document.getElementById('roboEyes');
           if (eyes) {
             eyes.classList.add('is-happy');
             setTimeout(() => eyes.classList.remove('is-happy'), 1200);
           }
         } catch (err) {
-          statusEl.textContent = 'Hata: ' + (err.message || 'Yüklenemedi');
+          statusEl.textContent = UI.errorPrefix + (err.message || UI.uploadFailed);
         }
       }
       inputEl.value = '';
@@ -375,6 +404,7 @@ class DropShareServer extends EventEmitter {
     this.preferredPort = options.port ?? 4343;
     this.maxFiles = options.maxFiles || 20;
     this.maxUploadBytes = options.maxUploadBytes || 200 * 1024 * 1024;
+    this.getLanguage = typeof options.getLanguage === 'function' ? options.getLanguage : () => options.language || 'tr';
     this.token = crypto.randomBytes(3).toString('hex');
     this.files = [];
     this.server = null;
@@ -484,7 +514,7 @@ class DropShareServer extends EventEmitter {
 
     if (req.method === 'GET' && subPath === '/') {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      return res.end(renderMobileHtml(this.token, this.getFiles()));
+      return res.end(renderMobileHtml(this.token, this.getFiles(), this.getLanguage()));
     }
 
     if (req.method === 'GET' && subPath === '/list') {

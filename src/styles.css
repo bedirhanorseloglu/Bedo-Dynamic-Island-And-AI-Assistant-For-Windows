@@ -13801,3 +13801,1722 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
     transform: translateY(-1px) scale(1.06);
   }
 }
+
+/* Bedo Live Status Bar inside Robo */
+.bedo-status-bar {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 9px;
+  margin-bottom: 0;
+  border-radius: 10px;
+  background: rgba(56, 189, 248, 0.08);
+  border: 1px solid rgba(56, 189, 248, 0.22);
+}
+
+.bedo-status-left {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.bedo-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: #64748b;
+}
+
+.bedo-status-dot.is-listening {
+  background: #38bdf8;
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.75);
+}
+
+.bedo-status-dot.is-speaking {
+  background: #22c55e;
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.75);
+}
+
+.bedo-status-dot.is-sleeping {
+  background: #a855f7;
+}
+
+.bedo-status-dot.is-error {
+  background: #ef4444;
+}
+
+.bedo-status-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.88);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bedo-webcam-thumb {
+  width: 42px;
+  height: 26px;
+  border-radius: 6px;
+  object-fit: cover;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.bedo-status-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.bedo-ctrl-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.8);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.bedo-ctrl-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.bedo-ctrl-btn.is-active {
+  background: rgba(56, 189, 248, 0.22);
+  border-color: rgba(56, 189, 248, 0.45);
+  color: #38bdf8;
+}
+
+.bedo-ctrl-btn.is-muted {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.45);
+  color: #f87171;
+}
+
+.robo-mic-btn.is-live {
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.16);
+}
+
+/* Fix 4-provider Robo switcher & vertical flex sizing */
+.robo-model-switcher {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.notch-morph-shell.state-expanded.mode-robo .robo-chat-main {
+  flex: 1 1 auto;
+  min-height: 0;
+  gap: 6px;
+}
+
+.notch-morph-shell.state-expanded.mode-robo .robo-answer-card {
+  min-height: 0;
+}
+
+.notch-morph-shell.state-expanded.mode-robo .robo-chat-main .robo-search-pill {
+  flex: 0 0 42px;
+  height: 42px;
+  min-height: 42px;
+}
+
+/* Bedo Dedicated RoboEyes Stage Layout */
+.bedo-stage-view {
+  display: flex !important;
+  flex-direction: column;
+  gap: 7px;
+  height: 100%;
+  min-height: 0;
+  padding: 2px 10px 4px;
+}
+
+.bedo-hero-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.bedo-eyes-stage {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  min-width: 96px;
+  height: 52px;
+  padding: 6px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: radial-gradient(circle at 50% 35%, rgba(56, 189, 248, 0.14), rgba(10, 12, 16, 0.92));
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.bedo-eyes-stage.is-listening {
+  border-color: rgba(56, 189, 248, 0.45);
+  box-shadow: 0 0 16px rgba(56, 189, 248, 0.18);
+}
+
+.bedo-eyes-stage.is-speaking {
+  border-color: rgba(34, 197, 94, 0.5);
+  box-shadow: 0 0 18px rgba(34, 197, 94, 0.22);
+}
+
+.bedo-hero-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.bedo-user-utterance {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.72);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 4px;
+}
+
+.bedo-user-utterance span {
+  color: #38bdf8;
+  font-weight: 600;
+}
+
+.bedo-stage-view .robo-answer-card {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.bedo-stage-view .robo-search-pill {
+  flex: 0 0 40px;
+  height: 40px;
+  min-height: 40px;
+}
+
+/* Modern Animated Bedo Stage */
+.bedo-modern-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 2px 10px 4px;
+}
+
+.bedo-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.bedo-pill-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+}
+
+.bedo-status-dot.is-thinking {
+  background: #facc15;
+  box-shadow: 0 0 8px rgba(250, 204, 21, 0.75);
+}
+
+.bedo-status-text {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.88);
+  letter-spacing: 0.01em;
+}
+
+.bedo-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.bedo-icon-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.75);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.14s ease, background 0.16s ease, color 0.16s ease, border-color 0.16s ease;
+}
+
+.bedo-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.bedo-icon-btn.is-active {
+  background: rgba(56, 189, 248, 0.18);
+  border-color: rgba(56, 189, 248, 0.45);
+  color: #38bdf8;
+}
+
+.bedo-icon-btn.is-live {
+  background: rgba(34, 197, 94, 0.16);
+  border-color: rgba(34, 197, 94, 0.42);
+  color: #4ade80;
+}
+
+.bedo-icon-btn.is-danger {
+  background: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.45);
+  color: #f87171;
+}
+
+.bedo-stage-container {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  position: relative;
+  overflow: hidden;
+}
+
+.bedo-visual-stage {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.bedo-eyes-glass {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: radial-gradient(circle at 50% 38%, rgba(56, 189, 248, 0.11), rgba(11, 13, 18, 0.88));
+  cursor: pointer;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.bedo-eyes-glass.is-listening {
+  border-color: rgba(56, 189, 248, 0.35);
+  box-shadow: inset 0 0 24px rgba(56, 189, 248, 0.08);
+}
+
+.bedo-eyes-glass.is-speaking {
+  border-color: rgba(34, 197, 94, 0.45);
+  box-shadow: inset 0 0 28px rgba(34, 197, 94, 0.12);
+}
+
+.bedo-subtitle-line {
+  max-width: 92%;
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.78);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bedo-cam-glass {
+  position: relative;
+  flex: 1 1 52%;
+  min-width: 0;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid rgba(56, 189, 248, 0.32);
+  background: #07090d;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bedo-cam-feed {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+}
+
+.bedo-cam-loading {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.bedo-cam-badge {
+  position: absolute;
+  top: 7px;
+  right: 8px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  background: rgba(239, 68, 68, 0.82);
+  color: #ffffff;
+}
+
+.bedo-reply-surface {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 9px 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  background: linear-gradient(155deg, rgba(20, 22, 28, 0.94), rgba(10, 11, 15, 0.96));
+}
+
+.bedo-reply-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: 0 0 auto;
+}
+
+.bedo-mini-eyes-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 9px 3px 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  background: rgba(56, 189, 248, 0.09);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.bedo-reply-tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.bedo-mini-tool-btn {
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.75);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.bedo-mini-tool-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+}
+
+.bedo-utterance-chip {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.7);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bedo-utterance-chip span {
+  color: #38bdf8;
+  font-weight: 600;
+}
+
+.bedo-reply-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  font-size: 12px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.bedo-empty-note {
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.55);
+  padding: 6px 0;
+}
+
+.bedo-input-pill {
+  flex: 0 0 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 5px 0 13px;
+  border-radius: 13px;
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  background: rgba(255, 255, 255, 0.045);
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.bedo-input-pill:focus-within {
+  border-color: rgba(56, 189, 248, 0.45);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.bedo-input-pill input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: #ffffff;
+  font-size: 12px;
+}
+
+.bedo-input-pill input::placeholder {
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.bedo-send-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  border: 0;
+  background: #ffffff;
+  color: #090b0f;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.bedo-send-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.bedo-send-btn:not(:disabled):hover {
+  transform: scale(1.04);
+}
+
+/* Bedo 60 FPS Live Aura & Smooth Webcam */
+.bedo-eyes-glass {
+  position: relative;
+  overflow: hidden;
+}
+
+.bedo-aura-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.bedo-eyes-foreground {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.bedo-cam-feed {
+  will-change: contents;
+  transform: translateZ(0) scaleX(-1);
+}
+
+/* Live Bedo RoboEyes Expressions: Speaking, Thinking, Listening, Sleepy */
+.robo-eye.listening {
+  background: #38bdf8;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.72);
+  animation: robo-listen-pulse 2.2s ease-in-out infinite;
+}
+
+.robo-eye.thinking {
+  background: #facc15;
+  box-shadow: 0 0 12px rgba(250, 204, 21, 0.72);
+  animation: robo-think-scan 1.4s ease-in-out infinite;
+}
+
+.robo-eye.speaking {
+  background: #4ade80;
+  box-shadow: 0 0 14px rgba(74, 222, 128, 0.8);
+  animation: robo-speak-bounce 0.36s ease-in-out infinite alternate;
+}
+
+.robo-eye.sleepy {
+  height: 3.5px !important;
+  opacity: 0.65;
+  background: #c084fc;
+  box-shadow: 0 0 8px rgba(192, 132, 252, 0.45);
+  animation: robo-sleep-breathe 3.2s ease-in-out infinite;
+}
+
+.robo-voice-mouth {
+  position: absolute;
+  bottom: -9px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 8px;
+}
+
+.robo-voice-mouth i {
+  display: block;
+  width: 2px;
+  height: 3px;
+  border-radius: 99px;
+  background: #4ade80;
+  box-shadow: 0 0 6px rgba(74, 222, 128, 0.8);
+  animation: robo-mouth-bar 0.42s ease-in-out infinite alternate;
+}
+
+.robo-voice-mouth i:nth-child(2) { animation-delay: 0.08s; }
+.robo-voice-mouth i:nth-child(3) { animation-delay: 0.16s; }
+.robo-voice-mouth i:nth-child(4) { animation-delay: 0.24s; }
+.robo-voice-mouth i:nth-child(5) { animation-delay: 0.12s; }
+
+@keyframes robo-listen-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+}
+
+@keyframes robo-think-scan {
+  0%, 100% { transform: translate(-2px, -1.5px) scaleY(0.86); }
+  50% { transform: translate(2.5px, -2px) scaleY(0.95); }
+}
+
+@keyframes robo-speak-bounce {
+  0% { transform: scaleY(0.92) scaleX(1.03); }
+  100% { transform: scaleY(1.12) scaleX(0.96); }
+}
+
+@keyframes robo-sleep-breathe {
+  0%, 100% { opacity: 0.55; transform: scaleX(0.96); }
+  50% { opacity: 0.85; transform: scaleX(1.04); }
+}
+
+@keyframes robo-mouth-bar {
+  0% { height: 2.5px; opacity: 0.65; }
+  100% { height: 8px; opacity: 1; }
+}
+
+/* Robo Face Mouth & Live Mic Hearing Meter */
+.robo-face-mouth {
+  position: absolute;
+  bottom: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 20px;
+  height: 9px;
+  color: rgba(255, 255, 255, 0.85);
+  pointer-events: none;
+  transition: color 0.2s ease, transform 0.15s ease;
+}
+
+.robo-face-mouth.listening {
+  color: #7dd3fc;
+}
+
+.robo-face-mouth.thinking {
+  color: #fde047;
+}
+
+.robo-face-mouth.sleepy {
+  color: #d8b4fe;
+  opacity: 0.75;
+}
+
+.robo-face-mouth.is-hearing {
+  color: #38bdf8;
+  transform: translateX(-50%) scale(1.12);
+}
+
+.bedo-pill-status.is-hearing {
+  border-color: rgba(56, 189, 248, 0.5);
+  background: rgba(56, 189, 248, 0.14);
+}
+
+.bedo-mic-meter {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 12px;
+  margin-left: 4px;
+}
+
+.bedo-mic-meter i {
+  display: block;
+  width: 2.2px;
+  min-height: 3px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.24);
+  transition: height 0.08s ease, background 0.12s ease;
+}
+
+.bedo-mic-meter i.is-lit {
+  background: #38bdf8;
+  box-shadow: 0 0 6px rgba(56, 189, 248, 0.8);
+}
+
+/* Talking Mouth Animation & Clean Spacing under RoboEyes */
+.bedo-eyes-foreground {
+  gap: 18px;
+}
+
+.bedo-subtitle-line {
+  margin-top: 2px;
+}
+
+.robo-face-mouth {
+  bottom: -11px;
+}
+
+.robo-talking-mouth {
+  position: absolute;
+  bottom: -11px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 18px;
+  height: 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.robo-talking-mouth-inner {
+  display: block;
+  width: 14px;
+  height: 4px;
+  border-radius: 999px;
+  background: #4ade80;
+  box-shadow: 0 0 10px rgba(74, 222, 128, 0.85);
+  animation: robo-jaw-talk 0.28s ease-in-out infinite alternate;
+}
+
+@keyframes robo-jaw-talk {
+  0% {
+    width: 11px;
+    height: 2.5px;
+    border-radius: 999px;
+  }
+  45% {
+    width: 14px;
+    height: 6.5px;
+    border-radius: 7px;
+  }
+  100% {
+    width: 12px;
+    height: 8.5px;
+    border-radius: 50%;
+  }
+}
+
+/* GitHub Liquid Glass / Dynamic Island Surface Polish */
+.bedo-eyes-glass,
+.bedo-reply-surface,
+.bedo-cam-glass {
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  box-shadow:
+    0 10px 28px rgba(0, 0, 0, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+.bedo-pill-status,
+.bedo-input-pill {
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+/* Apple Dynamic Island Siri-Style Bedo Live Mode (No Tabs, Pure Island Morph) */
+.notch-morph-shell.state-bedo-live {
+  width: 416px;
+  height: 76px;
+  border-radius: 0 0 24px 24px;
+  transform-origin: top center;
+  background:
+    radial-gradient(ellipse 88% 60% at 50% 112%,
+      rgba(56, 189, 248, 0.24) 0%,
+      rgba(56, 189, 248, 0.06) 50%,
+      transparent 78%),
+    rgba(10, 12, 18, 0.72);
+  backdrop-filter: blur(26px) saturate(185%);
+  -webkit-backdrop-filter: blur(26px) saturate(185%);
+  box-shadow:
+    inset 0 -1px 0 rgba(255, 255, 255, 0.18),
+    inset 0 -1px 10px rgba(56, 189, 248, 0.22),
+    0 14px 34px rgba(0, 0, 0, 0.48);
+  transition:
+    width 0.34s cubic-bezier(0.22, 1, 0.36, 1),
+    height 0.34s cubic-bezier(0.22, 1, 0.36, 1),
+    border-radius 0.34s cubic-bezier(0.22, 1, 0.36, 1),
+    background 0.28s ease,
+    box-shadow 0.28s ease;
+}
+
+.layer-bedo-live {
+  inset: 0;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+}
+
+.layer-bedo-live.is-visible {
+  z-index: 12;
+  pointer-events: auto;
+}
+
+.bedo-island-right,
+.bedo-island-btn {
+  position: relative;
+  z-index: 3;
+  pointer-events: auto;
+}
+
+.bedo-island-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+}
+
+.bedo-island-avatar {
+  position: relative;
+  width: 54px;
+  height: 50px;
+  border-radius: 15px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 50% 40%, rgba(56, 189, 248, 0.16), rgba(8, 10, 15, 0.92));
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+.bedo-island-ring {
+  position: absolute;
+  inset: -2px;
+  border-radius: 16px;
+  pointer-events: none;
+  opacity: 0.6;
+  transition: box-shadow 0.25s ease;
+}
+
+.bedo-island-content.tone-listening .bedo-island-avatar {
+  border-color: rgba(56, 189, 248, 0.45);
+  box-shadow: 0 0 14px rgba(56, 189, 248, 0.25);
+}
+
+.bedo-island-content.tone-thinking .bedo-island-avatar {
+  border-color: rgba(250, 204, 21, 0.48);
+  box-shadow: 0 0 14px rgba(250, 204, 21, 0.24);
+}
+
+.bedo-island-content.tone-speaking .bedo-island-avatar {
+  border-color: rgba(74, 222, 128, 0.55);
+  box-shadow: 0 0 16px rgba(74, 222, 128, 0.3);
+}
+
+.bedo-island-center {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+}
+
+.bedo-island-status-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.bedo-island-name {
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: 0.01em;
+}
+
+.bedo-island-sep {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.bedo-island-state {
+  font-weight: 600;
+  color: #7dd3fc;
+}
+
+.bedo-island-content.tone-thinking .bedo-island-state {
+  color: #fde047;
+}
+
+.bedo-island-content.tone-speaking .bedo-island-state {
+  color: #4ade80;
+}
+
+.bedo-island-content.tone-error .bedo-island-state {
+  color: #f87171;
+}
+
+.bedo-island-eq {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 11px;
+  margin-left: 4px;
+}
+
+.bedo-island-eq i {
+  display: block;
+  width: 2px;
+  min-height: 3px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.22);
+  transition: height 0.08s ease, background 0.12s ease;
+}
+
+.bedo-island-eq i.is-lit {
+  background: #38bdf8;
+  box-shadow: 0 0 6px rgba(56, 189, 248, 0.8);
+}
+
+.bedo-island-caption {
+  font-size: 12px;
+  font-weight: 450;
+  color: rgba(255, 255, 255, 0.88);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bedo-island-right {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 auto;
+}
+
+.bedo-island-cam {
+  height: 44px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  background: #07090d;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bedo-island-cam img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+}
+
+.bedo-island-cam-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #38bdf8;
+}
+
+.bedo-island-btn {
+  width: 25px;
+  height: 25px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.78);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.12s ease;
+}
+
+.bedo-island-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+  transform: scale(1.05);
+}
+
+.bedo-island-btn.is-on {
+  background: rgba(56, 189, 248, 0.2);
+  border-color: rgba(56, 189, 248, 0.45);
+  color: #38bdf8;
+}
+
+.bedo-island-btn.is-muted {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.45);
+  color: #f87171;
+}
+
+.bedo-island-btn.is-close:hover {
+  background: rgba(239, 68, 68, 0.25);
+  color: #fca5a5;
+}
+
+
+/* ============================================================
+   Apple / Awwwards Music Tab Redesign
+   ============================================================ */
+.notch-morph-shell.state-expanded.mode-music .music-cover-halo {
+  position: absolute;
+  inset: 6px;
+  border-radius: 26px;
+  background: radial-gradient(
+    circle at 50% 50%,
+    rgba(var(--music-accent-rgb, 96, 165, 250), 0.58) 0%,
+    rgba(var(--music-accent-rgb, 96, 165, 250), 0.16) 58%,
+    transparent 82%
+  );
+  filter: blur(18px);
+  opacity: 0.42;
+  pointer-events: none;
+  transition: opacity 0.45s ease, transform 0.5s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.notch-morph-shell.state-expanded.mode-music .music-view.is-playing .music-cover-halo {
+  opacity: 0.94;
+  transform: scale(1.08);
+}
+
+.notch-morph-shell.state-expanded.mode-music .music-cover-art {
+  position: relative;
+  width: min(100%, 142px);
+  border-radius: 18px;
+  background: linear-gradient(155deg, rgba(28, 32, 46, 0.92) 0%, rgba(13, 15, 22, 0.98) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.24),
+    0 16px 34px rgba(0, 0, 0, 0.52),
+    0 6px 22px rgba(var(--music-accent-rgb, 96, 165, 250), 0.24);
+  transition:
+    transform 0.42s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.42s cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 0.3s ease;
+}
+
+.notch-morph-shell.state-expanded.mode-music .music-cover-art:hover {
+  transform: scale(1.025);
+  border-color: rgba(255, 255, 255, 0.26);
+}
+
+.notch-morph-shell.state-expanded.mode-music .music-view.is-paused .music-cover-art {
+  transform: scale(0.95);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 10px 22px rgba(0, 0, 0, 0.4);
+}
+
+.music-cover-placeholder {
+  width: 62px;
+  height: 62px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.02));
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.music-art-eq {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 18px;
+  padding: 4px 6px;
+  border-radius: 999px;
+  background: rgba(10, 12, 18, 0.74);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.music-art-eq i {
+  display: block;
+  width: 2.5px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgb(var(--music-accent-rgb, 255, 255, 255));
+  animation: musicArtEqBar 0.85s ease-in-out infinite alternate;
+}
+
+.music-art-eq i:nth-child(2) {
+  animation-delay: 0.18s;
+  animation-duration: 0.7s;
+}
+
+.music-art-eq i:nth-child(3) {
+  animation-delay: 0.34s;
+  animation-duration: 0.92s;
+}
+
+.music-art-eq i:nth-child(4) {
+  animation-delay: 0.12s;
+  animation-duration: 0.78s;
+}
+
+@keyframes musicArtEqBar {
+  0% {
+    height: 3px;
+    opacity: 0.6;
+  }
+  100% {
+    height: 11px;
+    opacity: 1;
+  }
+}
+
+.notch-morph-shell.state-expanded.mode-music .music-view.is-playing .transport-play-circle {
+  background: rgba(var(--music-accent-rgb, 255, 255, 255), 0.26);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.34),
+    0 4px 14px rgba(var(--music-accent-rgb, 96, 165, 250), 0.35);
+}
+
+
+/* ============================================================
+   Apple / Awwwards Bedo Stage Redesign
+   ============================================================ */
+.bedo-modern-shell .bedo-topbar {
+  padding: 2px 2px 6px;
+}
+
+.bedo-modern-shell .bedo-pill-status {
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.bedo-modern-shell .bedo-topbar-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 4px 14px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.bedo-modern-shell .bedo-icon-btn {
+  width: 28px;
+  height: 26px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: transparent;
+  transition: background 0.18s ease, color 0.18s ease, transform 0.15s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.bedo-modern-shell .bedo-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.11);
+  transform: scale(1.05);
+}
+
+.bedo-modern-shell .bedo-icon-btn.is-active {
+  background: rgba(56, 189, 248, 0.18);
+  border-color: rgba(56, 189, 248, 0.34);
+  color: #7dd3fc;
+}
+
+.bedo-modern-shell .bedo-icon-btn.is-live {
+  background: rgba(52, 211, 153, 0.18);
+  border-color: rgba(52, 211, 153, 0.36);
+  color: #6ee7b7;
+}
+
+.bedo-modern-shell .bedo-eyes-glass {
+  position: relative;
+  overflow: hidden;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.025);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transition: border-color 0.35s ease, background 0.35s ease;
+}
+
+.bedo-modern-shell .bedo-eyes-glass:hover {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.bedo-ambient-bloom {
+  display: none;
+}
+
+.bedo-eyes-glass[data-aura='speaking'] .bedo-ambient-bloom {
+  opacity: 0.95;
+  transform: scale(1.06);
+  background: radial-gradient(
+    circle at 50% 46%,
+    rgba(52, 211, 153, 0.28) 0%,
+    rgba(56, 189, 248, 0.18) 42%,
+    transparent 72%
+  );
+}
+
+.bedo-eyes-glass[data-aura='thinking'] .bedo-ambient-bloom {
+  opacity: 0.9;
+  background: radial-gradient(
+    circle at 50% 46%,
+    rgba(251, 191, 36, 0.24) 0%,
+    rgba(168, 85, 247, 0.14) 44%,
+    transparent 72%
+  );
+}
+
+.bedo-eyes-glass[data-aura='sleeping'] .bedo-ambient-bloom {
+  opacity: 0.4;
+  background: radial-gradient(
+    circle at 50% 46%,
+    rgba(99, 102, 241, 0.16) 0%,
+    transparent 66%
+  );
+}
+
+.bedo-modern-shell .bedo-subtitle-line {
+  margin-top: 6px;
+  max-width: min(92%, 440px);
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: rgba(10, 14, 22, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bedo-modern-shell .bedo-subtitle-line.is-hint {
+  color: rgba(255, 255, 255, 0.56);
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.07);
+}
+
+.bedo-modern-shell .bedo-input-pill {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.09);
+  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.bedo-modern-shell .bedo-input-pill:focus-within {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(56, 189, 248, 0.45);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 0 0 3px rgba(56, 189, 248, 0.12);
+}
+
+.bedo-modern-shell .bedo-send-btn {
+  border-radius: 999px;
+  transition: transform 0.16s cubic-bezier(0.32, 0.72, 0, 1), background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.bedo-modern-shell .bedo-send-btn.is-ready {
+  background: linear-gradient(135deg, #38bdf8 0%, #3b82f6 100%);
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(56, 189, 248, 0.4);
+}
+
+.bedo-modern-shell .bedo-send-btn.is-ready:hover {
+  transform: scale(1.07);
+}
+
+
+/* ============================================================
+   Bedo v2 — Apple Intelligence Spatial Orb + Split Canvas
+   ============================================================ */
+.bedo-v2-shell {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  align-items: stretch;
+  gap: 14px;
+  padding: 4px 4px 2px;
+  box-sizing: border-box;
+}
+
+.bedo-v2-orb-col {
+  flex: 0 0 116px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 8px 6px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+
+.bedo-v2-orb {
+  position: relative;
+  width: 82px;
+  height: 82px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  padding: 0;
+  cursor: pointer;
+  background: radial-gradient(circle at 38% 30%, rgba(255, 255, 255, 0.08), rgba(14, 18, 28, 0.96) 72%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  outline: none;
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.2),
+    0 10px 26px rgba(0, 0, 0, 0.48);
+  transition: border-color 0.25s ease, box-shadow 0.3s ease;
+}
+
+.bedo-v2-orb.listening {
+  border-color: rgba(56, 189, 248, 0.34);
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.22),
+    0 0 0 3px rgba(56, 189, 248, 0.08),
+    0 10px 26px rgba(0, 0, 0, 0.48);
+}
+
+.bedo-v2-orb.speaking {
+  border-color: rgba(52, 211, 153, 0.4);
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.24),
+    0 0 0 3px rgba(52, 211, 153, 0.1),
+    0 10px 26px rgba(0, 0, 0, 0.48);
+}
+
+.bedo-v2-orb.thinking {
+  border-color: rgba(251, 191, 36, 0.38);
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.22),
+    0 0 0 3px rgba(251, 191, 36, 0.09),
+    0 10px 26px rgba(0, 0, 0, 0.48);
+}
+
+.bedo-v2-orb-ring {
+  display: none;
+}
+
+.bedo-v2-orb-core {
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 45%, rgba(56, 189, 248, 0.2), transparent 72%);
+  transform: scale(calc(1 + var(--bedo-mic, 0) * 0.14));
+  transition: transform 0.08s linear;
+  pointer-events: none;
+}
+
+.bedo-v2-orb.speaking .bedo-v2-orb-core {
+  background: radial-gradient(circle at 50% 45%, rgba(52, 211, 153, 0.28), transparent 72%);
+}
+
+.bedo-v2-orb.thinking .bedo-v2-orb-core {
+  background: radial-gradient(circle at 50% 45%, rgba(251, 191, 36, 0.24), transparent 72%);
+}
+
+.bedo-v2-orb-face {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@keyframes bedoOrbSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.bedo-v2-orb-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.88);
+  letter-spacing: -0.01em;
+}
+
+.bedo-v2-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #38bdf8;
+}
+
+.bedo-v2-dot.is-sleeping {
+  background: #818cf8;
+  opacity: 0.7;
+}
+
+.bedo-v2-dot.is-thinking {
+  background: #fbbf24;
+  box-shadow: 0 0 8px rgba(251, 191, 36, 0.7);
+}
+
+.bedo-v2-dot.is-speaking {
+  background: #34d399;
+  box-shadow: 0 0 8px rgba(52, 211, 153, 0.75);
+}
+
+.bedo-v2-dot.is-error {
+  background: #f87171;
+}
+
+.bedo-v2-eq {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2.5px;
+  height: 14px;
+}
+
+.bedo-v2-eq i {
+  width: 2.5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22);
+  transition: height 0.09s ease, background 0.12s ease;
+}
+
+.bedo-v2-eq i.is-lit {
+  background: #38bdf8;
+}
+
+/* Sağ Sütun */
+.bedo-v2-main-col {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.bedo-v2-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.bedo-v2-title-group {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.bedo-v2-brand {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.95);
+  letter-spacing: -0.02em;
+}
+
+.bedo-v2-sub {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.48);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bedo-v2-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.bedo-v2-ctrl-btn {
+  width: 26px;
+  height: 24px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.72);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.16s ease, color 0.16s ease, transform 0.14s ease;
+}
+
+.bedo-v2-ctrl-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  transform: scale(1.06);
+}
+
+.bedo-v2-ctrl-btn.is-active {
+  background: rgba(56, 189, 248, 0.18);
+  border-color: rgba(56, 189, 248, 0.34);
+  color: #7dd3fc;
+}
+
+.bedo-v2-ctrl-btn.is-live {
+  background: rgba(52, 211, 153, 0.18);
+  border-color: rgba(52, 211, 153, 0.35);
+  color: #6ee7b7;
+}
+
+.bedo-v2-ctrl-btn.is-danger {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.38);
+  color: #fca5a5;
+}
+
+.bedo-v2-body {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.bedo-v2-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  align-items: center;
+}
+
+.bedo-v2-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 11px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease, transform 0.15s ease;
+}
+
+.bedo-v2-chip:hover {
+  background: rgba(56, 189, 248, 0.14);
+  border-color: rgba(56, 189, 248, 0.34);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.bedo-v2-feed {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.bedo-v2-user-pill {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.bedo-v2-user-pill span {
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #38bdf8;
+}
+
+.bedo-v2-user-pill p {
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bedo-v2-reply-scroll {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  font-size: 12px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.bedo-v2-thinking-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: rgba(251, 191, 36, 0.9);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.bedo-v2-cam-wrap {
+  position: relative;
+  height: 100%;
+  min-height: 0;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bedo-v2-cam-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.bedo-v2-cam-loading {
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.bedo-v2-cam-badge {
+  position: absolute;
+  top: 7px;
+  left: 8px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(239, 68, 68, 0.85);
+  color: #ffffff;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.bedo-v2-input-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 5px 0 13px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.bedo-v2-input-bar:focus-within {
+  background: rgba(255, 255, 255, 0.075);
+  border-color: rgba(56, 189, 248, 0.45);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 0 0 3px rgba(56, 189, 248, 0.12);
+}
+
+.bedo-v2-input-bar input {
+  flex: 1 1 0;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #ffffff;
+  font-size: 12.5px;
+}
+
+.bedo-v2-input-bar input::placeholder {
+  color: rgba(255, 255, 255, 0.42);
+}
+
+.bedo-v2-send {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.45);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.15s cubic-bezier(0.32, 0.72, 0, 1), background 0.18s ease, box-shadow 0.18s ease;
+}
+
+.bedo-v2-send.is-ready {
+  background: linear-gradient(135deg, #38bdf8 0%, #3b82f6 100%);
+  color: #ffffff;
+  box-shadow: 0 3px 12px rgba(56, 189, 248, 0.42);
+}
+
+.bedo-v2-send.is-ready:hover {
+  transform: scale(1.08);
+}

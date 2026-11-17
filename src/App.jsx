@@ -78,6 +78,8 @@ import MirrorOverlay from './components/MirrorOverlay';
 import PerfMonitorTab from './components/PerfMonitorTab';
 import DropShareTab from './components/DropShareTab';
 import NotifToastContent from './components/NotifToastContent';
+import BedoStage from './components/BedoStage';
+import BedoIslandOverlay from './components/BedoIslandOverlay';
 import {
   IdleLiveActivityPill,
   HomeLiveAndContextStrip,
@@ -89,6 +91,7 @@ import NotificationText from './NotificationText';
 import AgendaCalendar from './AgendaCalendar';
 import RoboMarkdown from './RoboMarkdown';
 import { playRoboSound, playNotifSound } from './sounds';
+import { LanguageProvider, createTranslator, getLocale, normalizeLanguage } from './i18n';
 
 // Extract vibrant dominant RGB color from live album/video thumbnail
 // When nothing is playing (no thumbnail), defaults to the crimson/burgundy placeholder glow
@@ -342,22 +345,23 @@ function isSafeNotificationImage(src) {
   );
 }
 
-function formatNotifTime(timestamp) {
-  if (!timestamp) return 'şimdi';
+function formatNotifTime(timestamp, lang = 'tr') {
+  const isTr = lang === 'tr';
+  if (!timestamp) return isTr ? 'şimdi' : 'now';
   const now = Date.now();
   const time = typeof timestamp === 'number' ? timestamp : new Date(timestamp).getTime();
-  if (isNaN(time)) return 'şimdi';
+  if (isNaN(time)) return isTr ? 'şimdi' : 'now';
   const diffSec = Math.max(0, Math.floor((now - time) / 1000));
-  if (diffSec < 45) return 'şimdi';
+  if (diffSec < 45) return isTr ? 'şimdi' : 'now';
   const diffMin = Math.floor(diffSec / 60);
-  if (diffMin < 60) return `${diffMin} dk`;
+  if (diffMin < 60) return isTr ? `${diffMin} dk` : `${diffMin}m`;
   const diffHours = Math.floor(diffMin / 60);
-  if (diffHours < 24) return `${diffHours} sa`;
+  if (diffHours < 24) return isTr ? `${diffHours} sa` : `${diffHours}h`;
   const diffDays = Math.floor(diffHours / 24);
-  if (diffDays === 1) return 'dün';
-  if (diffDays < 7) return `${diffDays} gün`;
+  if (diffDays === 1) return isTr ? 'dün' : 'yesterday';
+  if (diffDays < 7) return isTr ? `${diffDays} gün` : `${diffDays}d`;
   const d = new Date(time);
-  return `${d.getDate()} ${['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'][d.getMonth()]}`;
+  return d.toLocaleDateString(isTr ? 'tr-TR' : 'en-US', { day: 'numeric', month: 'short' });
 }
 
 function NotificationAvatar({ banner, brand, presentation }) {
@@ -862,6 +866,29 @@ const MAIL_FOLDERS = [
 
 function AiProviderLogo({ provider, size = 18 }) {
   const normalized = String(provider || '').toLowerCase();
+  if (normalized === 'bedo') {
+    return (
+      <span
+        className="ai-provider-logo bedo-logo"
+        style={{
+          width: size,
+          height: size,
+          borderRadius: '50%',
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'radial-gradient(circle at 35% 35%, #38bdf8, #0284c7)',
+          color: '#04121d',
+          fontWeight: 800,
+          fontSize: Math.max(9, Math.round(size * 0.56)),
+          lineHeight: 1,
+        }}
+        aria-hidden="true"
+      >
+        B
+      </span>
+    );
+  }
   if (normalized === 'gemini') {
     return <RealAppIcon sc={{ id: 'gemini-provider-mark', type: 'gemini' }} size={size} />;
   }
@@ -1100,6 +1127,8 @@ const MusicProgressRow = React.memo(function MusicProgressRow({ currentMedia, ac
 export default function App() {
   // Island mode: 'idle' | 'mini-progress' | 'battery' | 'music-bar' | 'expanded'
   const [islandMode, setIslandMode] = useState('idle');
+  const islandModeRef = useRef(islandMode);
+  islandModeRef.current = islandMode;
   const [expandedKeepAlive, setExpandedKeepAlive] = useState(false);
   useEffect(() => {
     if (islandMode === 'expanded') {
@@ -1419,7 +1448,7 @@ export default function App() {
   const [hoverAddApp, setHoverAddApp] = useState(false);
 
   // AI Agent (Claude / Codex / Gemini / Antigravity) state — NO mock prompts
-  const [selectedAiProvider, setSelectedAiProvider] = useState('Gemini');
+  const [selectedAiProvider, setSelectedAiProvider] = useState('Bedo');
   const [jobsToday, setJobsToday] = useState(0);
   const [roboMood, setRoboMood] = useState('normal');
   const [roboReaction, setRoboReaction] = useState(null);
@@ -1453,6 +1482,229 @@ export default function App() {
   const [roboReply, setRoboReply] = useState(null);
   const [roboReplyProvider, setRoboReplyProvider] = useState(null);
   const [roboLoading, setRoboLoading] = useState(false);
+
+  // Bedo (JARVIS Headless Bridge) live state
+  const [bedoStatus, setBedoStatus] = useState({
+    running: false,
+    ready: false,
+    jarvisState: 'INITIALISING',
+    muted: false,
+    paused: true,
+    webcamActive: false,
+  });
+  const [bedoWebcamFrame, setBedoWebcamFrame] = useState(null);
+  const [bedoUserTranscript, setBedoUserTranscript] = useState('');
+  const [bedoMicLevel, setBedoMicLevel] = useState(0);
+  const [bedoThinkingHint, setBedoThinkingHint] = useState('');
+  const bedoPausedMediaRef = useRef(false);
+  const currentMediaRef = useRef({ hasSession: false, isPlaying: false });
+
+  const pauseMediaForBedo = useCallback(() => {
+    if (currentMediaRef.current?.hasSession && currentMediaRef.current?.isPlaying && !bedoPausedMediaRef.current) {
+      bedoPausedMediaRef.current = true;
+      window.twocode?.mediaControl?.('playPause');
+    }
+  }, []);
+
+  const resumeMediaAfterBedo = useCallback(() => {
+    if (bedoPausedMediaRef.current) {
+      bedoPausedMediaRef.current = false;
+      if (currentMediaRef.current?.hasSession && !currentMediaRef.current?.isPlaying) {
+        window.twocode?.mediaControl?.('playPause');
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (bedoStatus?.paused || bedoStatus?.jarvisState !== 'THINKING') return undefined;
+    const t1 = setTimeout(() => {
+      setBedoThinkingHint((prev) => prev || 'Hâlâ araştırıyorum...');
+    }, 3500);
+    const t2 = setTimeout(() => {
+      setBedoThinkingHint('Biraz uzun sürdü, hâlâ kontrol ediyorum...');
+    }, 8500);
+    const t3 = setTimeout(() => {
+      setBedoThinkingHint('');
+      setRoboMood('listening');
+      setRoboReply('Yanıt gecikti, tekrar deneyebilirsiniz.');
+      setBedoStatus((prev) => ({ ...prev, jarvisState: 'LISTENING' }));
+    }, 18000);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+    };
+  }, [bedoStatus?.paused, bedoStatus?.jarvisState]);
+
+  useEffect(() => {
+    const api = window.twocode;
+    if (!api?.bedoStart) return;
+
+    api.bedoStart({ startPaused: true, enableWake: true, enableClap: false }).then((res) => {
+      if (res?.status) setBedoStatus(res.status);
+    }).catch(() => {});
+
+    const unsubStatus = api.onBedoStatus?.((status) => {
+      if (status) setBedoStatus(status);
+    });
+    const unsubEvent = api.onBedoEvent?.((ev) => {
+      if (!ev || typeof ev !== 'object') return;
+      if (ev.type === 'wake') {
+        pauseMediaForBedo();
+        suppressHoverCollapseUntilRef.current = Date.now() + 9000;
+        suppressHoverExpandUntilRef.current = Date.now() + 9000;
+        setShowMenu(false);
+        setNotificationHistoryOpen(false);
+        setIslandOverlay(null);
+        setIslandMode('bedo-live');
+        setSelectedAiProvider('Bedo');
+        setRoboMood('listening');
+        setBedoThinkingHint('');
+        triggerRoboReaction('happy', 5, 1600);
+        playRoboSound('curious', islandSettings.soundEffects !== false);
+      } else if (ev.type === 'sleep') {
+        resumeMediaAfterBedo();
+        setBedoThinkingHint('');
+        setIslandMode(resolvedCollapsedModeRef.current || 'idle');
+      } else if (ev.type === 'island_action') {
+        const act = String(ev.action || '').trim().toLowerCase();
+        const val = String(ev.value || '').trim();
+        if (act === 'media_play') {
+          bedoPausedMediaRef.current = false;
+          if (!currentMediaRef.current?.hasSession || !currentMediaRef.current?.isPlaying) {
+            window.twocode?.mediaControl?.('playPause');
+          }
+        } else if (act === 'media_pause') {
+          bedoPausedMediaRef.current = false;
+          if (currentMediaRef.current?.hasSession && currentMediaRef.current?.isPlaying) {
+            window.twocode?.mediaControl?.('playPause');
+          }
+        } else if (act === 'media_next') {
+          window.twocode?.mediaControl?.('next');
+        } else if (act === 'media_prev') {
+          window.twocode?.mediaControl?.('prev');
+        } else if (act === 'open_tab' && val) {
+          setShowMenu(false);
+          setIslandOverlay(null);
+          setIslandMode(val);
+        } else if (act === 'focus_start') {
+          setTimerRunning(true);
+        } else if (act === 'focus_pause') {
+          setTimerRunning(false);
+        } else if (act === 'focus_reset') {
+          setTimerRunning(false);
+          setTimerSeconds(focusMinutes * 60);
+        } else if (act === 'note_add' && val) {
+          setNotesList((prev) => {
+            if (!Array.isArray(prev) || prev.length === 0) {
+              return [{ id: `note_${Date.now()}`, color: '#38BDF8', text: val, attachments: [] }];
+            }
+            const first = prev[0];
+            const sep = first.text && !first.text.endsWith('\n') ? '\n' : '';
+            return prev.map((item, idx) => (idx === 0 ? { ...item, text: `${item.text || ''}${sep}${val}` } : item));
+          });
+        }
+      } else if (ev.type === 'thinking_progress') {
+        const hintText = String(ev.text || '').trim();
+        if (hintText) setBedoThinkingHint(hintText);
+      } else if (ev.type === 'state') {
+        if (ev.state !== 'THINKING') {
+          setBedoThinkingHint('');
+        }
+        if (ev.state === 'SPEAKING') {
+          setRoboMood('speaking');
+          triggerRoboReaction('speaking', 4, 2400);
+          setRoboLoading(false);
+        } else if (ev.state === 'THINKING') {
+          setRoboMood('thinking');
+          triggerRoboReaction('thinking', 4, 2600);
+        } else if (ev.state === 'ERROR') {
+          setRoboMood('sad');
+          triggerRoboReaction('error', 5, 2000);
+          setRoboLoading(false);
+        } else if (ev.state === 'LISTENING') {
+          setRoboMood('listening');
+        }
+      } else if (ev.type === 'sfx') {
+        triggerRoboReaction('happy', 4, 1500);
+        playRoboSound('happy', islandSettings.soundEffects !== false);
+      } else if (ev.type === 'user_transcript') {
+        const cleanUser = String(ev.text || '').trim();
+        if (cleanUser) {
+          setBedoUserTranscript(cleanUser);
+        }
+      } else if (ev.type === 'assistant_transcript') {
+        const cleanAssistant = String(ev.text || '').trim();
+        if (cleanAssistant) {
+          setRoboReply(cleanAssistant);
+          setRoboReplyProvider('Bedo');
+          setRoboLoading(false);
+        }
+      } else if (ev.type === 'log') {
+        if (ev.role === 'user') {
+          const cleanUser = String(ev.text || '').replace(/^Siz:\s*/i, '').trim();
+          if (cleanUser) {
+            setBedoUserTranscript(cleanUser);
+            setRoboLoading(true);
+            setRoboMood('curious');
+          }
+        } else if (ev.role === 'assistant') {
+          const clean = String(ev.text || '').replace(/^Bedo:\s*/i, '').trim();
+          if (clean) {
+            setRoboReply(clean);
+            setRoboReplyProvider('Bedo');
+          }
+          setRoboLoading(false);
+        } else if (ev.role === 'error') {
+          setRoboReply(String(ev.text || ''));
+          setRoboReplyProvider('Bedo');
+          setRoboLoading(false);
+        }
+      } else if (ev.type === 'webcam_frame' && ev.jpeg_b64) {
+        setBedoWebcamFrame(`data:image/jpeg;base64,${ev.jpeg_b64}`);
+      } else if (ev.type === 'webcam_state' && !ev.active) {
+        setBedoWebcamFrame(null);
+      } else if (ev.type === 'mic_level') {
+        setBedoMicLevel(Number(ev.level) || 0);
+      }
+    });
+
+    return () => {
+      unsubStatus?.();
+      unsubEvent?.();
+    };
+  }, []);
+
+  // Siri modu: Ada kapalıyken veya Bedo görünümü dışındayken otomatik uyku moduna geç
+  useEffect(() => {
+    const inBedoView = islandMode === 'bedo-live' || (islandMode === 'expanded' && activeTab === 'robo');
+    if (!inBedoView && bedoStatus.running && !bedoStatus.paused) {
+      window.twocode?.bedoSetPaused?.(true);
+    }
+  }, [islandMode, activeTab, bedoStatus.running, bedoStatus.paused]);
+
+  // Siri otomatik kapanma: bedo-live modunda 9 sn sessizlik olursa (kamera kapalıyken) adayı kapat
+  useEffect(() => {
+    if (islandMode !== 'bedo-live') return undefined;
+    if (bedoStatus.paused || bedoStatus.webcamActive) return undefined;
+    if (bedoStatus.jarvisState === 'SPEAKING' || bedoStatus.jarvisState === 'THINKING') return undefined;
+    if (bedoMicLevel > 0.24) return undefined;
+
+    const timer = setTimeout(() => {
+      window.twocode?.bedoSetPaused?.(true);
+      resumeMediaAfterBedo();
+      setIslandMode(resolvedCollapsedModeRef.current || 'idle');
+    }, 9000);
+    return () => clearTimeout(timer);
+  }, [
+    islandMode,
+    bedoStatus.paused,
+    bedoStatus.webcamActive,
+    bedoStatus.jarvisState,
+    bedoMicLevel,
+    bedoUserTranscript,
+    roboReply,
+  ]);
 
   // G-Helper live status (performance_mode & gpu_mode)
   const [ghelperStatus, setGhelperStatus] = useState({
@@ -1999,6 +2251,7 @@ export default function App() {
   // User's custom apps synced from TwoCode Settings — EMPTY by default (no mock GHelper/YouTube)
   const [shortcuts, setShortcuts] = useState([]);
   const [islandSettings, setIslandSettings] = useState({
+    language: 'English',
     eyeColorHex: '#ffffff',
     islandOpenMode: 'On hover',
     leftOfRobo: 'Nothing',
@@ -2010,6 +2263,9 @@ export default function App() {
     googleConnected: false,
     googleEmail: '',
   });
+  const langCode = normalizeLanguage(islandSettings.language);
+  const t = useMemo(() => createTranslator(langCode), [langCode]);
+  const locale = getLocale(langCode);
 
   // Volume state for the `•••` popup slider and bottom dock button
   const [volumePercent, setVolumePercent] = useState(68);
@@ -2174,8 +2430,8 @@ export default function App() {
     return {
       hasSession: false,
       isLive: false,
-      title: 'Nothing playing',
-      artist: 'Play music or a video',
+      title: t('music.nothingPlaying'),
+      artist: t('music.playPrompt'),
       album: '',
       isPlaying: false,
       position: 0,
@@ -2183,9 +2439,36 @@ export default function App() {
       thumbnail: '',
       lyrics: [],
     };
-  }, [liveMedia]);
+  }, [liveMedia, t]);
 
   const musicAccent = useDominantColor(currentMedia.thumbnail);
+  currentMediaRef.current = currentMedia;
+
+  useEffect(() => {
+    if (!bedoStatus?.running) return;
+    window.twocode?.bedoSyncIslandState?.({
+      mode: islandMode,
+      media: {
+        hasSession: Boolean(currentMedia.hasSession),
+        isPlaying: Boolean(currentMedia.isPlaying),
+        title: String(currentMedia.title || ''),
+        artist: String(currentMedia.artist || ''),
+      },
+      focus: {
+        minutes: focusMinutes,
+        running: Boolean(timerRunning),
+      },
+    });
+  }, [
+    bedoStatus?.running,
+    islandMode,
+    currentMedia.hasSession,
+    currentMedia.isPlaying,
+    currentMedia.title,
+    currentMedia.artist,
+    focusMinutes,
+    timerRunning,
+  ]);
 
   // When nothing is playing, clock is crisp white (#ffffff) as in media_1794022256939_a2c228a1.jpg;
   // when a live cover is active, clock adapts to cover color unless user picked a fixed color
@@ -2293,7 +2576,7 @@ export default function App() {
     }
     return {
       hasSyncedLyrics: false,
-      primaryLine: currentMedia.title || 'Nothing playing',
+      primaryLine: currentMedia.title || t('music.nothingPlaying'),
       secondaryLine: currentMedia.artist || '',
     };
   }, [currentMedia.lyrics, currentMedia.title, currentMedia.artist, islandSettings.lyricsEnabled, activeLyricIndex]);
@@ -2350,6 +2633,8 @@ export default function App() {
       window.twocode?.setIslandMode('hud', dynamicHudSize.width);
     } else if (islandMode === 'battery') {
       window.twocode?.setIslandMode('battery', 366);
+    } else if (islandMode === 'bedo-live') {
+      window.twocode?.setIslandMode('bedo-live');
     } else if (islandMode === 'idle' && liveActivity?.active) {
       window.twocode?.setIslandMode('idle-live');
     } else {
@@ -2618,6 +2903,9 @@ export default function App() {
       if (saved && typeof saved === 'object') {
         setShortcuts(Array.isArray(saved.apps) ? saved.apps : []);
         setIslandSettings((prev) => ({ ...prev, ...saved }));
+        if (saved.language) {
+          try { localStorage.setItem('twocode_lang', normalizeLanguage(saved.language)); } catch {}
+        }
       }
     });
 
@@ -2627,6 +2915,9 @@ export default function App() {
           setShortcuts(updated.apps);
         }
         setIslandSettings((prev) => ({ ...prev, ...updated }));
+        if (updated.language) {
+          try { localStorage.setItem('twocode_lang', normalizeLanguage(updated.language)); } catch {}
+        }
       }
     });
 
@@ -2692,6 +2983,7 @@ export default function App() {
     const unsubHover = window.twocode.onNotchHoverChange?.((hovering) => {
       if (gameModeActive) return;
       if (isShowingNotifToastRef.current) return;
+      if (islandModeRef.current === 'bedo-live') return;
       if (hovering) {
         if (Date.now() < suppressHoverExpandUntilRef.current) return;
         if (!isMiniProgressBar) {
@@ -2942,13 +3234,13 @@ export default function App() {
   };
 
   const renderDateTop = (d, compact = false) => {
-    const days = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
-    const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+    const wd = d.toLocaleDateString(locale, { weekday: 'short' }).replace('.', '').toUpperCase();
+    const mo = d.toLocaleDateString(locale, { month: 'short' }).replace('.', '').toUpperCase();
     return (
       <span className={`topbar-date ${compact ? 'is-compact' : ''}`}>
-        <span className="topbar-date-weekday">{days[d.getDay()]}</span>
+        <span className="topbar-date-weekday">{wd}</span>
         <span className="topbar-date-day clock-number-text">{d.getDate()}</span>
-        <span className="topbar-date-month">{months[d.getMonth()]}</span>
+        <span className="topbar-date-month">{mo}</span>
       </span>
     );
   };
@@ -3114,6 +3406,20 @@ export default function App() {
     } else {
       setCodexHistory((prev) => [entry, ...prev]);
     }
+    if (selectedAiProvider === 'Bedo') {
+      if (bedoStatus.paused) {
+        await window.twocode?.bedoSetPaused?.(false);
+      }
+      const res = await window.twocode?.bedoSendText?.(q);
+      setRoboQuestion('');
+      if (!res?.ok) {
+        setRoboLoading(false);
+        setRoboMood('sad');
+        setRoboReply('Bedo şu anda hazır değil. Lütfen birkaç saniye sonra tekrar deneyin.');
+        setRoboReplyProvider('Bedo');
+      }
+      return;
+    }
     try {
       const res = await window.twocode?.askRobo?.({
         question: q,
@@ -3191,18 +3497,18 @@ export default function App() {
 
   // Agents, Mail and Robo chat are temporarily disabled; keep their entries for later.
   const navItems = [
-    { id: 'home', label: 'HOME', icon: Home },
-    { id: 'music', label: 'MUSIC', icon: Music },
-    { id: 'drop', label: 'DROP', icon: UploadCloud },
-    // { id: 'code', label: 'AGENTS', icon: Terminal, badge: pendingApproval ? '!' : null },
-    // { id: 'robo', label: 'ROBO', icon: RoboDockIcon },
-    { id: 'timer', label: 'FOCUS', icon: Timer },
-    { id: 'sleep', label: 'MODES', icon: Moon },
-    { id: 'clips', label: 'CLIPS', icon: Copy },
-    { id: 'notes', label: 'NOTE', icon: FileText },
-    { id: 'cal', label: 'AGENDA', icon: Calendar },
-    { id: 'perf', label: 'PERF', icon: Activity },
-    // { id: 'inbox', label: 'MAIL', icon: Mail },
+    { id: 'home', label: t('dock.home'), icon: Home },
+    { id: 'music', label: t('dock.music'), icon: Music },
+    { id: 'drop', label: t('dock.drop'), icon: UploadCloud },
+    // { id: 'code', label: t('dock.agents'), icon: Terminal, badge: pendingApproval ? '!' : null },
+    { id: 'robo', label: 'Bedo', icon: RoboDockIcon },
+    { id: 'timer', label: t('dock.focus'), icon: Timer },
+    { id: 'sleep', label: t('dock.modes'), icon: Moon },
+    { id: 'clips', label: t('dock.clips'), icon: Copy },
+    { id: 'notes', label: t('dock.notes'), icon: FileText },
+    { id: 'cal', label: t('dock.agenda'), icon: Calendar },
+    { id: 'perf', label: t('dock.perf'), icon: Activity },
+    // { id: 'inbox', label: t('dock.mail'), icon: Mail },
   ];
 
   useEffect(() => {
@@ -3291,8 +3597,8 @@ export default function App() {
   const ActiveModeIcon = activeModeOption.icon;
   const allNotificationsEnabled = islandSettings.windowsNotifications !== false && !islandSettings.doNotDisturb;
   const activeModeSummary = selectedModeName === 'Serbest'
-    ? modeToggles.onlyClaude ? 'Yalnızca Claude bildirimleri' : allNotificationsEnabled ? 'Tüm bildirimler açık' : 'Bildirimler kapalı'
-    : [modeToggles.onlyClaude ? 'Claude öncelikli' : '', modeToggles.blockSocial ? 'Sosyal sınırları açık' : ''].filter(Boolean).join(' · ') || 'Bildirimler serbest';
+    ? modeToggles.onlyClaude ? t('modes.summaryOnlyClaude') : allNotificationsEnabled ? t('modes.summaryAllOpen') : t('modes.summaryAllOff')
+    : [modeToggles.onlyClaude ? t('modes.summaryClaudePriority') : '', modeToggles.blockSocial ? t('modes.summarySocialBlocked') : ''].filter(Boolean).join(' · ') || t('modes.summaryFree');
   const unreadNotificationCount = notificationHistory.filter((item) => !item.isRead).length;
   const pendingAgendaCount = agendaItems.filter((item) => !item?.completed).length;
   const currentMailFolder = MAIL_FOLDERS.find((folder) => folder.id === mailCategory) || MAIL_FOLDERS[0];
@@ -3334,6 +3640,7 @@ export default function App() {
   };
 
   return (
+    <LanguageProvider language={islandSettings.language}>
     <div
       className="notch-stage"
       style={{ '--clock-number-font': CLOCK_FONT_FAMILIES[clockFontIndex] || CLOCK_FONT_FAMILIES[3] }}
@@ -3385,7 +3692,9 @@ export default function App() {
           } : {}),
         }}
         onMouseEnter={() => {
+          window.twocode?.setIgnoreMouseEvents?.(false);
           if (gameModeActive || isShowingNotifToastRef.current) return;
+          if (islandMode === 'bedo-live') return;
           if (Date.now() < suppressHoverExpandUntilRef.current) return;
           if (islandMode !== 'expanded' && !isMiniProgressBar) {
             if (hoverExpandTimerRef.current) clearTimeout(hoverExpandTimerRef.current);
@@ -3478,6 +3787,15 @@ export default function App() {
                 active={documentVisible && islandMode === 'idle'}
                 trackCursor={false}
                 size="normal"
+                onPoke={() => {
+                  pauseMediaForBedo();
+                  suppressHoverCollapseUntilRef.current = Date.now() + 6000;
+                  setIslandMode('bedo-live');
+                  setSelectedAiProvider('Bedo');
+                  if (bedoStatus.paused) {
+                    window.twocode?.bedoSetPaused?.(false);
+                  }
+                }}
                 batteryPercent={batteryPercent}
                 batteryCharging={batteryCharging}
                 unreadNotificationCount={unreadNotificationCount}
@@ -3494,7 +3812,7 @@ export default function App() {
         <div
           className={`morph-layer layer-mini-progress ${islandMode === 'mini-progress' ? 'is-visible' : ''
             }`}
-          title="Normal görünüme dönmek için sağ tıkla veya tıkla"
+          title={t('island.miniProgressTitle')}
         >
           <MiniProgressBar liveMedia={liveMedia} active={islandMode === 'mini-progress'} />
         </div>
@@ -3534,14 +3852,14 @@ export default function App() {
               <div className="battery-alert-center">
                 <div className="battery-alert-headline">
                   <strong>
-                    {batteryAlertKind === 'charging' ? 'Şarj Ediliyor' : 'Düşük Pil'}
+                    {batteryAlertKind === 'charging' ? t('battery.charging') : t('battery.low')}
                   </strong>
                   <span className="battery-alert-pct-pill">
-                    %{batteryPercent}
+                    {langCode === 'tr' ? `%${batteryPercent}` : `${batteryPercent}%`}
                   </span>
                 </div>
                 <span className="battery-alert-sub">
-                  {batteryAlertKind === 'charging' ? 'Güç kaynağı bağlandı' : 'Lütfen şarj aletini takın'}
+                  {batteryAlertKind === 'charging' ? t('battery.powerConnected') : t('battery.plugCharger')}
                 </span>
               </div>
 
@@ -3556,7 +3874,7 @@ export default function App() {
                     </div>
                   </div>
                   <span className="battery-mini-bar-label">
-                    {batteryAlertKind === 'charging' ? 'DOLUYOR' : 'KRİTİK'}
+                    {batteryAlertKind === 'charging' ? t('battery.chargingPill') : t('battery.criticalPill')}
                   </span>
                 </div>
               </div>
@@ -3583,12 +3901,12 @@ export default function App() {
                     ? `${(sizeNum / 1024).toFixed(0)} KB`
                     : `${(sizeNum / (1024 * 1024)).toFixed(1)} MB`;
               const titleText = isReceiving
-                ? 'Aktarılıyor'
+                ? t('hud.transferring')
                 : f.isImage
-                  ? 'Görsel alındı'
+                  ? t('hud.imageReceived')
                   : isDoc
-                    ? 'Belge alındı'
-                    : 'Dosya alındı';
+                    ? t('hud.docReceived')
+                    : t('hud.fileReceived');
 
               return (
                 <div key={`${hudOverlay.seq || 0}-${hudOverlay.phase || 'done'}`} className={`hud-phone-upload-wrap ${isReceiving ? 'is-receiving' : 'is-done'}`}>
@@ -3651,7 +3969,7 @@ export default function App() {
                 {/* 2. Clean Glassmorphism Typography */}
                 <div className="hud-aura-text-row">
                   <span className="hud-aura-label">AURA</span>
-                  <span className="hud-aura-val">{hudOverlay.ghelper.valueText || 'Sabit'}</span>
+                  <span className="hud-aura-val">{hudOverlay.ghelper.valueText || t('hud.kb.staticFallback')}</span>
                 </div>
 
                 {/* 3. Frosted Glass Spectrum Pill */}
@@ -3751,7 +4069,7 @@ export default function App() {
                   <Volume2 size={17} strokeWidth={2.2} />
                 )}
               </div>
-              <span className="hud-notch-label">{hudOverlay.type === 'brightness' ? 'Parlaklık' : 'Ses'}</span>
+              <span className="hud-notch-label">{hudOverlay.type === 'brightness' ? t('hud.brightness') : t('hud.volume')}</span>
               <div className="hud-notch-track">
                 <div
                   className={`hud-notch-fill ${hudOverlay.type === 'brightness' ? 'is-brightness' : ''}`}
@@ -3771,11 +4089,33 @@ export default function App() {
             COLLAPSED LAYER 2C: WINDOWS SYSTEM NOTIFICATION BANNER NOTCH
             Sleek, modern, uncluttered Dynamic Island notification
             ============================================================ */}
+        <div className={`morph-layer layer-bedo-live ${islandMode === 'bedo-live' ? 'is-visible' : ''}`}>
+          <BedoIslandOverlay
+            status={bedoStatus}
+            micLevel={bedoMicLevel}
+            roboMood={roboMood}
+            roboReaction={roboReaction}
+            userTranscript={bedoUserTranscript}
+            reply={roboReply}
+            thinkingHint={bedoThinkingHint}
+            webcamActive={bedoStatus.webcamActive}
+            webcamFrame={bedoWebcamFrame}
+            active={documentVisible && islandMode === 'bedo-live'}
+            onToggleMute={() => window.twocode?.bedoSetMuted?.(!bedoStatus.muted)}
+            onToggleWebcam={() => window.twocode?.bedoSetWebcam?.(!bedoStatus.webcamActive)}
+            onClose={() => {
+              window.twocode?.bedoSetPaused?.(true);
+              resumeMediaAfterBedo();
+              setIslandMode(resolvedCollapsedMode);
+            }}
+          />
+        </div>
+
         <div
           className={`morph-layer layer-notif-toast ${islandMode === 'notif-toast' ? 'is-visible' : ''} ${notifPresentation.kind === 'audio' || notifPresentation.kind === 'video' ? 'is-call-notification' : ''}`}
           role="button"
           tabIndex={0}
-          title="Uygulamayı aç"
+          title={t('topbar.openApp')}
           style={{ '--notif-stay-ms': `${notifRemainingMsRef.current || 4500}ms` }}
           onMouseEnter={() => {
             if (!isShowingNotifToastRef.current || !notifTimerRef.current) return;
@@ -3835,7 +4175,7 @@ export default function App() {
             onClick={(e) => {
               if (currentMedia.hasSession) handleOpenMediaSource(e);
             }}
-            title={currentMedia.hasSession ? 'Çaldığı sekmeyi / uygulamayı aç' : undefined}
+            title={currentMedia.hasSession ? t('home.openMediaSource') : undefined}
             style={currentMedia.hasSession ? { cursor: 'pointer' } : undefined}
           >
             {currentMedia.thumbnail ? (
@@ -3989,7 +4329,7 @@ export default function App() {
                       <Wifi size={18} strokeWidth={2.4} color="#ffffff" />
                     </div>
                     <strong className="cc-tile-title">Wi-Fi</strong>
-                    <span className="cc-tile-sub">{radioBusy === 'Wifi' ? 'Değiştiriliyor…' : networkInfo.wifiConnected ? `Bağlı · ${networkInfo.wifi || 'Wi-Fi'}` : networkInfo.wifiState === 'Off' ? 'Kapalı' : networkInfo.wifiState === 'On' ? 'Ağ bağlı değil' : 'Durum alınıyor…'}</span>
+                    <span className="cc-tile-sub">{radioBusy === 'Wifi' ? t('cc.changing') : networkInfo.wifiConnected ? t('cc.connectedWithName', { name: networkInfo.wifi || 'Wi-Fi' }) : networkInfo.wifiState === 'Off' ? t('cc.wifiOff') : networkInfo.wifiState === 'On' ? t('cc.wifiNotConnected') : t('cc.fetchingStatus')}</span>
                   </div>
 
                   <div
@@ -4010,7 +4350,7 @@ export default function App() {
                       <Bluetooth size={18} strokeWidth={2.4} color="#ffffff" />
                     </div>
                     <strong className="cc-tile-title">Bluetooth</strong>
-                    <span className="cc-tile-sub">{radioBusy === 'Bluetooth' ? 'Değiştiriliyor…' : networkInfo.bluetoothState || 'Durum alınıyor…'}</span>
+                    <span className="cc-tile-sub">{radioBusy === 'Bluetooth' ? t('cc.changing') : networkInfo.bluetoothState === 'On' ? t('common.on') : networkInfo.bluetoothState === 'Off' ? t('common.off') : t('cc.fetchingStatus')}</span>
                   </div>
                 </div>
 
@@ -4019,38 +4359,38 @@ export default function App() {
                 {radioPanel && (
                   <section className="cc-nearby-panel" aria-live="polite">
                     <div className="cc-nearby-heading">
-                      <strong>{radioPanel === 'wifi' ? 'Yakındaki Wi-Fi ağları' : 'Yakındaki Bluetooth aygıtları'}</strong>
+                      <strong>{radioPanel === 'wifi' ? t('cc.nearbyWifi') : t('cc.nearbyBt')}</strong>
                       <div>
                         <button
                           type="button"
                           className="cc-nearby-icon-button"
-                          aria-label="Yeniden tara"
+                          aria-label={t('cc.rescan')}
                           disabled={radioScanBusy}
                           onClick={radioPanel === 'wifi' ? scanWifiNetworks : scanBluetoothDevices}
                         ><RotateCw size={13} className={radioScanBusy ? 'is-spinning' : ''} /></button>
-                        <button type="button" className="cc-nearby-icon-button" aria-label="Listeyi kapat" onClick={() => setRadioPanel('')}><X size={14} /></button>
+                        <button type="button" className="cc-nearby-icon-button" aria-label={t('cc.closeList')} onClick={() => setRadioPanel('')}><X size={14} /></button>
                       </div>
                     </div>
                     {radioScanBusy ? (
-                      <div className="cc-nearby-empty">Aygıtlar aranıyor…</div>
+                      <div className="cc-nearby-empty">{t('cc.searchingDevices')}</div>
                     ) : radioPanel === 'wifi' ? (
                       wifiNetworks.length ? wifiNetworks.map((network) => (
                         <div className="cc-nearby-item" key={`${network.ssid}-${network.profileName || ''}`}>
                           <Wifi size={15} />
                           <span className="cc-nearby-name">
                             <strong>{network.ssid}</strong>
-                            <small>{network.connected ? 'Bağlı' : `${network.signal}% sinyal${network.secured ? ' · Güvenli' : ' · Açık ağ'}`}</small>
+                            <small>{network.connected ? t('cc.connected') : t('cc.signalInfo', { signal: network.signal, sec: network.secured ? t('cc.secured') : t('cc.openNetwork') })}</small>
                           </span>
                           {network.connected && <Check size={15} className="cc-nearby-check" />}
                         </div>
-                      )) : <div className="cc-nearby-empty">Tarama tamamlandı; görünür ağ bulunamadı.</div>
+                      )) : <div className="cc-nearby-empty">{t('cc.noNetworksFound')}</div>
                     ) : bluetoothDevices.length ? bluetoothDevices.map((device) => (
                       <div className="cc-nearby-item" key={device.id}>
                         <Bluetooth size={15} />
-                        <span className="cc-nearby-name"><strong>{device.name}</strong><small>{device.paired ? 'Eşleştirildi' : 'Yakında'}</small></span>
-                        {!device.paired && <button type="button" className="cc-nearby-action" disabled={Boolean(radioBusy)} onClick={() => pairBluetoothDevice(device)}>{radioBusy === device.id ? '…' : 'Eşleştir'}</button>}
+                        <span className="cc-nearby-name"><strong>{device.name}</strong><small>{device.paired ? t('cc.paired') : t('cc.nearby')}</small></span>
+                        {!device.paired && <button type="button" className="cc-nearby-action" disabled={Boolean(radioBusy)} onClick={() => pairBluetoothDevice(device)}>{radioBusy === device.id ? '…' : t('cc.pair')}</button>}
                       </div>
-                    )) : <div className="cc-nearby-empty">Tarama tamamlandı; görünür aygıt bulunamadı.</div>}
+                    )) : <div className="cc-nearby-empty">{t('cc.noDevicesFound')}</div>}
                   </section>
                 )}
 
@@ -4062,7 +4402,7 @@ export default function App() {
                   >
                     <div className="cc-row-left">
                       <Wifi size={14} strokeWidth={2.2} />
-                      <span>Wi-Fi ağlarını tara</span>
+                      <span>{t('cc.scanWifi')}</span>
                     </div>
                     <ChevronRight size={14} strokeWidth={2.2} className="cc-row-chev" />
                   </button>
@@ -4074,7 +4414,7 @@ export default function App() {
                   >
                     <div className="cc-row-left">
                       <Bluetooth size={14} strokeWidth={2.2} />
-                      <span>Yakındaki aygıtları tara</span>
+                      <span>{t('cc.scanNearbyDevices')}</span>
                     </div>
                     <ChevronRight size={14} strokeWidth={2.2} className="cc-row-chev" />
                   </button>
@@ -4104,7 +4444,7 @@ export default function App() {
             <div className="topbar-right">
               {activeTab === 'home' && !islandOverlay && (
                 <>
-                  <div className="topbar-ghelper-group" role="group" aria-label="G-Helper Modları">
+                  <div className="topbar-ghelper-group" role="group" aria-label={t('topbar.ghelperGroup')}>
                     {(() => {
                       const perfMeta = GHELPER_PERF_MODES[ghelperStatus.performanceMode] || GHELPER_PERF_MODES[0];
                       const PerfIcon = perfMeta.icon;
@@ -4113,7 +4453,7 @@ export default function App() {
                           type="button"
                           className={`topbar-ghelper-btn perf-mode-${ghelperStatus.performanceMode}`}
                           style={{ '--gh-color': perfMeta.color }}
-                          aria-label={`G-Helper Performans Modu: ${perfMeta.name}`}
+                          aria-label={t('topbar.ghelperPerf', { name: t(`ghelper.perf.${ghelperStatus.performanceMode in GHELPER_PERF_MODES ? ghelperStatus.performanceMode : 0}`) })}
                           data-no-tooltip="true"
                           onClick={(event) => {
                             event.stopPropagation();
@@ -4134,7 +4474,7 @@ export default function App() {
                           type="button"
                           className={`topbar-ghelper-btn gpu-mode-${ghelperStatus.gpuMode}`}
                           style={{ '--gh-color': gpuMeta.color }}
-                          aria-label={`G-Helper GPU Modu: ${gpuMeta.name}`}
+                          aria-label={t('topbar.ghelperGpu', { name: t(`ghelper.gpu.${ghelperStatus.gpuMode in GHELPER_GPU_MODES ? ghelperStatus.gpuMode : 0}`) })}
                           data-no-tooltip="true"
                           onClick={(event) => {
                             event.stopPropagation();
@@ -4153,8 +4493,8 @@ export default function App() {
                     className="topbar-mode-btn"
                     style={{ '--mode-color': activeModeOption.color }}
                     onClick={(event) => { event.stopPropagation(); setActiveTab('sleep'); setNotificationHistoryOpen(false); setShowMenu(false); }}
-                    aria-label={`${selectedModeName} modunu aç`}
-                    title={`${selectedModeName} · ${activeModeSummary}`}
+                    aria-label={t('topbar.openMode', { name: t(`mode.${selectedModeName === 'Serbest' ? 'Free' : selectedModeName}`) })}
+                    title={`${t(`mode.${selectedModeName === 'Serbest' ? 'Free' : selectedModeName}`)} · ${activeModeSummary}`}
                   >
                     <ActiveModeIcon size={16} strokeWidth={2.2} />
                   </button>
@@ -4167,10 +4507,10 @@ export default function App() {
                       playRoboSound('tap', islandSettings.soundEffects !== false);
                       openNotificationHistory();
                     }}
-                    aria-label={`Bildirim geçmişi${unreadNotificationCount ? `, ${unreadNotificationCount} okunmamış` : ''}`}
+                    aria-label={unreadNotificationCount ? t('notif.historyUnreadAria', { count: unreadNotificationCount }) : t('notif.historyAria')}
                     aria-expanded={notificationHistoryOpen}
                     aria-controls="notification-history-panel"
-                    title="Bildirim geçmişi"
+                    title={t('notif.historyAria')}
                   >
                     <Bell size={16} strokeWidth={2} />
                     {unreadNotificationCount > 0 && <span className="notification-count-badge">{unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}</span>}
@@ -4187,7 +4527,7 @@ export default function App() {
                   setNotificationHistoryOpen(false);
                   setQuitConfirming(false);
                 }}
-                title="Menü"
+                title={t('common.menu')}
               >
                 <MoreHorizontal size={16} />
               </button>
@@ -4254,7 +4594,7 @@ export default function App() {
                       }}
                     >
                       <LayoutGrid size={17} strokeWidth={2} />
-                      <span>All apps</span>
+                      <span>{t('menu.allApps')}</span>
                     </button>
 
                     <button
@@ -4268,7 +4608,7 @@ export default function App() {
                       }}
                     >
                       <Pencil size={17} strokeWidth={2} />
-                      <span>Customize</span>
+                      <span>{t('menu.customize')}</span>
                     </button>
 
                     <button
@@ -4282,7 +4622,7 @@ export default function App() {
                       }}
                     >
                       <Settings size={17} strokeWidth={2} />
-                      <span>Settings</span>
+                      <span>{t('menu.settings')}</span>
                     </button>
 
                     <button
@@ -4296,7 +4636,7 @@ export default function App() {
                       }}
                     >
                       <RotateCw size={17} strokeWidth={2} />
-                      <span>Updates</span>
+                      <span>{t('menu.updates')}</span>
                     </button>
 
                     <button
@@ -4310,7 +4650,7 @@ export default function App() {
                       }}
                     >
                       <ChevronUp size={18} strokeWidth={2.2} />
-                      <span>Fold in</span>
+                      <span>{t('menu.foldIn')}</span>
                     </button>
 
                     <button
@@ -4327,7 +4667,7 @@ export default function App() {
                       }}
                     >
                       <Power size={17} strokeWidth={2} color="#ef4444" />
-                      <span style={{ color: '#ef4444' }}>{quitConfirming ? 'Sure?' : 'Quit'}</span>
+                      <span style={{ color: '#ef4444' }}>{quitConfirming ? t('menu.sure') : t('menu.quit')}</span>
                     </button>
                   </div>
                 </div>
@@ -4340,7 +4680,7 @@ export default function App() {
               ref={notificationHistoryPanelRef}
               id="notification-history-panel"
               className="notification-history-panel"
-              aria-label="Bildirim geçmişi"
+              aria-label={t('notif.historyAria')}
               style={(() => {
                 const newest = notificationHistory[0];
                 const accent = resolveNotifBrand(newest, newest?.logoAccent);
@@ -4353,10 +4693,10 @@ export default function App() {
               <header className="notification-history-header">
                 <div className="notification-history-heading">
                   <span className="notification-history-icon"><Bell size={13} strokeWidth={2.2} /></span>
-                  <strong className="notification-history-title">Bildirimler</strong>
+                  <strong className="notification-history-title">{t('notif.title')}</strong>
                   {notificationHistory.length > 0 && (
                     <span className="notif-history-badge">
-                      {unreadNotificationCount > 0 ? `${unreadNotificationCount} yeni` : `${notificationHistory.length}`}
+                      {unreadNotificationCount > 0 ? t('notif.newCount', { count: unreadNotificationCount }) : `${notificationHistory.length}`}
                     </span>
                   )}
                 </div>
@@ -4366,16 +4706,16 @@ export default function App() {
                       className="notification-history-clear"
                       type="button"
                       onClick={() => setNotificationHistory([])}
-                      title="Tüm bildirimleri temizle"
+                      title={t('notif.clearAllTitle')}
                     >
-                      Temizle
+                      {t('common.clear')}
                     </button>
                   )}
                   <button
                     className="notification-history-close"
                     type="button"
-                    aria-label="Kapat"
-                    title="Kapat"
+                    aria-label={t('common.close')}
+                    title={t('common.close')}
                     onClick={() => setNotificationHistoryOpen(false)}
                   >
                     <X size={14} strokeWidth={2.2} />
@@ -4388,7 +4728,7 @@ export default function App() {
                   const accent = resolveNotifBrand(item, item.logoAccent);
                   const cardPresentation = resolveNotificationPresentation(item);
                   const primaryTitle = String(
-                    cardPresentation.title || item.title || item.app || 'Sistem'
+                    cardPresentation.title || item.title || item.app || t('notif.systemFallback')
                   ).trim();
                   const rawSub = String(cardPresentation.subtitle || item.body || '').trim();
                   const hasBody = Boolean(
@@ -4416,7 +4756,7 @@ export default function App() {
                           hideNotifPreview();
                           openNotification(item);
                         }}
-                        aria-label={`${item.app || 'Uygulama'} bildirimini aç`}
+                        aria-label={t('notif.openAppNotifAria', { app: item.app || t('notif.appFallback') })}
                       >
                         <div className="notif-card-avatar">
                           <NotificationAvatar
@@ -4431,7 +4771,7 @@ export default function App() {
                             <span className="notif-card-title">
                               <NotificationText text={primaryTitle} />
                             </span>
-                            <span className="notif-card-time">{formatNotifTime(item.timestamp)}</span>
+                            <span className="notif-card-time">{formatNotifTime(item.timestamp, langCode)}</span>
                           </div>
                           {hasBody && (
                             <div className="notif-card-message-row">
@@ -4446,8 +4786,8 @@ export default function App() {
                       <button
                         type="button"
                         className="notif-card-delete"
-                        aria-label="Bildirimi sil"
-                        title="Bildirimi sil"
+                        aria-label={t('notif.deleteNotifAria')}
+                        title={t('notif.deleteNotifAria')}
                         onClick={(e) => {
                           e.stopPropagation();
                           hideNotifPreview();
@@ -4463,8 +4803,8 @@ export default function App() {
                     <div className="notification-empty-icon">
                       <Bell size={20} strokeWidth={2} />
                     </div>
-                    <strong className="notification-empty-title">Bildirim Yok</strong>
-                    <span className="notification-empty-desc">Yeni bildirimler geldiğinde burada toplanır.</span>
+                    <strong className="notification-empty-title">{t('notif.emptyTitle')}</strong>
+                    <span className="notification-empty-desc">{t('notif.emptyDesc')}</span>
                   </div>
                 )}
               </div>
@@ -4478,17 +4818,17 @@ export default function App() {
             <div className="all-apps-overlay-view" onClick={() => setShowMenu(false)}>
               <div className="all-apps-grid">
                 {[
-                  { id: 'music', label: 'Music', icon: Music, action: () => { setActiveTab('music'); setIslandOverlay(null); } },
-                  { id: 'drop', label: 'Drop & Share', icon: UploadCloud, action: () => { setActiveTab('drop'); setIslandOverlay(null); } },
-                  // { id: 'robo', label: 'Robo', isRoboEyes: true, action: () => { setActiveTab('robo'); setIslandOverlay(null); } },
+                  { id: 'music', label: t('allApps.music'), icon: Music, action: () => { setActiveTab('music'); setIslandOverlay(null); } },
+                  { id: 'drop', label: t('allApps.drop'), icon: UploadCloud, action: () => { setActiveTab('drop'); setIslandOverlay(null); } },
+                  { id: 'robo', label: 'Bedo', isRoboEyes: true, action: () => { setActiveTab('robo'); setSelectedAiProvider('Bedo'); setIslandOverlay(null); if (bedoStatus.paused) window.twocode?.bedoSetPaused?.(false); } },
                   // { id: 'code', label: 'Agents', icon: Terminal, action: () => { setActiveTab('code'); setIslandOverlay(null); } },
-                  { id: 'timer', label: 'Focus', icon: Timer, action: () => { setActiveTab('timer'); setIslandOverlay(null); } },
-                  { id: 'clips', label: 'Clipboard', icon: Copy, action: () => { setActiveTab('clips'); setIslandOverlay(null); } },
-                  { id: 'notes', label: 'Note', icon: FileText, action: () => { setActiveTab('notes'); setIslandOverlay(null); } },
-                  { id: 'cal', label: 'Calendar', icon: Calendar, action: () => { setActiveTab('cal'); setIslandOverlay(null); } },
+                  { id: 'timer', label: t('allApps.focus'), icon: Timer, action: () => { setActiveTab('timer'); setIslandOverlay(null); } },
+                  { id: 'clips', label: t('allApps.clipboard'), icon: Copy, action: () => { setActiveTab('clips'); setIslandOverlay(null); } },
+                  { id: 'notes', label: t('allApps.note'), icon: FileText, action: () => { setActiveTab('notes'); setIslandOverlay(null); } },
+                  { id: 'cal', label: t('allApps.calendar'), icon: Calendar, action: () => { setActiveTab('cal'); setIslandOverlay(null); } },
                   // { id: 'inbox', label: 'Mail', icon: Mail, action: () => { setActiveTab('inbox'); setIslandOverlay(null); } },
-                  { id: 'mirror', label: 'Mirror', icon: Video, action: () => { setIslandOverlay('mirror'); } },
-                  { id: 'settings', label: 'Settings', icon: Settings, action: () => { window.twocode?.openSettingsWindow?.('home'); setIslandOverlay(null); } },
+                  { id: 'mirror', label: t('allApps.mirror'), icon: Video, action: () => { setIslandOverlay('mirror'); } },
+                  { id: 'settings', label: t('allApps.settings'), icon: Settings, action: () => { window.twocode?.openSettingsWindow?.('home'); setIslandOverlay(null); } },
                 ].map((appItem) => {
                   const AppIcon = appItem.icon;
                   return (
@@ -4560,20 +4900,20 @@ export default function App() {
                       >
                         <div className="mini-bento-preview">
                           <div className="mb-box">
-                            <small>FOCUS</small>
+                            <small>{t('carousel.focus')}</small>
                             <strong className="clock-number-text">25:00</strong>
                           </div>
                           <div className="mb-box">
-                            <small>ROBO</small>
-                            <strong>Ask Robo</strong>
+                            <small>{t('carousel.robo')}</small>
+                            <strong>{t('carousel.askRobo')}</strong>
                           </div>
                           <div className="mb-box">
-                            <small>NOTE</small>
-                            <strong>Note</strong>
+                            <small>{t('carousel.note')}</small>
+                            <strong>{t('carousel.note')}</strong>
                           </div>
                           <div className="mb-box">
-                            <small>AGENDA</small>
-                            <strong>Nothing planned</strong>
+                            <small>{t('carousel.agenda')}</small>
+                            <strong>{t('carousel.nothingPlanned')}</strong>
                           </div>
                         </div>
                       </div>
@@ -4600,8 +4940,8 @@ export default function App() {
                               <div className="cc-mini-card">
                                 <span className="cc-grey-sq" />
                                 <div>
-                                  <strong>Connect</strong>
-                                  <small>in Settings</small>
+                                  <strong>{t('carousel.connect')}</strong>
+                                  <small>{t('carousel.inSettings')}</small>
                                 </div>
                               </div>
                               <div className="cc-mini-card">
@@ -4611,14 +4951,14 @@ export default function App() {
                                   <div className="cc-thumb-empty" />
                                 )}
                                 <div className="truncate">
-                                  <strong>{currentMedia.title || 'Music'}</strong>
-                                  <small>{currentMedia.artist || 'Ready'}</small>
+                                  <strong>{currentMedia.title || t('carousel.music')}</strong>
+                                  <small>{currentMedia.artist || t('carousel.ready')}</small>
                                 </div>
                               </div>
                               <div className="cc-mini-card">
                                 <div>
                                   <strong className="clock-number-text">25:00</strong>
-                                  <small>Focus, ready</small>
+                                  <small>{t('carousel.focusReady')}</small>
                                 </div>
                               </div>
                             </div>
@@ -4628,20 +4968,20 @@ export default function App() {
                         {currentLayoutId === 'grid' && (
                           <div className="cc-grid-preview">
                             <div className="mb-box">
-                              <small>MUSIC</small>
-                              <strong>{currentMedia.title || 'Ready'}</strong>
+                              <small>{t('dock.music')}</small>
+                              <strong>{currentMedia.title || t('carousel.ready')}</strong>
                             </div>
                             <div className="mb-box">
-                              <small>FOCUS</small>
+                              <small>{t('carousel.focus')}</small>
                               <strong className="clock-number-text">25:00</strong>
                             </div>
                             <div className="mb-box">
-                              <small>ROBO</small>
-                              <strong>Ask Robo</strong>
+                              <small>{t('carousel.robo')}</small>
+                              <strong>{t('carousel.askRobo')}</strong>
                             </div>
                             <div className="mb-box">
-                              <small>AGENDA</small>
-                              <strong>Nothing planned</strong>
+                              <small>{t('carousel.agenda')}</small>
+                              <strong>{t('carousel.nothingPlanned')}</strong>
                             </div>
                           </div>
                         )}
@@ -4651,8 +4991,8 @@ export default function App() {
                             <div className="cc-dial-art" />
                             <div className="cc-dial-ring">
                               <small>CLAUDE</small>
-                              <strong>Connect</strong>
-                              <span>in Settings</span>
+                              <strong>{t('carousel.connect')}</strong>
+                              <span>{t('carousel.inSettings')}</span>
                             </div>
                           </div>
                         )}
@@ -4678,8 +5018,8 @@ export default function App() {
                           <div className="cc-dial-art" />
                           <div className="cc-dial-ring">
                             <small>CLAUDE</small>
-                            <strong>Connect</strong>
-                            <span>in Settings</span>
+                            <strong>{t('carousel.connect')}</strong>
+                            <span>{t('carousel.inSettings')}</span>
                           </div>
                         </div>
                       </div>
@@ -4687,7 +5027,7 @@ export default function App() {
 
                     <div className="carousel-footer-bar">
                       <strong className="carousel-layout-name">
-                        {HOME_LAYOUTS[homeLayoutIndex].name}
+                        {t(`layout.${HOME_LAYOUTS[homeLayoutIndex].id}`)}
                       </strong>
                       <span className="carousel-layout-counter">
                         {homeLayoutIndex + 1} / {HOME_LAYOUTS.length}
@@ -4702,7 +5042,7 @@ export default function App() {
                           setIsCustomizingClock(true);
                         }}
                       >
-                        Font and apps
+                        {t('carousel.fontAndApps')}
                       </button>
                     </div>
                   </div>
@@ -4758,9 +5098,9 @@ export default function App() {
                                   value={clockScale}
                                   onChange={(e) => setClockScale(parseFloat(e.target.value))}
                                   className="clock-size-slider"
-                                  aria-label="Saat boyutu"
+                                  aria-label={t('customizer.clockSize')}
                                 />
-                                <button type="button" className="clock-size-value" title="Boyutu sıfırla" onClick={() => setClockScale(1)}>
+                                <button type="button" className="clock-size-value" title={t('customizer.resetSize')} onClick={() => setClockScale(1)}>
                                   {Math.round(clockScale * 100)}%
                                 </button>
                               </div>
@@ -4777,7 +5117,7 @@ export default function App() {
                                       : ''
                                       }`}
                                     style={{ background: hex }}
-                                    aria-label={`Saat rengi ${hex}`}
+                                    aria-label={t('customizer.clockColor', { hex })}
                                     aria-pressed={userPickedClockColor && clockColor === hex}
                                     onClick={() => {
                                       setClockColor(hex);
@@ -4793,14 +5133,14 @@ export default function App() {
                                     setUserPickedClockColor(false);
                                     setClockColor('#7ea6d8');
                                   }}
-                                  title="Cover-adaptive colour"
-                                  aria-label="Albüm kapağına göre renk"
+                                  title={t('customizer.coverAdaptive')}
+                                  aria-label={t('customizer.coverAdaptive')}
                                 />
-                                <label className={`color-swatch-custom ${userPickedClockColor && !CLOCK_COLORS.includes(clockColor) ? 'is-selected' : ''}`} title="Özel renk seç">
+                                <label className={`color-swatch-custom ${userPickedClockColor && !CLOCK_COLORS.includes(clockColor) ? 'is-selected' : ''}`} title={t('customizer.pickCustomColor')}>
                                   <input
                                     type="color"
                                     value={clockColor}
-                                    aria-label="Özel saat rengi seç"
+                                    aria-label={t('customizer.pickCustomColorAria')}
                                     onChange={(event) => {
                                       setClockColor(event.target.value);
                                       setUserPickedClockColor(true);
@@ -4816,17 +5156,17 @@ export default function App() {
                                   className={`customizer-advanced-btn ${showClockAdvanced ? 'is-open' : ''}`}
                                   aria-expanded={showClockAdvanced}
                                   onClick={() => setShowClockAdvanced((value) => !value)}
-                                  title="Saat biçimi ve ek seçenekler"
+                                  title={t('customizer.detailsTitle')}
                                 >
                                   <Settings size={14} />
-                                  <span>Ayrıntılar</span>
+                                  <span>{t('customizer.details')}</span>
                                 </button>
                                 <button
                                   type="button"
                                   className="customizer-add-app-btn"
                                   onClick={() => handleAddShortcut()}
-                                  title="Uygulama ekle"
-                                  aria-label="Uygulama ekle"
+                                  title={t('customizer.addApp')}
+                                  aria-label={t('customizer.addApp')}
                                 >
                                   <Plus size={17} />
                                 </button>
@@ -4838,33 +5178,33 @@ export default function App() {
                                     setIsCustomizingClock(false);
                                   }}
                                 >
-                                  Tamam
+                                  {t('customizer.done')}
                                 </button>
                               </div>
                             </div>
 
                             {showClockAdvanced && (
                               <div className="clock-advanced-options">
-                                <span>Saat biçimi</span>
-                                <div className="clock-time-options" aria-label="Saat biçimi">
+                                <span>{t('customizer.clockFormat')}</span>
+                                <div className="clock-time-options" aria-label={t('customizer.clockFormat')}>
                                   <button
                                     type="button"
                                     className={clock24Hour ? 'is-selected' : ''}
                                     aria-pressed={clock24Hour}
                                     onClick={() => setClock24Hour(true)}
-                                  >24 saat</button>
+                                  >{t('customizer.24h')}</button>
                                   <button
                                     type="button"
                                     className={!clock24Hour ? 'is-selected' : ''}
                                     aria-pressed={!clock24Hour}
                                     onClick={() => setClock24Hour(false)}
-                                  >12 saat</button>
+                                  >{t('customizer.12h')}</button>
                                   <button
                                     type="button"
                                     className={clockShowSeconds ? 'is-selected' : ''}
                                     aria-pressed={clockShowSeconds}
                                     onClick={() => setClockShowSeconds((value) => !value)}
-                                  >Saniye</button>
+                                  >{t('customizer.seconds')}</button>
                                 </div>
                               </div>
                             )}
@@ -4881,7 +5221,7 @@ export default function App() {
                               <div
                                 className="home-card jobs-card"
                                 onClick={() => setActiveTab('code')}
-                                title="AI & Görev geçmişini aç"
+                                title={t('home.openAiHistory')}
                               >
                                 <span
                                   className={`job-status-square ${pendingApproval
@@ -4893,10 +5233,10 @@ export default function App() {
                                 />
                                 <div className="home-card-meta">
                                   <strong className="home-card-big mono">
-                                    {pendingApproval ? 'Approval' : `${jobsToday}`}
+                                    {pendingApproval ? t('home.approval') : `${jobsToday}`}
                                   </strong>
                                   <span className="home-card-sub">
-                                    {pendingApproval ? 'needed now' : 'jobs today'}
+                                    {pendingApproval ? t('home.neededNow') : t('home.jobsToday')}
                                   </span>
                                 </div>
                               </div>
@@ -4918,8 +5258,8 @@ export default function App() {
                                 }}
                                 title={
                                   !currentMedia.hasSession
-                                    ? 'Spotify veya YouTube Music başlatmak için tıkla'
-                                    : 'Müzik görünümünü aç'
+                                    ? t('home.startMusicHint')
+                                    : t('home.openMusicView')
                                 }
                               >
                                 {!currentMedia.hasSession && showMusicServicePicker ? (
@@ -4931,7 +5271,7 @@ export default function App() {
                                       type="button"
                                       className="music-service-logo-btn spotify-btn"
                                       onClick={(e) => handleLaunchMusicService(e, 'spotify')}
-                                      title="Spotify Aç"
+                                      title={t('home.openSpotify')}
                                     >
                                       <svg width="19" height="19" viewBox="0 0 24 24" fill="none">
                                         <circle cx="12" cy="12" r="11" fill="#1ED760" />
@@ -4947,7 +5287,7 @@ export default function App() {
                                       type="button"
                                       className="music-service-logo-btn ytmusic-btn"
                                       onClick={(e) => handleLaunchMusicService(e, 'ytmusic')}
-                                      title="YouTube Music Aç"
+                                      title={t('home.openYtMusic')}
                                     >
                                       <svg width="19" height="19" viewBox="0 0 24 24" fill="none">
                                         <circle cx="12" cy="12" r="11" fill="#FF0033" />
@@ -4971,14 +5311,14 @@ export default function App() {
                                         alt=""
                                         className="mini-card-cover"
                                         onClick={currentMedia.hasSession ? handleOpenMediaSource : undefined}
-                                        title={currentMedia.hasSession ? 'Çaldığı sekmeyi / uygulamayı aç' : undefined}
+                                        title={currentMedia.hasSession ? t('home.openMediaSource') : undefined}
                                         style={currentMedia.hasSession ? { cursor: 'pointer' } : undefined}
                                       />
                                     ) : (
                                       <div
                                         className="mini-card-cover crimson-placeholder-cover"
                                         onClick={currentMedia.hasSession ? handleOpenMediaSource : undefined}
-                                        title={currentMedia.hasSession ? 'Çaldığı sekmeyi / uygulamayı aç' : undefined}
+                                        title={currentMedia.hasSession ? t('home.openMediaSource') : undefined}
                                         style={currentMedia.hasSession ? { cursor: 'pointer' } : undefined}
                                       />
                                     )}
@@ -5019,14 +5359,14 @@ export default function App() {
                               <div
                                 className="home-card focus-mini-card"
                                 onClick={() => setActiveTab('timer')}
-                                title="Focus sayacını aç"
+                                title={t('home.openFocusTimer')}
                               >
                                 <div className="home-card-meta">
                                   <strong className="home-card-big mono">
                                     {formatTimerBig(timerSeconds)}
                                   </strong>
                                   <span className="home-card-sub">
-                                    {timerRunning ? 'Focus, running' : 'Focus, ready'}
+                                    {timerRunning ? t('home.focusRunning') : t('home.focusReady')}
                                   </span>
                                 </div>
                                 <button
@@ -5037,7 +5377,7 @@ export default function App() {
                                     playRoboSound('tap', islandSettings.soundEffects !== false);
                                     setTimerRunning((r) => !r);
                                   }}
-                                  aria-label="Start or Pause Focus"
+                                  aria-label={t('home.startOrPauseFocus')}
                                 >
                                   {timerRunning ? (
                                     <Pause size={14} fill="#ffffff" color="#ffffff" strokeWidth={2.2} />
@@ -5077,13 +5417,13 @@ export default function App() {
                           {activeThinkingCount > 0 && (
                             <span className="codex-active-badge">
                               <i />
-                              {activeThinkingCount} ACTIVE
+                              {t('agents.activeCount', { count: activeThinkingCount })}
                             </span>
                           )}
                           <div className="codex-jobs-counter">{jobsToday}</div>
                           <div className="codex-jobs-label">
                             <i className="codex-white-sq" />
-                            <span>JOBS TODAY</span>
+                            <span>{t('agents.jobsToday')}</span>
                           </div>
                           {agentBreakdown.total > 0 && (
                             <div
@@ -5104,19 +5444,19 @@ export default function App() {
                         </div>
                         <div className="codex-right-col">
                           <div className="codex-header-row">
-                            <h3 className="codex-title" title="Kod ajanlarının görev geçmişi">AI ACTIVITY</h3>
+                            <h3 className="codex-title" title={t('agents.titleTooltip')}>{t('agents.title')}</h3>
                             <div className="codex-header-actions">
                               {pendingApproval ? (
                                 <div className="approval-inline-btns">
-                                  <button type="button" className="btn-allow-sm" onClick={() => handleApprovalDecision(true)}>Allow</button>
-                                  <button type="button" className="btn-deny-sm" onClick={() => handleApprovalDecision(false)}>Deny</button>
+                                  <button type="button" className="btn-allow-sm" onClick={() => handleApprovalDecision(true)}>{t('agents.allow')}</button>
+                                  <button type="button" className="btn-deny-sm" onClick={() => handleApprovalDecision(false)}>{t('agents.deny')}</button>
                                 </div>
                               ) : (
                                 <button
                                   type="button"
                                   className="codex-bridge-pill"
                                   onClick={() => window.twocode?.openSettingsWindow?.('agents')}
-                                  title="Ajan hook ve bridge ayarlarını aç"
+                                  title={t('agents.bridgeTooltip')}
                                 >
                                   <span className={`bridge-dot ${agentIntegration.codexConnected ? 'is-on' : ''}`} />
                                   <span>Codex</span>
@@ -5128,20 +5468,20 @@ export default function App() {
                           </div>
                           {pendingApproval && (pendingApproval.command || pendingApproval.file || pendingApproval.title) && (
                             <div className="codex-approval-banner">
-                              <strong>{pendingApproval.agent || 'Agent'} onay istiyor:</strong>
+                              <strong>{t('agents.wantsApproval', { agent: pendingApproval.agent || 'Agent' })}</strong>
                               <span>{pendingApproval.command || pendingApproval.file || pendingApproval.title}</span>
                             </div>
                           )}
                           <div className="codex-recently-card">
                             <div className="recently-heading-row">
-                              <span className="recently-heading">AGENT ACTIVITY</span>
+                              <span className="recently-heading">{t('agents.activityHeading')}</span>
                               {selectedAgentJob ? (
                                 <button
                                   type="button"
                                   className="recently-back-btn"
                                   onClick={() => setSelectedAgentJobId(null)}
                                 >
-                                  ← Listeye dön
+                                  {t('agents.backToList')}
                                 </button>
                               ) : agentBreakdown.items.length > 1 ? (
                                 <div className="codex-filter-pills">
@@ -5150,7 +5490,7 @@ export default function App() {
                                     className={`codex-filter-pill ${agentFilter === 'all' ? 'is-active' : ''}`}
                                     onClick={() => setAgentFilter('all')}
                                   >
-                                    Tümü
+                                    {t('agents.all')}
                                   </button>
                                   {agentBreakdown.items.map((b) => (
                                     <button
@@ -5189,57 +5529,57 @@ export default function App() {
                                       setCopiedAgentJobId(selectedAgentJob.id);
                                       setTimeout(() => setCopiedAgentJobId(null), 1400);
                                     }}
-                                  >
-                                    {copiedAgentJobId === selectedAgentJob.id ? 'Kopyalandı' : 'Kopyala'}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="recently-action-btn"
-                                    onClick={() => window.twocode?.focusAgentWindow?.({
-                                      agent: selectedAgentJob.agent,
-                                      file: selectedAgentJob.file,
-                                      title: selectedAgentJob.title,
-                                    })}
-                                  >
-                                    Pencereye Git
-                                  </button>
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="recently-list">
-                                {filteredAgentJobs.length === 0 ? (
-                                  <div className="recently-row">
-                                    <span className="recently-prompt-text" style={{ opacity: 0.5 }}>
-                                      {agentIntegration.codexConnected || agentIntegration.antigravityConnected
-                                        ? 'Agent activity will appear here'
-                                        : 'Hook bağlı değil · Sağ üstten bağlayın'}
-                                    </span>
+                                    >
+                                      {copiedAgentJobId === selectedAgentJob.id ? t('agents.copied') : t('agents.copy')}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="recently-action-btn"
+                                      onClick={() => window.twocode?.focusAgentWindow?.({
+                                        agent: selectedAgentJob.agent,
+                                        file: selectedAgentJob.file,
+                                        title: selectedAgentJob.title,
+                                      })}
+                                    >
+                                      {t('agents.goToWindow')}
+                                    </button>
                                   </div>
-                                ) : (
-                                  filteredAgentJobs.slice(0, 4).map((job) => {
-                                    const elapsedSec = job.type === 'thinking' && job.timestamp
-                                      ? Math.max(0, Math.floor((agentNowTick - job.timestamp) / 1000))
-                                      : null;
-                                    return (
-                                      <button
-                                        key={job.id}
-                                        type="button"
-                                        className="recently-row recently-row-btn"
-                                        onClick={() => setSelectedAgentJobId(job.id)}
-                                        title="Detayı görüntüle"
-                                      >
-                                        <span className={`recently-check-circle ${job.type === 'thinking' ? 'is-agent-thinking' : job.type === 'error' ? 'is-agent-error' : job.type === 'interrupted' ? 'is-agent-interrupted' : ''}`}>
-                                          {job.type === 'thinking' ? <i /> : job.type === 'error' ? <span>!</span> : <Check size={11} strokeWidth={3.2} color="#000000" />}
-                                        </span>
-                                        <span className="recently-prompt-wrap">
-                                          <span className="recently-prompt-text">{job.title}</span>
-                                          {(job.command || job.file) && (
-                                            <span className="recently-sub-meta">{job.command || job.file}</span>
-                                          )}
-                                        </span>
-                                        <span className="recently-time">
-                                          {job.agent} · {job.type === 'thinking' ? `Düşünüyor${elapsedSec !== null ? ` · ${elapsedSec}s` : ''}` : job.type === 'error' ? 'Hata' : job.type === 'interrupted' ? 'Durduruldu' : job.time}
-                                        </span>
+                                </div>
+                              ) : (
+                                <div className="recently-list">
+                                  {filteredAgentJobs.length === 0 ? (
+                                    <div className="recently-row">
+                                      <span className="recently-prompt-text" style={{ opacity: 0.5 }}>
+                                        {agentIntegration.codexConnected || agentIntegration.antigravityConnected
+                                          ? t('agents.emptyConnected')
+                                          : t('agents.emptyDisconnected')}
+                                      </span>
+                                    </div>
+                                  ) : (
+                                    filteredAgentJobs.slice(0, 4).map((job) => {
+                                      const elapsedSec = job.type === 'thinking' && job.timestamp
+                                        ? Math.max(0, Math.floor((agentNowTick - job.timestamp) / 1000))
+                                        : null;
+                                      return (
+                                        <button
+                                          key={job.id}
+                                          type="button"
+                                          className="recently-row recently-row-btn"
+                                          onClick={() => setSelectedAgentJobId(job.id)}
+                                          title={t('agents.viewDetail')}
+                                        >
+                                          <span className={`recently-check-circle ${job.type === 'thinking' ? 'is-agent-thinking' : job.type === 'error' ? 'is-agent-error' : job.type === 'interrupted' ? 'is-agent-interrupted' : ''}`}>
+                                            {job.type === 'thinking' ? <i /> : job.type === 'error' ? <span>!</span> : <Check size={11} strokeWidth={3.2} color="#000000" />}
+                                          </span>
+                                          <span className="recently-prompt-wrap">
+                                            <span className="recently-prompt-text">{job.title}</span>
+                                            {(job.command || job.file) && (
+                                              <span className="recently-sub-meta">{job.command || job.file}</span>
+                                            )}
+                                          </span>
+                                          <span className="recently-time">
+                                            {job.agent} · {job.type === 'thinking' ? `${t('agents.thinking')}${elapsedSec !== null ? ` · ${elapsedSec}s` : ''}` : job.type === 'error' ? t('agents.error') : job.type === 'interrupted' ? t('agents.interrupted') : job.time}
+                                          </span>
                                       </button>
                                     );
                                   })
@@ -5257,16 +5597,24 @@ export default function App() {
                     {activeTab === 'music' && (
                       <div className={`music-view ${currentMedia.isPlaying ? 'is-playing' : 'is-paused'}`}>
                         <div className="music-art-column">
+                          <div className="music-cover-halo" aria-hidden="true" />
                           <div
                             className={`music-cover-art ${currentMedia.thumbnail ? 'has-art' : ''}`}
                             onClick={currentMedia.hasSession ? handleOpenMediaSource : undefined}
-                            title={currentMedia.hasSession ? 'Çaldığı sekmeyi / uygulamayı aç' : undefined}
+                            title={currentMedia.hasSession ? t('home.openMediaSource') : undefined}
                             style={currentMedia.hasSession ? { cursor: 'pointer' } : undefined}
                           >
                             {currentMedia.thumbnail ? (
-                              <img src={currentMedia.thumbnail} alt={`${currentMedia.title} albüm kapağı`} />
+                              <img src={currentMedia.thumbnail} alt={t('music.albumArtAlt', { title: currentMedia.title })} />
                             ) : (
-                              <Music size={38} strokeWidth={1.8} aria-hidden="true" />
+                              <div className="music-cover-placeholder">
+                                <Music size={34} strokeWidth={1.7} aria-hidden="true" />
+                              </div>
+                            )}
+                            {currentMedia.isPlaying && (
+                              <span className="music-art-eq" aria-hidden="true">
+                                <i /><i /><i /><i />
+                              </span>
                             )}
                           </div>
                         </div>
@@ -5275,7 +5623,7 @@ export default function App() {
                             className="music-track-header"
                             aria-live="polite"
                             onClick={currentMedia.hasSession ? handleOpenMediaSource : undefined}
-                            title={currentMedia.hasSession ? 'Çaldığı sekmeyi / uygulamayı aç' : undefined}
+                            title={currentMedia.hasSession ? t('home.openMediaSource') : undefined}
                             style={currentMedia.hasSession ? { cursor: 'pointer' } : undefined}
                           >
                             {hasSyncedLyrics && currentMedia.hasSession ? (
@@ -5291,10 +5639,10 @@ export default function App() {
                             ) : (
                               <>
                                 <span className={`music-status-dot ${currentMedia.isPlaying ? 'is-playing' : ''}`} />
-                                <span>{currentMedia.hasSession ? 'NOW PLAYING' : 'Nothing playing'}</span>
+                                <span>{currentMedia.hasSession ? t('music.nowPlaying') : t('music.nothingPlaying')}</span>
                                 <span className="music-track-dot">·</span>
                                 <span className="music-track-artist">
-                                  {currentMedia.hasSession ? (currentMedia.artist || currentMedia.album || 'Playing on this PC') : 'Play music or a video'}
+                                  {currentMedia.hasSession ? (currentMedia.artist || currentMedia.album || t('music.playingOnPc')) : t('music.playPrompt')}
                                 </span>
                               </>
                             )}
@@ -5330,7 +5678,7 @@ export default function App() {
                                   type="button"
                                   className="music-service-logo-btn spotify-btn"
                                   onClick={(e) => handleLaunchMusicService(e, 'spotify')}
-                                  title="Spotify Aç"
+                                  title={t('home.openSpotify')}
                                 >
                                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                                     <circle cx="12" cy="12" r="11" fill="#1ED760" />
@@ -5346,7 +5694,7 @@ export default function App() {
                                   type="button"
                                   className="music-service-logo-btn ytmusic-btn"
                                   onClick={(e) => handleLaunchMusicService(e, 'ytmusic')}
-                                  title="YouTube Music Aç"
+                                  title={t('home.openYtMusic')}
                                 >
                                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                                     <circle cx="12" cy="12" r="11" fill="#FF0033" />
@@ -5373,8 +5721,8 @@ export default function App() {
                                   type="button"
                                   className="transport-icon-btn"
                                   onClick={handlePrev}
-                                  aria-label="Önceki parça"
-                                  title="Önceki parça"
+                                  aria-label={t('music.prevTrack')}
+                                  title={t('music.prevTrack')}
                                 >
                                   <SkipBack size={20} fill="currentColor" strokeWidth={1.6} />
                                 </button>
@@ -5382,8 +5730,8 @@ export default function App() {
                                   type="button"
                                   className="transport-play-circle"
                                   onClick={handlePlayPause}
-                                  aria-label={currentMedia.isPlaying ? 'Duraklat' : currentMedia.hasSession ? 'Oynat' : 'Müzik uygulaması seç'}
-                                  title={currentMedia.isPlaying ? 'Duraklat' : currentMedia.hasSession ? 'Oynat' : 'Müzik uygulaması seç'}
+                                  aria-label={currentMedia.isPlaying ? t('music.pause') : currentMedia.hasSession ? t('music.play') : t('music.pickApp')}
+                                  title={currentMedia.isPlaying ? t('music.pause') : currentMedia.hasSession ? t('music.play') : t('music.pickApp')}
                                 >
                                   {currentMedia.isPlaying ? (
                                     <Pause size={24} fill="currentColor" strokeWidth={1.6} />
@@ -5400,8 +5748,8 @@ export default function App() {
                                   type="button"
                                   className="transport-icon-btn"
                                   onClick={handleNext}
-                                  aria-label="Sonraki parça"
-                                  title="Sonraki parça"
+                                  aria-label={t('music.nextTrack')}
+                                  title={t('music.nextTrack')}
                                 >
                                   <SkipForward size={20} fill="currentColor" strokeWidth={1.6} />
                                 </button>
@@ -5415,7 +5763,7 @@ export default function App() {
                                   onClick={(e) => e.stopPropagation()}
                                 >
                                   <div className="play-on-header">
-                                    <strong>Play on</strong>
+                                    <strong>{t('music.playOn')}</strong>
                                     <button
                                       type="button"
                                       className="play-on-close"
@@ -5428,7 +5776,7 @@ export default function App() {
                                   <div className="play-on-row">
                                     <div className="play-on-left">
                                       <Laptop size={14} />
-                                      <span>This PC</span>
+                                      <span>{t('music.thisPc')}</span>
                                     </div>
                                     <Check size={14} strokeWidth={2.5} />
                                   </div>
@@ -5468,71 +5816,35 @@ export default function App() {
                         4. ROBO TAB
                         ============================================================ */}
                     {activeTab === 'robo' && (
-                      <div className="robo-ask-view">
-                        <div className="robo-chat-layout">
-                          <nav className="robo-model-switcher" aria-label="Yanıt modelini seç">
-                            {[
-                              { name: 'Claude', accent: '#d97757' },
-                              { name: 'Codex', accent: '#b8c5d2' },
-                              { name: 'Gemini', accent: '#9a8cff' },
-                            ].map((model) => (
-                              <button
-                                key={model.name}
-                                type="button"
-                                className={`robo-model-option ${selectedAiProvider === model.name ? 'active' : ''}`}
-                                style={{ '--provider-accent': model.accent }}
-                                onClick={() => setSelectedAiProvider(model.name)}
-                                aria-pressed={selectedAiProvider === model.name}
-                              >
-                                <span className="robo-model-logo"><AiProviderLogo provider={model.name} size={18} /></span>
-                                <span className="robo-model-name"><strong>{model.name}</strong></span>
-                              </button>
-                            ))}
-                          </nav>
-
-                          <div className="robo-chat-main">
-                            <section className={`robo-answer-card ${roboLoading ? 'is-loading' : ''}`} aria-live="polite" aria-busy={roboLoading}>
-                              {roboReply ? (
-                                <>
-                                  <div className="robo-answer-header">
-                                    <div className="robo-answer-provider">
-                                      <span>Yanıt</span>
-                                    </div>
-                                    <div className="robo-answer-actions">
-                                      <button type="button" className="robo-ans-btn" onClick={() => { window.twocode?.copyText(roboReply); playRoboSound('tap', islandSettings.soundEffects !== false); }} title="Cevabı kopyala">
-                                        <Copy size={13} /><span>Kopyala</span>
-                                      </button>
-                                      <button type="button" className="robo-ans-btn close" onClick={() => setRoboReply(null)} title="Cevabı kapat" aria-label="Cevabı kapat"><X size={14} /></button>
-                                    </div>
-                                  </div>
-                                  <div className="robo-answer-body"><RoboMarkdown content={roboReply} /></div>
-                                </>
-                              ) : roboLoading ? (
-                                <div className="robo-answer-empty is-thinking"><span className="robo-answer-empty-icon"><Bot size={18} /></span><strong>Yanıt hazırlanıyor</strong></div>
-                              ) : (
-                                <div className="robo-answer-empty"><span className="robo-answer-empty-icon"><Bot size={18} /></span><strong>Yanıtın burada görünecek</strong></div>
-                              )}
-                            </section>
-
-                            <div className={`robo-search-pill ${roboLoading ? 'is-thinking' : ''}`} aria-busy={roboLoading}>
-                              <input
-                                type="text"
-                                placeholder={roboLoading ? 'Robo düşünüyor…' : 'Sorunu buraya yaz…'}
-                                value={roboQuestion}
-                                onChange={(e) => setRoboQuestion(e.target.value)}
-                                onKeyDown={(e) => e.key === 'Enter' && !roboLoading && submitRoboPrompt()}
-                                aria-label="Robo’ya soru sor"
-                              />
-                              <button type="button" className="robo-mic-btn" title="Sesli giriş" onClick={() => { setRoboReply('Sesli soru girişi henüz desteklenmiyor. Sorunuzu metin olarak yazın.'); setRoboReplyProvider(selectedAiProvider); }}>
-                                <Mic size={16} />
-                              </button>
-                              <button type="button" className="robo-send-circle" onClick={() => submitRoboPrompt()} disabled={roboLoading || !roboQuestion.trim()} aria-label="Soruyu gönder">
-                                <ArrowUp size={16} strokeWidth={2.6} color="#000000" />
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
+                      <BedoStage
+                        status={bedoStatus}
+                        webcamFrame={bedoWebcamFrame}
+                        micLevel={bedoMicLevel}
+                        roboMood={roboMood}
+                        roboReaction={roboReaction}
+                        documentVisible={documentVisible}
+                        userTranscript={bedoUserTranscript}
+                        reply={roboReply}
+                        loading={roboLoading}
+                        question={roboQuestion}
+                        onQuestionChange={setRoboQuestion}
+                        onSubmit={() => submitRoboPrompt()}
+                        onToggleMute={() => window.twocode?.bedoSetMuted?.(!bedoStatus.muted)}
+                        onTogglePause={() => window.twocode?.bedoSetPaused?.(!bedoStatus.paused)}
+                        onToggleWebcam={() => window.twocode?.bedoSetWebcam?.(!bedoStatus.webcamActive)}
+                        onCopyReply={() => {
+                          if (roboReply) window.twocode?.copyText(roboReply);
+                          playRoboSound('tap', islandSettings.soundEffects !== false);
+                        }}
+                        onClearReply={() => {
+                          setRoboReply(null);
+                          setBedoUserTranscript('');
+                        }}
+                        onPokeEyes={() => {
+                          triggerRoboReaction('happy', 3, 1200);
+                          playRoboSound('happy', islandSettings.soundEffects !== false);
+                        }}
+                      />
                     )}
 
                     {/* ============================================================
@@ -5548,7 +5860,7 @@ export default function App() {
                               color="#ffffff"
                               size="focus"
                             />
-                            <span className="focus-done-at">Done at {doneAtTimeStr}</span>
+                            <span className="focus-done-at">{t('focus.doneAt', { time: doneAtTimeStr })}</span>
                           </div>
 
                           {timerRunning ? (
@@ -5562,7 +5874,7 @@ export default function App() {
                                   setTimerSeconds((s) => s + 5 * 60);
                                 }}
                               >
-                                +5 min
+                                {t('focus.add5Min')}
                               </button>
                               <button
                                 type="button"
@@ -5573,7 +5885,7 @@ export default function App() {
                                   setTimerSeconds(focusMinutes * 60);
                                 }}
                               >
-                                Stop
+                                {t('focus.stop')}
                               </button>
                               <button
                                 type="button"
@@ -5583,7 +5895,7 @@ export default function App() {
                                   setTimerRunning(false);
                                 }}
                               >
-                                Pause
+                                {t('focus.pause')}
                               </button>
                             </div>
                           ) : (
@@ -5595,7 +5907,7 @@ export default function App() {
                                 setTimerRunning(true);
                               }}
                             >
-                              Start
+                              {t('focus.start')}
                             </button>
                           )}
                         </div>
@@ -5641,6 +5953,7 @@ export default function App() {
                           {MODE_OPTIONS.map((m) => {
                             const MIcon = m.icon;
                             const active = selectedModeName === m.id;
+                            const modeLabel = t(`mode.${m.id === 'Serbest' ? 'Free' : m.id}`);
                             return (
                               <button
                                 key={m.id}
@@ -5650,7 +5963,7 @@ export default function App() {
                                 onClick={() => handleSelectMode(m.id)}
                               >
                                 <MIcon size={15} strokeWidth={2} />
-                                <span>{m.id}</span>
+                                <span>{modeLabel}</span>
                               </button>
                             );
                           })}
@@ -5660,17 +5973,17 @@ export default function App() {
                           <div className="modes-profile-header">
                             <div className="mode-profile-icon"><ActiveModeIcon size={17} strokeWidth={2.1} /></div>
                             <div className="mode-profile-copy">
-                              <strong>{selectedModeName}</strong>
+                              <strong>{t(`mode.${selectedModeName === 'Serbest' ? 'Free' : selectedModeName}`)}</strong>
                               <span>{activeModeSummary}</span>
                             </div>
-                            <span className="mode-active-indicator"><i /> Aktif</span>
+                            <span className="mode-active-indicator"><i /> {t('modes.active')}</span>
                           </div>
 
                           <div className="modes-toggles-list">
                             <div className="mode-toggle-row">
                               <div className="mode-toggle-left">
                                 <Shield size={14} className="mode-row-icon" />
-                                <span>Block YouTube, TikTok, Instagram</span>
+                                <span>{t('modes.blockSocial')}</span>
                               </div>
                               <button
                                 type="button"
@@ -5686,7 +5999,7 @@ export default function App() {
                             <div className="mode-toggle-row">
                               <div className="mode-toggle-left">
                                 <Bell size={14} className="mode-row-icon" />
-                                <span>Only Claude can reach you</span>
+                                <span>{t('modes.onlyClaude')}</span>
                               </div>
                               <button
                                 type="button"
@@ -5702,7 +6015,7 @@ export default function App() {
                             <div className="mode-toggle-row">
                               <div className="mode-toggle-left">
                                 <Music size={14} className="mode-row-icon" />
-                                <span>Keep my music on</span>
+                                <span>{t('modes.keepMusic')}</span>
                               </div>
                               <button
                                 type="button"
@@ -5729,20 +6042,20 @@ export default function App() {
                             <div className="note-glass-lightbox">
                               <img
                                 src={clipPreview.thumb}
-                                alt="Kopyalanan görsel"
+                                alt={t('clips.copiedImageAlt')}
                                 className="note-lightbox-img"
                               />
                               <div className="note-lightbox-bar">
                                 <span className="note-lightbox-name">
-                                  {clipPreview.dims || 'Görsel'} · {clipPreview.time}
+                                  {clipPreview.dims || t('clips.image')} · {clipPreview.time}
                                 </span>
                                 <div className="note-lightbox-btns">
                                   <button
                                     type="button"
                                     className="note-glass-orb"
                                     onClick={() => handleCopyClip(clipPreview)}
-                                    title="Görseli kopyala"
-                                    aria-label="Görseli kopyala"
+                                    title={t('clips.copyImage')}
+                                    aria-label={t('clips.copyImage')}
                                   >
                                     {copiedId === clipPreview.id ? <Check size={12} /> : <Copy size={12} />}
                                   </button>
@@ -5750,8 +6063,8 @@ export default function App() {
                                     type="button"
                                     className="note-glass-orb"
                                     onClick={() => setClipPreview(null)}
-                                    title="Kapat"
-                                    aria-label="Önizlemeyi kapat"
+                                    title={t('common.close')}
+                                    aria-label={t('clips.closePreview')}
                                   >
                                     <X size={12} />
                                   </button>
@@ -5768,14 +6081,14 @@ export default function App() {
                                   className={`clips-filter-pill ${clipsFilter === 'all' ? 'is-active' : ''}`}
                                   onClick={() => setClipsFilter('all')}
                                 >
-                                  Tümü
+                                  {t('clips.all')}
                                 </button>
                                 <button
                                   type="button"
                                   className={`note-glass-orb ${clipsFilter === 'image' ? 'is-active' : ''}`}
                                   onClick={() => setClipsFilter('image')}
-                                  title="Görseller"
-                                  aria-label="Görseller"
+                                  title={t('clips.images')}
+                                  aria-label={t('clips.images')}
                                 >
                                   <span className="clips-apple-emoji"><NotificationText text="🖼️" /></span>
                                 </button>
@@ -5783,8 +6096,8 @@ export default function App() {
                                   type="button"
                                   className={`note-glass-orb ${clipsFilter === 'text' ? 'is-active' : ''}`}
                                   onClick={() => setClipsFilter('text')}
-                                  title="Metinler"
-                                  aria-label="Metinler"
+                                  title={t('clips.texts')}
+                                  aria-label={t('clips.texts')}
                                 >
                                   <span className="clips-apple-emoji"><NotificationText text="📝" /></span>
                                 </button>
@@ -5799,8 +6112,8 @@ export default function App() {
                                     setClipPreview(null);
                                     window.twocode?.clearClips?.();
                                   }}
-                                  title="Temizle"
-                                  aria-label="Panoyu temizle"
+                                  title={t('common.clear')}
+                                  aria-label={t('clips.clearClipboard')}
                                 >
                                   <Trash2 size={12} />
                                 </button>
@@ -5816,7 +6129,7 @@ export default function App() {
                                 return (
                                   <div className="clips-glass-empty">
                                     <span className="clips-empty-emoji"><NotificationText text="📋" /></span>
-                                    <span>Pano boş…</span>
+                                    <span>{t('clips.empty')}</span>
                                   </div>
                                 );
                               }
@@ -5835,11 +6148,11 @@ export default function App() {
                                             type="button"
                                             className="clips-image-open"
                                             onClick={() => setClipPreview(c)}
-                                            title="Büyüt"
+                                            title={t('clips.enlarge')}
                                           >
                                             <img src={c.thumb} alt="" className="clips-glass-thumb" />
                                             <div className="clips-image-meta">
-                                              <span className="clips-image-dims">{c.dims || 'Görsel'}</span>
+                                              <span className="clips-image-dims">{c.dims || t('clips.image')}</span>
                                               <span className="clips-glass-time">{c.time}</span>
                                             </div>
                                           </button>
@@ -5847,8 +6160,8 @@ export default function App() {
                                             type="button"
                                             className="note-glass-orb"
                                             onClick={() => handleCopyClip(c)}
-                                            title="Görseli kopyala"
-                                            aria-label="Görseli kopyala"
+                                            title={t('clips.copyImage')}
+                                            aria-label={t('clips.copyImage')}
                                           >
                                             {isCopied ? <Check size={12} /> : <Copy size={12} />}
                                           </button>
@@ -5934,8 +6247,8 @@ export default function App() {
                               type="button"
                               className="note-glass-orb"
                               onClick={addNotePocket}
-                              title="Yeni not"
-                              aria-label="Yeni not"
+                              title={t('notes.newNote')}
+                              aria-label={t('notes.newNote')}
                             >
                               <Plus size={13} />
                             </button>
@@ -5949,8 +6262,8 @@ export default function App() {
                               type="button"
                               className={`note-glass-orb ${noteRecording ? 'is-recording' : ''} ${noteTranscribing ? 'is-transcribing' : ''}`}
                               onClick={toggleNoteVoice}
-                              title={noteRecording ? 'Kaydı durdur' : noteTranscribing ? 'Yazıya dökülüyor…' : 'Sesli not'}
-                              aria-label="Sesli not"
+                              title={noteRecording ? t('notes.stopRecording') : noteTranscribing ? t('notes.transcribing') : t('notes.voiceNote')}
+                              aria-label={t('notes.voiceNote')}
                             >
                               {noteRecording ? (
                                 <span className="note-voice-waves" aria-hidden="true">
@@ -5968,8 +6281,8 @@ export default function App() {
                               type="button"
                               className="note-glass-orb"
                               onClick={() => noteFileInputRef.current?.click()}
-                              title="Görsel veya dosya ekle"
-                              aria-label="Görsel veya dosya ekle"
+                              title={t('notes.attachFile')}
+                              aria-label={t('notes.attachFile')}
                             >
                               <Paperclip size={13} />
                             </button>
@@ -5977,8 +6290,8 @@ export default function App() {
                               type="button"
                               className={`note-glass-orb ${noteSummaryOpen ? 'is-active' : ''}`}
                               onClick={() => setNoteSummaryOpen((v) => !v)}
-                              title="Özetle"
-                              aria-label="Özetle"
+                              title={t('notes.summarize')}
+                              aria-label={t('notes.summarize')}
                             >
                               <AlignLeft size={13} />
                             </button>
@@ -5995,8 +6308,8 @@ export default function App() {
                                 setNoteCopied(true);
                                 setTimeout(() => setNoteCopied(false), 1200);
                               }}
-                              title="Kopyala"
-                              aria-label="Kopyala"
+                              title={t('notes.copy')}
+                              aria-label={t('notes.copy')}
                             >
                               {noteCopied ? <Check size={13} /> : <Copy size={12} />}
                             </button>
@@ -6005,8 +6318,8 @@ export default function App() {
                                 type="button"
                                 className="note-glass-orb is-danger"
                                 onClick={deleteActiveNotePocket}
-                                title="Sil"
-                                aria-label="Notu sil"
+                                title={t('common.delete')}
+                                aria-label={t('notes.deleteNote')}
                               >
                                 <Trash2 size={12} />
                               </button>
@@ -6029,8 +6342,8 @@ export default function App() {
                                     type="button"
                                     className="note-glass-orb"
                                     onClick={() => copyNoteAttachment(notePreviewAtt)}
-                                    title="Görseli kopyala"
-                                    aria-label="Görseli kopyala"
+                                    title={t('clips.copyImage')}
+                                    aria-label={t('clips.copyImage')}
                                   >
                                     {noteAttCopiedId === notePreviewAtt.id ? <Check size={12} /> : <Copy size={12} />}
                                   </button>
@@ -6038,8 +6351,8 @@ export default function App() {
                                     type="button"
                                     className="note-glass-orb"
                                     onClick={() => window.twocode?.openNoteAttachment?.({ path: notePreviewAtt.path || '', thumb: notePreviewAtt.thumb || '' })}
-                                    title="Dışarıda aç"
-                                    aria-label="Dışarıda aç"
+                                    title={t('notes.openExternal')}
+                                    aria-label={t('notes.openExternal')}
                                   >
                                     <ExternalLink size={12} />
                                   </button>
@@ -6047,8 +6360,8 @@ export default function App() {
                                     type="button"
                                     className="note-glass-orb"
                                     onClick={() => setNotePreviewAtt(null)}
-                                    title="Kapat"
-                                    aria-label="Önizlemeyi kapat"
+                                    title={t('common.close')}
+                                    aria-label={t('clips.closePreview')}
                                   >
                                     <X size={12} />
                                   </button>
@@ -6065,20 +6378,20 @@ export default function App() {
                                   </div>
                                 ))
                               ) : (
-                                <span className="note-glass-empty">Özetlenecek metin yok…</span>
+                                <span className="note-glass-empty">{t('notes.noTextToSummarize')}</span>
                               )}
                             </div>
                           ) : (
                             <textarea
                               ref={noteTextareaRef}
                               className="note-glass-textarea"
-                              placeholder="Bir şeyler yaz…"
+                              placeholder={t('notes.placeholder')}
                               value={activeNote?.text || ''}
                               onChange={(e) => {
                                 const val = e.target.value;
                                 updateActiveNote((n) => ({ ...n, text: val }));
                               }}
-                              aria-label="Not içeriği"
+                              aria-label={t('notes.contentAria')}
                             />
                           )}
 
@@ -6096,7 +6409,7 @@ export default function App() {
                                         window.twocode?.openNoteAttachment?.({ path: att.path || '', thumb: att.thumb || '' });
                                       }
                                     }}
-                                    title={att.isImage ? 'Büyüt' : 'Aç'}
+                                    title={att.isImage ? t('clips.enlarge') : t('notes.open')}
                                   >
                                     {att.thumb ? (
                                       <img src={att.thumb} alt="" className="note-att-thumb" />
@@ -6111,8 +6424,8 @@ export default function App() {
                                     type="button"
                                     className="note-att-action"
                                     onClick={() => copyNoteAttachment(att)}
-                                    title={att.isImage ? 'Görseli kopyala' : 'Yolu kopyala'}
-                                    aria-label="Eki kopyala"
+                                    title={att.isImage ? t('clips.copyImage') : t('notes.copyPath')}
+                                    aria-label={t('notes.copyAttachment')}
                                   >
                                     {noteAttCopiedId === att.id ? <Check size={10} /> : <Copy size={10} />}
                                   </button>
@@ -6120,7 +6433,7 @@ export default function App() {
                                     type="button"
                                     className="note-att-remove"
                                     onClick={() => removeNoteAttachment(att.id)}
-                                    aria-label="Eki kaldır"
+                                    aria-label={t('notes.removeAttachment')}
                                   >
                                     <X size={10} />
                                   </button>
@@ -6151,40 +6464,40 @@ export default function App() {
                       <div className="mail-workspace">
                         <section className="mail-main-panel">
                           <header className="mail-main-header">
-                            <nav className="mail-folder-list" aria-label="Posta kategorileri">
+                            <nav className="mail-folder-list" aria-label={t('mail.categoriesAria')}>
                               {MAIL_FOLDERS.map((folder) => {
                                 const FolderIcon = folder.icon;
                                 const count = Number(mailCounts[folder.countKey]) || 0;
                                 return (
                                   <button key={folder.id} type="button" className={`mail-folder-btn ${mailCategory === folder.id ? 'active' : ''}`} onClick={() => setMailCategory(folder.id)} aria-current={mailCategory === folder.id ? 'page' : undefined}>
                                     <FolderIcon size={15} strokeWidth={1.9} />
-                                    <span>{folder.label}</span>
+                                    <span>{t(`mail.${folder.id}`)}</span>
                                     {count > 0 && <small>{count > 99 ? '99+' : count}</small>}
                                   </button>
                                 );
                               })}
                             </nav>
                             <div className="mail-header-actions">
-                              <span className={`mail-connection-state ${mailIsConnected ? 'connected' : ''}`} title={mailIsConnected ? 'Gmail bağlı' : 'Gmail bağlı değil'} aria-label={mailIsConnected ? 'Gmail bağlı' : 'Gmail bağlı değil'}><i /></span>
-                              <button type="button" className="mail-open-gmail" title="Gmail’i aç" aria-label="Gmail’i aç" onClick={() => window.twocode?.openExternal(currentMailFolder.url)}><ExternalLink size={15} /></button>
-                              <button type="button" className="mail-compose-btn" title="Yeni e-posta yaz" aria-label="Yeni e-posta yaz" onClick={() => window.twocode?.openExternal('https://mail.google.com/mail/u/0/#compose')}><Plus size={17} /></button>
+                              <span className={`mail-connection-state ${mailIsConnected ? 'connected' : ''}`} title={mailIsConnected ? t('mail.gmailConnected') : t('mail.gmailNotConnected')} aria-label={mailIsConnected ? t('mail.gmailConnected') : t('mail.gmailNotConnected')}><i /></span>
+                              <button type="button" className="mail-open-gmail" title={t('mail.openGmail')} aria-label={t('mail.openGmail')} onClick={() => window.twocode?.openExternal(currentMailFolder.url)}><ExternalLink size={15} /></button>
+                              <button type="button" className="mail-compose-btn" title={t('mail.compose')} aria-label={t('mail.compose')} onClick={() => window.twocode?.openExternal('https://mail.google.com/mail/u/0/#compose')}><Plus size={17} /></button>
                             </div>
                           </header>
 
                           <div className="mail-message-list">
                             {visibleMailItems.length > 0 ? visibleMailItems.map((item, index) => {
-                              const sender = item.from || item.sender || 'Gönderen bilinmiyor';
+                              const sender = item.from || item.sender || t('mail.unknownSender');
                               const mailId = String(item.id || '');
                               const hasThreadId = Boolean(mailId && !/^(m_|mail_count_bump|row_)/i.test(mailId));
                               const messageUrl = hasThreadId ? `https://mail.google.com/mail/u/0/#all/${encodeURIComponent(mailId)}` : currentMailFolder.url;
                               return (
-                                <button key={mailId || `${sender}-${item.subject}-${index}`} type="button" className="mail-message-row" aria-label={`${sender}: ${item.subject || 'Konu yok'}`} onClick={() => window.twocode?.openExternal(messageUrl)}>
+                                <button key={mailId || `${sender}-${item.subject}-${index}`} type="button" className="mail-message-row" aria-label={`${sender}: ${item.subject || t('mail.noSubject')}`} onClick={() => window.twocode?.openExternal(messageUrl)}>
                                   <span className="mail-sender-avatar">
-                                    {(item.senderPhoto || item.profileImage) ? <img src={item.senderPhoto || item.profileImage} alt="" onError={(event) => { event.currentTarget.style.display = 'none'; }} /> : sender.trim().charAt(0).toLocaleUpperCase('tr-TR')}
+                                    {(item.senderPhoto || item.profileImage) ? <img src={item.senderPhoto || item.profileImage} alt="" onError={(event) => { event.currentTarget.style.display = 'none'; }} /> : sender.trim().charAt(0).toLocaleUpperCase(locale)}
                                   </span>
                                   <span className="mail-message-copy">
-                                    <span className="mail-message-topline"><strong>{sender}</strong><time className="clock-number-text">{item.time || 'Bugün'}</time></span>
-                                    <span className="mail-message-subject">{item.subject || 'Konu yok'}</span>
+                                    <span className="mail-message-topline"><strong>{sender}</strong><time className="clock-number-text">{item.time || t('common.today')}</time></span>
+                                    <span className="mail-message-subject">{item.subject || t('mail.noSubject')}</span>
                                     <small>{item.snippet || ' '}</small>
                                   </span>
                                   <ExternalLink className="mail-message-open-icon" size={13} />
@@ -6193,8 +6506,8 @@ export default function App() {
                             }) : (
                               <div className="mail-empty-state">
                                 <span className="mail-empty-icon"><CurrentMailFolderIcon size={18} /></span>
-                                <strong>{!mailIsConnected ? 'Gmail’i bağla' : mailCategory !== 'primary' ? 'Bu klasörde ileti yok' : 'Gelen kutusu boş'}</strong>
-                                {!mailIsConnected ? <button type="button" onClick={() => window.twocode?.openSettingsWindow?.('connections')} aria-label="Gmail’i bağla"><ExternalLink size={14} /></button> : mailCategory !== 'primary' ? <button type="button" onClick={() => window.twocode?.openExternal(currentMailFolder.url)} aria-label="Gmail’de görüntüle"><ExternalLink size={14} /></button> : null}
+                                <strong>{!mailIsConnected ? t('mail.connectGmail') : mailCategory !== 'primary' ? t('mail.noMessagesInFolder') : t('mail.inboxEmpty')}</strong>
+                                {!mailIsConnected ? <button type="button" onClick={() => window.twocode?.openSettingsWindow?.('connections')} aria-label={t('mail.connectGmail')}><ExternalLink size={14} /></button> : mailCategory !== 'primary' ? <button type="button" onClick={() => window.twocode?.openExternal(currentMailFolder.url)} aria-label={t('mail.viewInGmail')}><ExternalLink size={14} /></button> : null}
                               </div>
                             )}
                           </div>
@@ -6228,7 +6541,7 @@ export default function App() {
                     onMouseLeave={() => setHoverAddApp(false)}
                   >
                     {hoverAddApp && (
-                      <div className="dock-add-tooltip">Add your own app</div>
+                      <div className="dock-add-tooltip">{t('dock.addAppTooltip')}</div>
                     )}
                     <button
                       type="button"
@@ -6240,7 +6553,7 @@ export default function App() {
                   </div>
                 </div>
 
-                <nav className="dock-tabs" ref={dockTabsRef} aria-label="Dynamic Island Modes">
+                <nav className="dock-tabs" ref={dockTabsRef} aria-label={t('dock.modesAria')}>
                   <div
                     className={`dock-liquid-bubble ${dockBubble.visible ? 'is-visible' : ''}`}
                     style={{
@@ -6261,6 +6574,9 @@ export default function App() {
                           playRoboSound('tap', islandSettings.soundEffects !== false);
                           setIslandOverlay(null);
                           setActiveTab(item.id);
+                          if (item.id === 'robo' && bedoStatus.paused) {
+                            window.twocode?.bedoSetPaused?.(false);
+                          }
                         }}
                         title={item.label}
                       >
@@ -6277,7 +6593,7 @@ export default function App() {
                   className="dock-volume-btn"
                   onClick={handleVolumeClick}
                   onWheel={handleVolumeWheel}
-                  title="Ses Kontrolü (Tıkla: Sessize Al, Tekerlek: Ses Aç/Kıs)"
+                  title={t('dock.volumeTitle')}
                 >
                   {isMuted ? <VolumeX size={15} /> : <Volume2 size={15} />}
                 </button>
@@ -6351,5 +6667,6 @@ export default function App() {
         </div>
       </div>
     </div>
+    </LanguageProvider>
   );
 }
