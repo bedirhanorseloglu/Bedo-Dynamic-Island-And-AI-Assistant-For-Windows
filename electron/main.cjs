@@ -1685,12 +1685,16 @@ function startCursorHoverWatcher() {
   screen.on('display-metrics-changed', invalidateBounds);
   screen.on('display-added', invalidateBounds);
   screen.on('display-removed', invalidateBounds);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.on('move', invalidateBounds);
+    mainWindow.on('resize', invalidateBounds);
+  }
 
   const tick = () => {
-    let nextDelay = 180;
+    let nextDelay = 40;
     try {
       if (isSystemLockedOrSuspended || !mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible()) {
-        nextDelay = 400;
+        nextDelay = 300;
         return;
       }
       if (gameModeActive) {
@@ -1698,7 +1702,7 @@ function startCursorHoverWatcher() {
         if (leaveTimer) clearTimeout(leaveTimer);
         leaveTimer = null;
         updateWindowMouseIgnore(true);
-        nextDelay = 400;
+        nextDelay = 300;
         return;
       }
 
@@ -1711,8 +1715,8 @@ function startCursorHoverWatcher() {
       const leftEdge = (CANVAS_WIDTH - activeTotalWidth) / 2;
       const rightEdge = leftEdge + activeTotalWidth;
 
-      const padX = currentModeKey === 'expanded' ? 14 : 16;
-      const padY = currentModeKey === 'expanded' ? 14 : 12;
+      const padX = currentModeKey === 'expanded' ? 14 : 18;
+      const padY = currentModeKey === 'expanded' ? 14 : 14;
 
       const dropletExtra = currentShape.droplet > 0.05 ? 56 : 0;
       const insideActiveNotch =
@@ -1725,10 +1729,16 @@ function startCursorHoverWatcher() {
 
       const nearNotch =
         relY >= -20 &&
-        relY <= currentShape.height + 160 &&
-        relX >= leftEdge - 160 &&
-        relX <= rightEdge + dropletExtra + 160;
-      nextDelay = nearNotch || isHoveringNotch || currentModeKey === 'expanded' ? 60 : 180;
+        relY <= currentShape.height + 200 &&
+        relX >= leftEdge - 200 &&
+        relX <= rightEdge + dropletExtra + 200;
+      const inTopBand = relY >= -20 && relY <= 220;
+      nextDelay =
+        nearNotch || isHoveringNotch || currentModeKey === 'expanded'
+          ? 16
+          : inTopBand
+          ? 24
+          : 40;
 
       if (userSettings.islandOpenMode === 'On click' && currentModeKey !== 'expanded') return;
 
@@ -1746,14 +1756,14 @@ function startCursorHoverWatcher() {
           if (!isHoveringNotch && mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('notch-hover-change', false);
           }
-        }, 180);
+        }, 140);
       }
     } catch {} finally {
       hoverTimer = setTimeout(tick, nextDelay);
     }
   };
 
-  hoverTimer = setTimeout(tick, 60);
+  hoverTimer = setTimeout(tick, 16);
 }
 
 function createWindow() {

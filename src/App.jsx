@@ -1001,16 +1001,12 @@ export default function App() {
   const [islandMode, setIslandMode] = useState('idle');
   const islandModeRef = useRef(islandMode);
   islandModeRef.current = islandMode;
-  const [expandedKeepAlive, setExpandedKeepAlive] = useState(false);
+  const [expandedWarm, setExpandedWarm] = useState(false);
   useEffect(() => {
-    if (islandMode === 'expanded') {
-      setExpandedKeepAlive(true);
-      return undefined;
-    }
-    const t = setTimeout(() => setExpandedKeepAlive(false), 260);
+    const t = setTimeout(() => setExpandedWarm(true), 120);
     return () => clearTimeout(t);
-  }, [islandMode]);
-  const shouldRenderExpanded = islandMode === 'expanded' || expandedKeepAlive;
+  }, []);
+  const shouldRenderExpanded = islandMode === 'expanded' || expandedWarm;
   const [gameModeActive, setGameModeActive] = useState(false);
   // Right-click thin progress bar toggle
   const [isMiniProgressBar, setIsMiniProgressBar] = useState(false);
@@ -1725,10 +1721,12 @@ export default function App() {
     }
   };
 
+  const lastNetworkRefreshRef = useRef(0);
   useEffect(() => {
     if (islandMode !== 'expanded') return undefined;
     let mounted = true;
     const refresh = async () => {
+      lastNetworkRefreshRef.current = Date.now();
       try {
         const [network, radios] = await Promise.all([
           window.twocode?.getNetworkInfo?.(),
@@ -1738,9 +1736,16 @@ export default function App() {
         setNetworkInfo((current) => ({ ...current, ...(network || {}), ...(radios || {}) }));
       } catch { }
     };
-    refresh();
+    let initialTimer = null;
+    if (Date.now() - lastNetworkRefreshRef.current > 12000) {
+      initialTimer = setTimeout(refresh, 280);
+    }
     const timer = setInterval(refresh, 12000);
-    return () => { mounted = false; clearInterval(timer); };
+    return () => {
+      mounted = false;
+      if (initialTimer) clearTimeout(initialTimer);
+      clearInterval(timer);
+    };
   }, [islandMode]);
 
   const toggleRadio = async (kind) => {
@@ -3657,12 +3662,14 @@ export default function App() {
           window.twocode?.setIgnoreMouseEvents?.(false);
           if (gameModeActive || isShowingNotifToastRef.current) return;
           if (islandMode === 'bedo-live') return;
+          if (islandSettings.islandOpenMode === 'On click') return;
           if (Date.now() < suppressHoverExpandUntilRef.current) return;
+          if (hoverExpandTimerRef.current) {
+            clearTimeout(hoverExpandTimerRef.current);
+            hoverExpandTimerRef.current = null;
+          }
           if (islandMode !== 'expanded' && !isMiniProgressBar) {
-            if (hoverExpandTimerRef.current) clearTimeout(hoverExpandTimerRef.current);
-            hoverExpandTimerRef.current = setTimeout(() => {
-              setIslandMode('expanded');
-            }, 160);
+            setIslandMode('expanded');
           }
         }}
         onMouseLeave={(e) => {
