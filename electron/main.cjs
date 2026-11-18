@@ -507,6 +507,9 @@ function saveSettingsToDisk(nextSettings) {
   if (Object.prototype.hasOwnProperty.call(nextSettings || {}, 'startWithWindows')) {
     applyStartWithWindows(userSettings.startWithWindows !== false);
   }
+  if (Object.prototype.hasOwnProperty.call(nextSettings || {}, 'globalShortcutsEnabled')) {
+    registerGlobalShortcuts();
+  }
   if (
     (Object.prototype.hasOwnProperty.call(nextSettings || {}, 'geminiApiKey') ||
       Object.prototype.hasOwnProperty.call(nextSettings || {}, 'codexApiKey') ||
@@ -519,14 +522,19 @@ function saveSettingsToDisk(nextSettings) {
       anthropicApiKey: userSettings.claudeApiKey || '',
     });
   }
-  if (Object.prototype.hasOwnProperty.call(nextSettings || {}, 'bedoVoice') && bedoService && bedoService.getStatus().running) {
+  if (
+    (Object.prototype.hasOwnProperty.call(nextSettings || {}, 'bedoVoice') ||
+      Object.prototype.hasOwnProperty.call(nextSettings || {}, 'bedoEnableWake')) &&
+    bedoService &&
+    bedoService.getStatus().running
+  ) {
     const wasPaused = bedoService.getStatus().paused;
     bedoService.stop().then(() => {
       bedoService.start({
         apiKey: userSettings.geminiApiKey || process.env.GEMINI_API_KEY || '',
         voice: userSettings.bedoVoice || 'Charon',
         startPaused: wasPaused,
-        enableWake: true,
+        enableWake: userSettings.bedoEnableWake !== false,
         enableClap: false,
       });
     }).catch(() => {});
@@ -1430,8 +1438,9 @@ function openOrFocusSettingsWindow(tabId = 'home') {
     center: true,
     show: true,
     frame: false,
-    backgroundColor: '#060608',
-    title: 'TwoCode Settings',
+    transparent: true,
+    backgroundColor: '#00000000',
+    title: 'Bedo Settings',
     skipTaskbar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
@@ -1493,7 +1502,7 @@ function createTray() {
   }
   const icon = nativeImage.createFromBuffer(buf, { width: size, height: size });
   tray = new Tray(icon);
-  tray.setToolTip('TwoCode');
+  tray.setToolTip('Bedo');
   tray.on('click', () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.show();
@@ -1508,7 +1517,7 @@ function buildTrayContextMenu() {
   const lang = userSettings.language;
   const contextMenu = Menu.buildFromTemplate([
     {
-      label: 'TwoCode',
+      label: 'Bedo',
       enabled: false,
     },
     { type: 'separator' },
@@ -1849,6 +1858,9 @@ function createWindow() {
 
 function registerGlobalShortcuts() {
   try {
+    globalShortcut.unregisterAll();
+    if (userSettings.globalShortcutsEnabled === false) return;
+
     globalShortcut.register('CommandOrControl+Alt+T', () => {
       if (gameModeActive) return;
       if (mainWindow && !mainWindow.isDestroyed()) {
@@ -1862,6 +1874,30 @@ function registerGlobalShortcuts() {
       if (mainWindow.isVisible()) mainWindow.hide();
       else mainWindow.showInactive();
     });
+    globalShortcut.register('CommandOrControl+Alt+Space', () => {
+      if (gameModeActive) return;
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.show();
+        mainWindow.webContents.send('island-shortcut-action', { action: 'bedo' });
+      }
+    });
+    const tabShortcuts = [
+      ['CommandOrControl+Alt+Shift+1', 'home'],
+      ['CommandOrControl+Alt+Shift+2', 'music'],
+      ['CommandOrControl+Alt+Shift+3', 'robo'],
+      ['CommandOrControl+Alt+Shift+4', 'timer'],
+      ['CommandOrControl+Alt+Shift+5', 'notes'],
+      ['CommandOrControl+Alt+Shift+6', 'cal'],
+    ];
+    for (const [accelerator, tab] of tabShortcuts) {
+      globalShortcut.register(accelerator, () => {
+        if (gameModeActive) return;
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.show();
+          mainWindow.webContents.send('island-shortcut-action', { action: 'tab', tab });
+        }
+      });
+    }
   } catch {}
 }
 
@@ -2399,7 +2435,7 @@ ipcMain.on('trigger-island-emotion', (_event, emotion) => {
 
 ipcMain.on('trigger-test-notification', (_event, notif) => {
   if (mainWindow && !mainWindow.isDestroyed()) {
-    let resolvedApp = notif?.app || 'TwoCode';
+    let resolvedApp = notif?.app || 'Bedo';
     if (!notif?.app && typeof notif?.title === 'string') {
       const lower = notif.title.toLowerCase();
       if (lower.includes('whatsapp')) resolvedApp = 'WhatsApp';
@@ -2413,7 +2449,7 @@ ipcMain.on('trigger-test-notification', (_event, notif) => {
     mainWindow.webContents.send('windows-notification', {
       id: 'notif_' + Date.now(),
       app: resolvedApp,
-      title: notif?.title || 'TwoCode Bildirim',
+      title: notif?.title || 'Bedo Bildirim',
       body: notif?.subtitle || notif?.body || trMain(userSettings.language, 'testNotifDefaultBody'),
       accentHex: notif?.accentHex,
       logo: notif?.logo || notif?.appLogoUri || '',
@@ -2778,6 +2814,15 @@ ipcMain.handle('open-external', (_event, url) => {
 ipcMain.handle('open-app', async (_event, target = {}) => {
   try {
     const appTarget = typeof target === 'string' ? { url: target } : target;
+    if (appTarget.type === 'uwp-app' && typeof appTarget.aumid === 'string' && /^[A-Za-z0-9_.!-]+$/.test(appTarget.aumid)) {
+      const child = spawn('explorer.exe', [`shell:AppsFolder\\${appTarget.aumid}`], {
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true,
+      });
+      child.unref();
+      return true;
+    }
     const localPath = appTarget.path || appTarget.url;
     if (appTarget.type === 'native-app' || (typeof localPath === 'string' && /\.(exe|lnk|bat|cmd)$/i.test(localPath))) {
       if (typeof localPath !== 'string' || !path.isAbsolute(localPath) || !fs.existsSync(localPath)) return false;
@@ -2792,6 +2837,135 @@ ipcMain.handle('open-app', async (_event, target = {}) => {
     return true;
   } catch {
     return false;
+  }
+});
+
+let installedAppsCache = null;
+
+function collectStartMenuLinks(dir, depth = 0, out = []) {
+  if (!dir || depth > 3 || !fs.existsSync(dir)) return out;
+  let entries = [];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return out;
+  }
+  const ignorePattern = /(uninstall|kaldır|readme|documentation|manual|license|changelog|release notes|setup|updater|installer|website|help|yardım)/i;
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      collectStartMenuLinks(fullPath, depth + 1, out);
+    } else if (entry.isFile() && /\.lnk$/i.test(entry.name)) {
+      const displayName = entry.name.replace(/\.lnk$/i, '').trim();
+      if (!displayName || ignorePattern.test(displayName)) continue;
+      out.push({ name: displayName, path: fullPath });
+    }
+  }
+  return out;
+}
+
+function getUwpStartApps() {
+  return new Promise((resolve) => {
+    execFile(
+      'powershell.exe',
+      [
+        '-WindowStyle', 'Hidden',
+        '-NoProfile',
+        '-NonInteractive',
+        '-Command',
+        '[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; Get-StartApps | Select-Object Name,AppID | ConvertTo-Json -Compress',
+      ],
+      { timeout: 4500, maxBuffer: 1024 * 1024 * 2, windowsHide: true },
+      (err, stdout) => {
+        if (err || !stdout) return resolve([]);
+        try {
+          const parsed = JSON.parse(stdout.trim());
+          const list = Array.isArray(parsed) ? parsed : [parsed];
+          resolve(list.filter((item) => item && item.Name && item.AppID));
+        } catch {
+          resolve([]);
+        }
+      }
+    );
+  });
+}
+
+async function scanInstalledApps(forceRefresh = false) {
+  if (installedAppsCache && !forceRefresh) return installedAppsCache;
+
+  const startDirs = [
+    process.env.APPDATA ? path.join(process.env.APPDATA, 'Microsoft', 'Windows', 'Start Menu', 'Programs') : '',
+    process.env.ProgramData ? path.join(process.env.ProgramData, 'Microsoft', 'Windows', 'Start Menu', 'Programs') : '',
+  ].filter(Boolean);
+
+  const byKey = new Map();
+  const rawLinks = [];
+  for (const d of startDirs) {
+    collectStartMenuLinks(d, 0, rawLinks);
+  }
+
+  for (const lnk of rawLinks) {
+    const key = lnk.name.toLowerCase();
+    if (!byKey.has(key)) {
+      byKey.set(key, {
+        id: `local-${key}`,
+        name: lnk.name,
+        type: 'native-app',
+        path: lnk.path,
+        source: 'desktop',
+        iconDataUrl: '',
+      });
+    }
+  }
+
+  const lnkItems = Array.from(byKey.values());
+  const batchSize = 15;
+  for (let i = 0; i < lnkItems.length; i += batchSize) {
+    const slice = lnkItems.slice(i, i + batchSize);
+    await Promise.all(
+      slice.map(async (item) => {
+        try {
+          const img = await app.getFileIcon(item.path, { size: 'normal' });
+          if (img && !img.isEmpty()) {
+            item.iconDataUrl = img.toDataURL();
+          }
+        } catch {}
+      })
+    );
+  }
+
+  const ignoreStorePattern = /(uninstall|kaldır|help|yardım|readme|troubleshooting|command prompt|developer|powershell|sdk|settings|ayarlar)/i;
+  const uwpApps = await getUwpStartApps();
+  for (const uwp of uwpApps) {
+    const cleanName = String(uwp.Name || '').trim();
+    const aumid = String(uwp.AppID || '').trim();
+    if (!cleanName || !aumid || ignoreStorePattern.test(cleanName)) continue;
+    if (!/^[A-Za-z0-9_.!-]+$/.test(aumid)) continue;
+    const key = cleanName.toLowerCase();
+    if (!byKey.has(key) && aumid.includes('!')) {
+      byKey.set(key, {
+        id: `uwp-${key}`,
+        name: cleanName,
+        type: 'uwp-app',
+        aumid,
+        source: 'store',
+        iconDataUrl: '',
+      });
+    }
+  }
+
+  const sorted = Array.from(byKey.values()).sort((a, b) =>
+    a.name.localeCompare(b.name, 'tr', { sensitivity: 'base' })
+  );
+  installedAppsCache = sorted;
+  return sorted;
+}
+
+ipcMain.handle('get-installed-apps', async (_event, opts = {}) => {
+  try {
+    return await scanInstalledApps(Boolean(opts?.forceRefresh));
+  } catch {
+    return [];
   }
 });
 
@@ -4032,7 +4206,7 @@ ipcMain.handle('connect-google', async (_event, opts) => {
     googleAuthWindow = new BrowserWindow({
       width: 520,
       height: 680,
-      title: 'Google ile Giriş Yap - TwoCode',
+      title: 'Google ile Giriş Yap - Bedo',
       parent: settingsWindow && !settingsWindow.isDestroyed() ? settingsWindow : undefined,
       modal: false,
       autoHideMenuBar: true,
@@ -4371,7 +4545,7 @@ function getLocalSmartReply(q, mode) {
     lower === 'hello' ||
     lower === 'hi'
   ) {
-    return 'Merhaba! TwoCode Robo hazır. Aklındaki soruyu veya üzerinde çalıştığın konuyu yazabilirsin.';
+    return 'Merhaba! Bedo hazır. Aklındaki soruyu veya üzerinde çalıştığın konuyu yazabilirsin.';
   }
   if (lower.includes('günaydın') || lower.includes('gunaydin')) {
     return 'Günaydın! Harika ve çok verimli bir gün dilerim ☀️';
@@ -4385,7 +4559,7 @@ function getLocalSmartReply(q, mode) {
     lower.includes('adın ne') ||
     lower.includes('robo nedir')
   ) {
-    return 'Ben TwoCode Robo! Masaüstünde çalışan akıllı yapay zeka asistanınım. Sorularını yanıtlayabilir, kodlama ve yazım hatalarında sana destek olabilirim.';
+    return 'Ben Bedo! Masaüstünde çalışan akıllı yapay zeka asistanınım. Sorularını yanıtlayabilir, kodlama ve yazım hatalarında sana destek olabilirim.';
   }
   if (
     lower.includes('teşekkür') ||
@@ -4542,7 +4716,7 @@ ipcMain.handle('bedo:start', async (_event, opts = {}) => {
     anthropicApiKey: opts.anthropicApiKey || userSettings.claudeApiKey || process.env.ANTHROPIC_API_KEY || '',
     voice: opts.voice || userSettings.bedoVoice || 'Charon',
     startPaused: Boolean(opts.startPaused),
-    enableWake: opts.enableWake !== false,
+    enableWake: opts.enableWake !== undefined ? opts.enableWake !== false : userSettings.bedoEnableWake !== false,
     enableClap: Boolean(opts.enableClap),
     dryRun: Boolean(opts.dryRun),
   });
@@ -4586,6 +4760,282 @@ ipcMain.handle('bedo:set-webcam', async (_event, active) => {
 ipcMain.handle('bedo:island-state', async (_event, state) => {
   const ok = getBedoService().syncIslandState(state);
   return { ok };
+});
+
+ipcMain.handle('bedo:preview-voice', async (_event, opts = {}) => {
+  const apiKey = String(userSettings.geminiApiKey || process.env.GEMINI_API_KEY || '').trim();
+  const isTr = normalizeLanguage(userSettings.language) === 'tr';
+  if (!apiKey) {
+    return {
+      ok: false,
+      error: isTr
+        ? 'Ses önizlemesi için Gemini API anahtarı gerekli.'
+        : 'A Gemini API key is required to preview voices.',
+    };
+  }
+  const voiceName = String(opts.voice || userSettings.bedoVoice || 'Charon').trim();
+  const text = String(
+    opts.text ||
+      (isTr
+        ? 'Merhaba, ben Bedo. Senin için buradayım, nasıl yardımcı olabilirim?'
+        : "Hello, I'm Bedo. I'm right here for you, how can I help?")
+  ).trim();
+
+  const ttsModels = ['gemini-3.8-flash-tts', 'gemini-3.8-flash-lite-tts'];
+  const retryableStatuses = new Set([404, 429, 500, 502, 503, 504]);
+  const bodyPayload = JSON.stringify({
+    contents: [{ parts: [{ text }] }],
+    generationConfig: {
+      responseModalities: ['AUDIO'],
+      speechConfig: {
+        voiceConfig: {
+          prebuiltVoiceConfig: {
+            voiceName,
+          },
+        },
+      },
+    },
+  });
+
+  let lastError = 'Ses önizleme hatası.';
+  for (let index = 0; index < ttsModels.length; index += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${ttsModels[index]}:generateContent`;
+      const response = await net.fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey,
+        },
+        body: bodyPayload,
+        signal: controller.signal,
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        lastError = data?.error?.message || `HTTP ${response.status}`;
+        if (retryableStatuses.has(response.status) && index < ttsModels.length - 1) continue;
+        return { ok: false, error: lastError };
+      }
+      const parts = data?.candidates?.[0]?.content?.parts || [];
+      const audioPart = parts.find((p) => p?.inlineData?.data);
+      if (!audioPart?.inlineData?.data) {
+        lastError = 'Ses verisi alınamadı.';
+        if (index < ttsModels.length - 1) continue;
+        return { ok: false, error: lastError };
+      }
+      return {
+        ok: true,
+        mimeType: audioPart.inlineData.mimeType || 'audio/L16;codec=pcm;rate=24000',
+        data: audioPart.inlineData.data,
+      };
+    } catch (err) {
+      lastError = err?.message || 'Ses önizleme hatası.';
+      if (index === ttsModels.length - 1) {
+        return { ok: false, error: lastError };
+      }
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+  return { ok: false, error: lastError };
+});
+
+let buddyOverlayWindow = null;
+
+ipcMain.handle('bedo-buddy:start', async () => {
+  if (buddyOverlayWindow && !buddyOverlayWindow.isDestroyed()) {
+    buddyOverlayWindow.focus();
+    return { ok: true };
+  }
+  const cursorPoint = screen.getCursorScreenPoint();
+  const display = screen.getDisplayNearestPoint(cursorPoint);
+  const { x: dx, y: dy, width: dw, height: dh } = display.bounds;
+  const scaleFactor = display.scaleFactor || 1;
+  const eyeHex = String(userSettings.eyeColorHex || '#ffffff');
+
+  buddyOverlayWindow = new BrowserWindow({
+    x: dx,
+    y: dy,
+    width: dw,
+    height: dh,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    movable: false,
+    hasShadow: false,
+    fullscreenable: false,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+    },
+  });
+  buddyOverlayWindow.setAlwaysOnTop(true, 'screen-saver');
+
+  const html = `<!doctype html><html><head><meta charset="utf-8"><style>
+    html,body{margin:0;width:100%;height:100%;overflow:hidden;background:rgba(6,9,18,0.16);cursor:none;user-select:none;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;}
+    .hint{position:fixed;top:18px;left:50%;transform:translateX(-50%);padding:8px 16px;border-radius:999px;background:rgba(12,15,24,0.86);border:1px solid rgba(255,255,255,0.2);color:#fff;font-size:12.5px;font-weight:600;backdrop-filter:blur(14px);box-shadow:0 8px 24px rgba(0,0,0,0.4);pointer-events:none;}
+    .sel{position:fixed;border:2px solid #38bdf8;background:rgba(56,189,248,0.14);border-radius:10px;display:none;pointer-events:none;box-shadow:0 0 0 9999px rgba(4,7,14,0.24);}
+    .orb{position:fixed;width:42px;height:28px;border-radius:16px 16px 8px 8px;background:rgba(14,18,28,0.92);border:1.5px solid rgba(255,255,255,0.35);display:flex;align-items:center;justify-content:center;gap:6px;transform:translate(-50%,-50%);pointer-events:none;box-shadow:0 8px 22px rgba(0,0,0,0.5);}
+    .eye{width:5.5px;height:9px;border-radius:50%;background:${eyeHex};box-shadow:0 0 8px ${eyeHex};}
+  </style></head><body>
+    <div class="hint">Bedo Buddy: Ekranda bir yere tıklayın veya sürükleyip bölge seçin (Esc: İptal)</div>
+    <div class="sel" id="sel"></div>
+    <div class="orb" id="orb"><span class="eye"></span><span class="eye"></span></div>
+    <script>
+      const orb=document.getElementById('orb'), sel=document.getElementById('sel');
+      let start=null;
+      window.addEventListener('mousemove',e=>{
+        orb.style.left=e.clientX+'px'; orb.style.top=e.clientY+'px';
+        if(start){
+          const x=Math.min(start.x,e.clientX), y=Math.min(start.y,e.clientY);
+          const w=Math.abs(e.clientX-start.x), h=Math.abs(e.clientY-start.y);
+          sel.style.display='block'; sel.style.left=x+'px'; sel.style.top=y+'px'; sel.style.width=w+'px'; sel.style.height=h+'px';
+        }
+      });
+      window.addEventListener('mousedown',e=>{
+        if(e.button!==0){document.title='BUDDY_CANCEL';return;}
+        start={x:e.clientX,y:e.clientY};
+      });
+      window.addEventListener('mouseup',e=>{
+        if(!start)return;
+        const w=Math.abs(e.clientX-start.x), h=Math.abs(e.clientY-start.y);
+        let box;
+        if(w>24 && h>24){
+          box={x:Math.min(start.x,e.clientX),y:Math.min(start.y,e.clientY),width:w,height:h};
+        } else {
+          const bw=540, bh=340;
+          box={x:Math.max(0,Math.min(window.innerWidth-bw,e.clientX-bw/2)),y:Math.max(0,Math.min(window.innerHeight-bh,e.clientY-bh/2)),width:bw,height:bh};
+        }
+        start=null;
+        document.title='BUDDY_PICK:'+JSON.stringify(box);
+      });
+      window.addEventListener('keydown',e=>{if(e.key==='Escape')document.title='BUDDY_CANCEL';});
+      window.addEventListener('contextmenu',e=>{e.preventDefault();document.title='BUDDY_CANCEL';});
+    </script></body></html>`;
+
+  buddyOverlayWindow.on('page-title-updated', async (_ev, title) => {
+    if (!buddyOverlayWindow || buddyOverlayWindow.isDestroyed()) return;
+    if (title === 'BUDDY_CANCEL') {
+      buddyOverlayWindow.close();
+      buddyOverlayWindow = null;
+      return;
+    }
+    if (title.startsWith('BUDDY_PICK:')) {
+      let box = null;
+      try { box = JSON.parse(title.slice('BUDDY_PICK:'.length)); } catch {}
+      buddyOverlayWindow.close();
+      buddyOverlayWindow = null;
+      if (!box) return;
+      await new Promise((r) => setTimeout(r, 90));
+      try {
+        const sources = await desktopCapturer.getSources({
+          types: ['screen'],
+          thumbnailSize: {
+            width: Math.round(dw * scaleFactor),
+            height: Math.round(dh * scaleFactor),
+          },
+        });
+        const match =
+          sources.find((s) => String(s.display_id) === String(display.id)) || sources[0];
+        if (!match) return;
+        const cropRect = {
+          x: Math.max(0, Math.round(box.x * scaleFactor)),
+          y: Math.max(0, Math.round(box.y * scaleFactor)),
+          width: Math.max(10, Math.round(box.width * scaleFactor)),
+          height: Math.max(10, Math.round(box.height * scaleFactor)),
+        };
+        const cropped = match.thumbnail.crop(cropRect);
+        const imageDataUrl = cropped.toDataURL();
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.show();
+          mainWindow.webContents.send('buddy-captured', { imageDataUrl });
+        }
+      } catch {}
+    }
+  });
+
+  buddyOverlayWindow.on('closed', () => {
+    buddyOverlayWindow = null;
+  });
+
+  buddyOverlayWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+  return { ok: true };
+});
+
+ipcMain.handle('ask-robo-vision', async (_event, payload = {}) => {
+  const apiKey = String(userSettings.geminiApiKey || process.env.GEMINI_API_KEY || '').trim();
+  const isTr = normalizeLanguage(userSettings.language) === 'tr';
+  if (!apiKey) {
+    return {
+      ok: false,
+      error: isTr
+        ? 'Ekran analizi için Ayarlar → AI & Sohbet bölümünden Gemini API anahtarı ekleyin.'
+        : 'Add a Gemini API key in Settings → AI & Chat to analyze screen captures.',
+    };
+  }
+  const dataUrl = String(payload.imageDataUrl || '');
+  const base64 = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
+  if (!base64) return { ok: false, error: 'Görüntü verisi bulunamadı.' };
+
+  const prompt = String(
+    payload.question ||
+      (isTr
+        ? 'Bu ekran görüntüsündeki içeriği incele. Metin varsa yazım/dilbilgisi kontrolü veya gerekiyorsa çeviri yap; kod, hata mesajı veya görselse kısa, net ve anlaşılır şekilde kesinlikle Türkçe olarak açıkla.'
+        : 'Analyze this screen capture. If it contains text, check spelling/grammar or translate if foreign; if it is code, an error, or a chart, explain it clearly and concisely in English.')
+  );
+
+  const models = ['gemini-flash-latest', 'gemini-3.5-flash-lite', 'gemini-3.8-flash'];
+  const retryableStatuses = new Set([404, 429, 500, 502, 503, 504]);
+  const body = JSON.stringify({
+    contents: [
+      {
+        parts: [
+          { text: prompt },
+          { inlineData: { mimeType: 'image/png', data: base64 } },
+        ],
+      },
+    ],
+    generationConfig: { maxOutputTokens: 700 },
+  });
+
+  let lastErr = 'Analiz yapılamadı.';
+  for (let i = 0; i < models.length; i += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 18000);
+    try {
+      const res = await net.fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${models[i]}:generateContent`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+          body,
+          signal: controller.signal,
+        }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        lastErr = data?.error?.message || `HTTP ${res.status}`;
+        if (retryableStatuses.has(res.status) && i < models.length - 1) continue;
+        return { ok: false, error: lastErr };
+      }
+      const text = (data?.candidates?.[0]?.content?.parts || [])
+        .map((p) => p.text || '')
+        .join('')
+        .trim();
+      if (text) return { ok: true, text };
+      return { ok: false, error: 'Yanıt boş döndü.' };
+    } catch (err) {
+      lastErr = err?.message || 'Bağlantı hatası.';
+      if (i === models.length - 1) return { ok: false, error: lastErr };
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+  return { ok: false, error: lastErr };
 });
 
 ipcMain.on('quit-app', () => {

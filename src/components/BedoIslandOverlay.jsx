@@ -15,6 +15,9 @@ export default function BedoIslandOverlay({
   micLevel = 0,
   roboMood,
   roboReaction,
+  outfit = 'Crown',
+  seasonalOutfits = false,
+  blinkingEnabled = true,
   userTranscript,
   reply,
   thinkingHint = '',
@@ -57,6 +60,9 @@ export default function BedoIslandOverlay({
             showMouth={true}
             size="mini"
             trackCursor={false}
+            outfit={outfit}
+            seasonalOutfits={seasonalOutfits}
+            blinkingEnabled={blinkingEnabled}
             active={active}
           />
         </span>

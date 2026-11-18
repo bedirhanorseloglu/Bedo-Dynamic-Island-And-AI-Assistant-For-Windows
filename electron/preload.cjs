@@ -50,11 +50,17 @@ contextBridge.exposeInMainWorld('twocode', {
     return () => ipcRenderer.removeListener('navigate-settings-tab', listener);
   },
   pickProgramFile: () => ipcRenderer.invoke('pick-program-file'),
+  getInstalledApps: (opts) => ipcRenderer.invoke('get-installed-apps', opts),
   triggerIslandEmotion: (emotion) => ipcRenderer.send('trigger-island-emotion', emotion),
   onIslandEmotion: (cb) => {
     const listener = (_event, emotion) => cb(emotion);
     ipcRenderer.on('island-emotion', listener);
     return () => ipcRenderer.removeListener('island-emotion', listener);
+  },
+  onIslandShortcutAction: (cb) => {
+    const listener = (_event, payload) => cb(payload);
+    ipcRenderer.on('island-shortcut-action', listener);
+    return () => ipcRenderer.removeListener('island-shortcut-action', listener);
   },
   triggerTestNotification: (notif) => ipcRenderer.send('trigger-test-notification', notif),
   getAiHistory: () => ipcRenderer.invoke('get-ai-history'),
@@ -200,6 +206,14 @@ contextBridge.exposeInMainWorld('twocode', {
   bedoSetPaused: (paused) => ipcRenderer.invoke('bedo:set-paused', paused),
   bedoSetWebcam: (active) => ipcRenderer.invoke('bedo:set-webcam', active),
   bedoSyncIslandState: (state) => ipcRenderer.invoke('bedo:island-state', state),
+  bedoPreviewVoice: (opts) => ipcRenderer.invoke('bedo:preview-voice', opts),
+  startBedoBuddy: () => ipcRenderer.invoke('bedo-buddy:start'),
+  askRoboVision: (payload) => ipcRenderer.invoke('ask-robo-vision', payload),
+  onBedoBuddyCaptured: (cb) => {
+    const listener = (_event, payload) => cb(payload);
+    ipcRenderer.on('buddy-captured', listener);
+    return () => ipcRenderer.removeListener('buddy-captured', listener);
+  },
   onBedoEvent: (cb) => {
     const listener = (_event, msg) => cb(msg);
     ipcRenderer.on('bedo-event', listener);

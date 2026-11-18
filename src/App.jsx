@@ -1309,6 +1309,8 @@ export default function App() {
   const [focusMinutes, setFocusMinutes] = useState(25);
   const [timerSeconds, setTimerSeconds] = useState(25 * 60);
   const [timerRunning, setTimerRunning] = useState(false);
+  const timerRunningRef = useRef(false);
+  timerRunningRef.current = timerRunning;
   const rulerRef = useRef(null);
   const [isDraggingRuler, setIsDraggingRuler] = useState(false);
   const [showPlayOnPopover, setShowPlayOnPopover] = useState(false);
@@ -1369,6 +1371,7 @@ export default function App() {
   const currentMediaRef = useRef({ hasSession: false, isPlaying: false });
 
   const pauseMediaForBedo = useCallback(() => {
+    if (islandSettingsRef.current?.bedoPauseMedia === false) return;
     if (currentMediaRef.current?.hasSession && currentMediaRef.current?.isPlaying && !bedoPausedMediaRef.current) {
       bedoPausedMediaRef.current = true;
       window.twocode?.mediaControl?.('playPause');
@@ -1409,8 +1412,15 @@ export default function App() {
     const api = window.twocode;
     if (!api?.bedoStart) return;
 
-    api.bedoStart({ startPaused: true, enableWake: true, enableClap: false }).then((res) => {
-      if (res?.status) setBedoStatus(res.status);
+    (api.getSettings ? api.getSettings() : Promise.resolve(null)).then((saved) => {
+      if (saved?.bedoAutoStart === false) return;
+      api.bedoStart({
+        startPaused: true,
+        enableWake: saved?.bedoEnableWake !== false,
+        enableClap: false,
+      }).then((res) => {
+        if (res?.status) setBedoStatus(res.status);
+      }).catch(() => {});
     }).catch(() => {});
 
     let prevPaused = true;
@@ -2176,7 +2186,14 @@ export default function App() {
     notifSound: 'Ding',
     googleConnected: false,
     googleEmail: '',
+    bedoEnableWake: true,
+    bedoPauseMedia: true,
+    bedoAutoStart: true,
+    showAppsInDock: true,
+    closeIslandOnAppOpen: false,
   });
+  const islandSettingsRef = useRef(islandSettings);
+  islandSettingsRef.current = islandSettings;
   const langCode = normalizeLanguage(islandSettings.language);
   const t = useMemo(() => createTranslator(langCode), [langCode]);
   const locale = getLocale(langCode);
@@ -2190,6 +2207,33 @@ export default function App() {
   // App-Aware Context & Live Activities (Steam / Downloads)
   const [appContext, setAppContext] = useState({ app: '', category: 'desktop' });
   const [liveActivity, setLiveActivity] = useState(null);
+  const [focusGuardPrompt, setFocusGuardPrompt] = useState(null);
+  const focusGuardCooldownRef = useRef({});
+  const focusGuardLastAppRef = useRef('');
+
+  const recordFocusGuardStat = (field) => {
+    try {
+      const todayKey = new Date().toISOString().slice(0, 10);
+      const raw = JSON.parse(localStorage.getItem('twocode_focus_guard_stats') || '{}');
+      const current = raw.date === todayKey ? raw : { date: todayKey, turnedBack: 0, openedAnyway: 0 };
+      const next = {
+        date: todayKey,
+        turnedBack: Number(current.turnedBack || 0) + (field === 'turnedBack' ? 1 : 0),
+        openedAnyway: Number(current.openedAnyway || 0) + (field === 'openedAnyway' ? 1 : 0),
+      };
+      localStorage.setItem('twocode_focus_guard_stats', JSON.stringify(next));
+    } catch {}
+  };
+
+  useEffect(() => {
+    if (!focusGuardPrompt || focusGuardPrompt.secondsLeft <= 0) return;
+    const tId = setTimeout(() => {
+      setFocusGuardPrompt((prev) =>
+        prev ? { ...prev, secondsLeft: Math.max(0, prev.secondsLeft - 1) } : null
+      );
+    }, 1000);
+    return () => clearTimeout(tId);
+  }, [focusGuardPrompt]);
 
   const batteryTimerRef = useRef(null);
   const hudTimerRef = useRef(null);
@@ -2532,13 +2576,21 @@ export default function App() {
     currentMedia.isPlaying,
   ]);
 
+  const hasLeftRestingSlot = Boolean(islandSettings.leftOfRobo && islandSettings.leftOfRobo !== 'Nothing');
+  const hasRightRestingSlot = Boolean(islandSettings.rightOfRobo && islandSettings.rightOfRobo !== 'Nothing');
+  const hasRestingSlots = hasLeftRestingSlot || hasRightRestingSlot;
+
   const collapsedBaseWidth = useMemo(() => {
     if (resolvedCollapsedMode === 'music-bar') return dynamicMusicBarWidth + 18;
     if (resolvedCollapsedMode === 'mini-progress') return 268;
     if (resolvedCollapsedMode === 'focus-bar') return 126;
     if (resolvedCollapsedMode === 'focus-bar-media') return 120;
-    return liveActivity?.active ? 200 : 146;
-  }, [resolvedCollapsedMode, dynamicMusicBarWidth, liveActivity?.active]);
+    if (liveActivity?.active) return 200;
+    if (hasRestingSlots) {
+      return 132 + (hasLeftRestingSlot ? 46 : 0) + (hasRightRestingSlot ? 46 : 0);
+    }
+    return islandSettings.roboEyesVisible === false ? 96 : 146;
+  }, [resolvedCollapsedMode, dynamicMusicBarWidth, liveActivity?.active, hasRestingSlots, hasLeftRestingSlot, hasRightRestingSlot, islandSettings.roboEyesVisible]);
 
   // Sync window shape & 60fps animation with Electron main process whenever islandMode or dynamic widths change
   useEffect(() => {
@@ -2552,12 +2604,12 @@ export default function App() {
       window.twocode?.setIslandMode('battery', 366);
     } else if (islandMode === 'bedo-live') {
       window.twocode?.setIslandMode('bedo-live');
-    } else if (islandMode === 'idle' && liveActivity?.active) {
+    } else if (islandMode === 'idle' && (liveActivity?.active || hasRestingSlots)) {
       window.twocode?.setIslandMode('idle-live');
     } else {
       window.twocode?.setIslandMode(islandMode);
     }
-  }, [islandMode, dynamicMusicBarWidth, dynamicNotifToastWidth, dynamicHudSize.width, liveActivity?.active]);
+  }, [islandMode, dynamicMusicBarWidth, dynamicNotifToastWidth, dynamicHudSize.width, liveActivity?.active, hasRestingSlots]);
 
   // Keep collapsed notch updated if media starts/pauses/stops while collapsed
   useEffect(() => {
@@ -2586,7 +2638,64 @@ export default function App() {
     const cleanups = [];
     if (window.twocode?.onAppContext) {
       cleanups.push(window.twocode.onAppContext((ctx) => {
-        if (ctx) setAppContext(ctx);
+        if (!ctx) return;
+        setAppContext(ctx);
+
+        const cfg = islandSettingsRef.current;
+        if (!cfg?.focusGuardEnabled) {
+          focusGuardLastAppRef.current = ctx.app || '';
+          return;
+        }
+        if (cfg.focusGuardOnlyDuringFocus && !timerRunningRef.current) return;
+
+        const rawApp = String(ctx.app || '').trim();
+        const lowerApp = rawApp.toLowerCase();
+        if (!lowerApp || lowerApp === focusGuardLastAppRef.current.toLowerCase()) return;
+        focusGuardLastAppRef.current = rawApp;
+        if (lowerApp.includes('twocode') || lowerApp.includes('bedo')) return;
+
+        const selectedApps = Array.isArray(cfg.focusGuardApps) ? cfg.focusGuardApps : [];
+        let matchedLabel = '';
+        let matchedKey = '';
+        for (const site of selectedApps) {
+          const sLower = String(site || '').toLowerCase();
+          if (!sLower) continue;
+          const hit = sLower === 'x'
+            ? /(\bx\b|twitter)/i.test(rawApp)
+            : lowerApp.includes(sLower);
+          if (hit) {
+            matchedLabel = site;
+            matchedKey = sLower;
+            break;
+          }
+        }
+        if (!matchedKey && cfg.focusGuardCustom) {
+          const customTerms = String(cfg.focusGuardCustom)
+            .split(',')
+            .map((t) => t.trim())
+            .filter((t) => t.length >= 2);
+          for (const term of customTerms) {
+            if (lowerApp.includes(term.toLowerCase())) {
+              matchedLabel = term;
+              matchedKey = term.toLowerCase();
+              break;
+            }
+          }
+        }
+        if (!matchedKey) return;
+
+        const until = focusGuardCooldownRef.current[matchedKey] || 0;
+        if (Date.now() < until) return;
+
+        const waitSec = Number(cfg.focusGuardWaitSec) || 5;
+        suppressHoverCollapseUntilRef.current = Date.now() + (waitSec + 4) * 1000;
+        setFocusGuardPrompt({
+          appLabel: matchedLabel,
+          matchedKey,
+          secondsLeft: waitSec,
+          totalSec: waitSec,
+        });
+        setIslandMode('expanded');
       }));
     }
     if (window.twocode?.onLiveActivity) {
@@ -2763,7 +2872,9 @@ export default function App() {
       if (!notif || (!notif.title && !notif.body)) return;
       if (islandSettings.doNotDisturb || islandSettings.windowsNotifications === false) return;
       const isGHelperFeedback = /^(ghelper|g-helper)$/i.test(`${notif.app || ''}`) || /(?:^|[\s_-])g-?helper(?:$|[\s_-])/i.test(`${notif.appId || ''}`);
+      if (timerRunningRef.current && !islandSettingsRef.current?.notifDuringFocus && !isGHelperFeedback) return;
       if (!notif.isAgentActivity && !isGHelperFeedback && modeToggles.onlyClaude && !/claude|anthropic/i.test(`${notif.app || ''} ${notif.appId || ''}`)) return;
+      const hideNotifText = islandSettingsRef.current?.notifShowText === 'Hide';
       const notifId = notif.id || `notification_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       const notification = {
         id: notifId,
@@ -2778,8 +2889,8 @@ export default function App() {
         sender: notif.sender || '',
         notificationKind: notif.notificationKind || '',
         callKind: notif.callKind || '',
-        title: notif.title || notif.app || 'Notification',
-        body: notif.body || '',
+        title: hideNotifText ? (notif.app || 'Yeni bildirim') : (notif.title || notif.app || 'Notification'),
+        body: hideNotifText ? '' : (notif.body || ''),
         targetUrl: notif.targetUrl || '',
         isAgentActivity: Boolean(notif.isAgentActivity),
       };
@@ -2856,8 +2967,57 @@ export default function App() {
     const unsubEmotion = window.twocode.onIslandEmotion?.((emotion) => {
       if (emotion) {
         setRoboMood(emotion);
-        playRoboSound(emotion, true);
+        playRoboSound(emotion, islandSettingsRef.current?.soundEffects !== false);
         setTimeout(() => setRoboMood('normal'), 3200);
+      }
+    });
+
+    const unsubShortcutAction = window.twocode.onIslandShortcutAction?.((payload) => {
+      if (!payload || typeof payload !== 'object') return;
+      setShowMenu(false);
+      setNotificationHistoryOpen(false);
+      setIslandOverlay(null);
+      if (payload.action === 'bedo') {
+        pauseMediaForBedo();
+        setSelectedAiProvider('Bedo');
+        setActiveTab('robo');
+        setIslandMode('expanded');
+        window.twocode?.bedoSetPaused?.(false);
+      } else if (payload.action === 'tab' && payload.tab) {
+        setActiveTab(payload.tab);
+        setIslandMode('expanded');
+      }
+    });
+
+    const unsubBuddy = window.twocode.onBedoBuddyCaptured?.(async (payload) => {
+      if (!payload?.imageDataUrl) return;
+      setShowMenu(false);
+      setNotificationHistoryOpen(false);
+      setIslandOverlay(null);
+      setSelectedAiProvider('Bedo');
+      setActiveTab('robo');
+      setIslandMode('expanded');
+      setBedoUserTranscript('Ekrandan seçilen bölge');
+      setRoboReply(null);
+      setRoboLoading(true);
+      setRoboMood('thinking');
+      try {
+        const res = await window.twocode?.askRoboVision?.({ imageDataUrl: payload.imageDataUrl });
+        setRoboLoading(false);
+        if (res?.ok && res?.text) {
+          setRoboMood('happy');
+          triggerRoboReaction('success', 3, 1450);
+          playRoboSound('happy', islandSettingsRef.current?.soundEffects !== false);
+          setRoboReply(res.text);
+        } else {
+          setRoboMood('sad');
+          playRoboSound('sad', islandSettingsRef.current?.soundEffects !== false);
+          setRoboReply(res?.error || 'Ekran bölgesi analiz edilemedi.');
+        }
+      } catch (err) {
+        setRoboLoading(false);
+        setRoboMood('sad');
+        setRoboReply(err?.message || 'Ekran analizi başarısız oldu.');
       }
     });
 
@@ -3125,6 +3285,8 @@ export default function App() {
       if (deferredCollapseTimerRef.current) clearTimeout(deferredCollapseTimerRef.current);
       if (unsubSettings) unsubSettings();
       if (unsubEmotion) unsubEmotion();
+      if (unsubShortcutAction) unsubShortcutAction();
+      if (unsubBuddy) unsubBuddy();
       if (unsubAiHist) unsubAiHist();
       if (unsubHover) unsubHover();
       if (unsubGameMode) unsubGameMode();
@@ -3188,9 +3350,49 @@ export default function App() {
 
   const formatClockDisplay = (d) => {
     const hour = d.getHours();
-    const displayHour = clock24Hour ? hour : hour % 12 || 12;
+    const use24Hour =
+      islandSettings.clockFormat === '24-hour · 18:30'
+        ? true
+        : islandSettings.clockFormat === '12-hour · 6:30 PM'
+        ? false
+        : clock24Hour;
+    const displayHour = use24Hour ? hour : hour % 12 || 12;
     const time = `${String(displayHour).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}${clockShowSeconds ? `:${String(d.getSeconds()).padStart(2, '0')}` : ''}`;
-    return { time, suffix: clock24Hour ? '' : hour < 12 ? 'AM' : 'PM' };
+    return { time, suffix: use24Hour ? '' : hour < 12 ? 'AM' : 'PM' };
+  };
+
+  const renderRestingSlot = (slotKey) => {
+    if (!slotKey || slotKey === 'Nothing') return null;
+    if (slotKey === 'Time') {
+      const { time, suffix } = formatClockDisplay(now);
+      return (
+        <span className="idle-slot-badge is-time">
+          {time}{suffix ? ` ${suffix}` : ''}
+        </span>
+      );
+    }
+    if (slotKey === 'Battery') {
+      return (
+        <span className={`idle-slot-badge is-battery ${batteryPercent <= 20 && !batteryCharging ? 'is-low' : ''} ${batteryCharging ? 'is-charging' : ''}`}>
+          {batteryCharging ? '⚡' : ''}{batteryPercent}%
+        </span>
+      );
+    }
+    if (slotKey === 'Wi-Fi') {
+      return (
+        <span className={`idle-slot-badge is-icon ${networkInfo.wifiConnected ? 'is-on' : 'is-off'}`} title={networkInfo.wifi || 'Wi-Fi'}>
+          <Wifi size={11} strokeWidth={2.4} />
+        </span>
+      );
+    }
+    if (slotKey === 'Bluetooth') {
+      return (
+        <span className={`idle-slot-badge is-icon ${networkInfo.bluetoothState === 'On' ? 'is-on' : 'is-off'}`} title="Bluetooth">
+          <Bluetooth size={11} strokeWidth={2.4} />
+        </span>
+      );
+    }
+    return null;
   };
 
   const renderDateTop = (d, compact = false) => {
@@ -3626,13 +3828,15 @@ export default function App() {
     >
       <div
         ref={morphShellRef}
-        className={`notch-morph-shell state-${islandMode} mode-${activeTab} ${liveActivity?.active ? 'has-live-activity' : ''} ${batteryAlertKind === 'charging' ? 'is-charging' : ''} ${activeTab === 'home' && isCustomizingClock ? 'customizing-clock' : ''
+        className={`notch-morph-shell state-${islandMode} mode-${activeTab} ${liveActivity?.active ? 'has-live-activity' : ''} ${hasRestingSlots ? 'has-resting-slots' : ''} ${islandSettings.islandStyle === 'Floating' ? 'style-floating' : 'style-attached'} ${islandSettings.islandSize === 'Compact' ? 'size-compact' : islandSettings.islandSize === 'Large' ? 'size-large' : 'size-normal'} ${Number(islandSettings.islandSeeThrough || 0) > 0 ? 'is-see-through' : ''} ${batteryAlertKind === 'charging' ? 'is-charging' : ''} ${activeTab === 'home' && isCustomizingClock ? 'customizing-clock' : ''
           } ${activeTab === 'robo' && !bedoStatus.paused && (roboLoading || bedoStatus.jarvisState === 'THINKING') ? 'is-bedo-thinking' : ''
           } ${musicAccent.hasColor ? 'has-cover-color' : ''} ${islandMode === 'hud' && hudOverlay.ghelper?.category === 'aura'
             ? `has-aura-hud effect-${hudOverlay.ghelper.effectType || 'static'}`
             : ''
           }`}
         style={{
+          '--island-scale': islandSettings.islandSize === 'Compact' ? 0.92 : islandSettings.islandSize === 'Large' ? 1.06 : 1,
+          '--island-bg-opacity': Math.max(0.32, 1 - (Math.min(60, Math.max(0, Number(islandSettings.islandSeeThrough || 0))) / 100) * 0.95).toFixed(2),
           '--music-accent-rgb': musicAccent.rgb,
           '--music-accent-hex': musicAccent.hex,
           '--notif-accent-rgb': notifBrand.rgb,
@@ -3640,6 +3844,30 @@ export default function App() {
           '--notif-accent-secondary-rgb': notifBrand.secondaryRgb || notifBrand.rgb,
           '--notif-accent-secondary-hex': notifBrand.secondaryHex || notifBrand.hex,
           '--robo-eye-color': islandSettings.eyeColorHex || '#ffffff',
+          '--robo-body-hex': ({
+            Cloud: '#f4f4f5',
+            Mint: '#6ee7b7',
+            Sky: '#7dd3fc',
+            Rose: '#f9a8d4',
+            Classic: '#4b5563',
+            Night: '#27272a',
+            Blue: '#3b82f6',
+            Purple: '#8b5cf6',
+            Pink: '#ec4899',
+            Gold: '#f59e0b',
+          }[islandSettings.bodyColor || 'Cloud'] || '#f4f4f5'),
+          '--robo-body-rgb': ({
+            Cloud: '255, 255, 255',
+            Mint: '110, 231, 183',
+            Sky: '125, 211, 252',
+            Rose: '249, 168, 212',
+            Classic: '148, 163, 184',
+            Night: '82, 82, 91',
+            Blue: '59, 130, 246',
+            Purple: '139, 92, 246',
+            Pink: '236, 72, 153',
+            Gold: '245, 158, 11',
+          }[islandSettings.bodyColor || 'Cloud'] || '255, 255, 255'),
           '--dynamic-music-w': `${dynamicMusicBarWidth}px`,
           '--dynamic-notif-w': `${dynamicNotifToastWidth}px`,
           '--dynamic-notif-h': `${dynamicNotifToastHeight}px`,
@@ -3749,27 +3977,38 @@ export default function App() {
           {liveActivity?.active ? (
             <IdleLiveActivityPill liveActivity={liveActivity} />
           ) : (
-            <div className="idle-eyes-center">
-              <RoboEyes
-                mood={topEyeMood}
-                reaction={roboReaction}
-                active={documentVisible && islandMode === 'idle'}
-                trackCursor={false}
-                size="normal"
-                onPoke={() => {
-                  pauseMediaForBedo();
-                  suppressHoverCollapseUntilRef.current = Date.now() + 6000;
-                  setIslandMode('bedo-live');
-                  setSelectedAiProvider('Bedo');
-                  if (bedoStatus.paused) {
-                    window.twocode?.bedoSetPaused?.(false);
-                  }
-                }}
-                batteryPercent={batteryPercent}
-                batteryCharging={batteryCharging}
-                unreadNotificationCount={unreadNotificationCount}
-                pendingAgendaCount={pendingAgendaCount}
-              />
+            <div className={`idle-resting-row ${hasRestingSlots ? 'has-slots' : ''}`}>
+              {renderRestingSlot(islandSettings.leftOfRobo)}
+              {islandSettings.roboEyesVisible !== false ? (
+                <div className="idle-eyes-center">
+                  <RoboEyes
+                    mood={topEyeMood}
+                    reaction={roboReaction}
+                    active={documentVisible && islandMode === 'idle'}
+                    trackCursor={false}
+                    blinkingEnabled={islandSettings.blinkingEnabled !== false}
+                    outfit={islandSettings.outfit || 'Best'}
+                    seasonalOutfits={Boolean(islandSettings.seasonalOutfits)}
+                    size="normal"
+                    onPoke={() => {
+                      pauseMediaForBedo();
+                      suppressHoverCollapseUntilRef.current = Date.now() + 6000;
+                      setIslandMode('bedo-live');
+                      setSelectedAiProvider('Bedo');
+                      if (bedoStatus.paused) {
+                        window.twocode?.bedoSetPaused?.(false);
+                      }
+                    }}
+                    batteryPercent={batteryPercent}
+                    batteryCharging={batteryCharging}
+                    unreadNotificationCount={unreadNotificationCount}
+                    pendingAgendaCount={pendingAgendaCount}
+                  />
+                </div>
+              ) : !hasRestingSlots ? (
+                <span className="idle-minimal-bar" />
+              ) : null}
+              {renderRestingSlot(islandSettings.rightOfRobo)}
             </div>
           )}
         </div>
@@ -4064,6 +4303,9 @@ export default function App() {
             micLevel={bedoMicLevel}
             roboMood={roboMood}
             roboReaction={roboReaction}
+            outfit={islandSettings.outfit || 'Crown'}
+            seasonalOutfits={Boolean(islandSettings.seasonalOutfits)}
+            blinkingEnabled={islandSettings.blinkingEnabled !== false}
             userTranscript={bedoUserTranscript}
             reply={roboReply}
             thinkingHint={bedoThinkingHint}
@@ -4406,6 +4648,9 @@ export default function App() {
                     mood={topEyeMood}
                     reaction={roboReaction}
                     active={documentVisible && (islandMode === 'expanded' || Boolean(roboReaction))}
+                    blinkingEnabled={islandSettings.blinkingEnabled !== false}
+                    outfit={islandSettings.outfit || 'Best'}
+                    seasonalOutfits={Boolean(islandSettings.seasonalOutfits)}
                     batteryPercent={batteryPercent}
                     batteryCharging={batteryCharging}
                     unreadNotificationCount={unreadNotificationCount}
@@ -4794,7 +5039,58 @@ export default function App() {
           {/* ============================================================
               OVERLAY 0: FILE DRAG-DROP 3-CARD TARGETS (Matches media_1794049683895_d176ec76.jpg)
               ============================================================ */}
-          {islandOverlay === 'all-apps' ? (() => {
+          {focusGuardPrompt ? (
+            <div className="focus-guard-island-overlay">
+              <div className="focus-guard-breath-ring">
+                <span>{focusGuardPrompt.secondsLeft > 0 ? focusGuardPrompt.secondsLeft : '✓'}</span>
+              </div>
+              <div className="focus-guard-copy">
+                <strong>
+                  {langCode === 'tr'
+                    ? `${focusGuardPrompt.appLabel} açılıyor — bir an dur`
+                    : `Opening ${focusGuardPrompt.appLabel} — pause for a moment`}
+                </strong>
+                <span>
+                  {focusGuardPrompt.secondsLeft > 0
+                    ? langCode === 'tr'
+                      ? `Derin bir nefes al (${focusGuardPrompt.secondsLeft} sn)...`
+                      : `Take a deep breath (${focusGuardPrompt.secondsLeft}s)...`
+                    : langCode === 'tr'
+                    ? 'Odakta kalmak ister misin?'
+                    : 'Do you want to stay focused?'}
+                </span>
+              </div>
+              <div className="focus-guard-actions">
+                <button
+                  type="button"
+                  className="focus-guard-btn primary"
+                  onClick={() => {
+                    recordFocusGuardStat('turnedBack');
+                    setFocusGuardPrompt(null);
+                    setIslandMode(resolvedCollapsedMode);
+                  }}
+                >
+                  {langCode === 'tr' ? 'Geri dön' : 'Turn back'}
+                </button>
+                <button
+                  type="button"
+                  className="focus-guard-btn ghost"
+                  disabled={focusGuardPrompt.secondsLeft > 0}
+                  onClick={() => {
+                    const leaveMin = Number(islandSettingsRef.current?.focusGuardLeaveMin) || 5;
+                    focusGuardCooldownRef.current[focusGuardPrompt.matchedKey] = Date.now() + leaveMin * 60 * 1000;
+                    recordFocusGuardStat('openedAnyway');
+                    setFocusGuardPrompt(null);
+                    setIslandMode(resolvedCollapsedMode);
+                  }}
+                >
+                  {langCode === 'tr'
+                    ? `Yine de aç (${Number(islandSettingsRef.current?.focusGuardLeaveMin) || 5} dk)`
+                    : `Open anyway (${Number(islandSettingsRef.current?.focusGuardLeaveMin) || 5}m)`}
+                </button>
+              </div>
+            </div>
+          ) : islandOverlay === 'all-apps' ? (() => {
             const builtInApps = [
               { id: 'music', label: t('allApps.music'), icon: Music, action: () => { setActiveTab('music'); setIslandOverlay(null); } },
               { id: 'drop', label: t('allApps.drop'), icon: UploadCloud, action: () => { setActiveTab('drop'); setIslandOverlay(null); } },
@@ -5280,6 +5576,9 @@ export default function App() {
                                     showMouth={true}
                                     size="mini"
                                     trackCursor={false}
+                                    blinkingEnabled={islandSettings.blinkingEnabled !== false}
+                                    outfit={islandSettings.outfit || 'Best'}
+                                    seasonalOutfits={Boolean(islandSettings.seasonalOutfits)}
                                     active={documentVisible && islandMode === 'expanded' && activeTab === 'home'}
                                   />
                                 </div>
@@ -5385,9 +5684,9 @@ export default function App() {
                                       <strong className="home-card-title">
                                         {currentMedia.title}
                                       </strong>
-                                      {currentMedia.hasSession && (
+                                      {currentMedia.hasSession && currentMedia.artist && (
                                         <span className="home-card-sub">
-                                          {currentMedia.artist || 'Windows Media'}
+                                          {currentMedia.artist}
                                         </span>
                                       )}
                                     </div>
@@ -5690,6 +5989,9 @@ export default function App() {
                         micLevel={bedoMicLevel}
                         roboMood={roboMood}
                         roboReaction={roboReaction}
+                        outfit={islandSettings.outfit || 'Crown'}
+                        seasonalOutfits={Boolean(islandSettings.seasonalOutfits)}
+                        blinkingEnabled={islandSettings.blinkingEnabled !== false}
                         documentVisible={documentVisible}
                         userTranscript={bedoUserTranscript}
                         reply={roboReply}
@@ -5700,6 +6002,7 @@ export default function App() {
                         onToggleMute={() => window.twocode?.bedoSetMuted?.(!bedoStatus.muted)}
                         onTogglePause={() => window.twocode?.bedoSetPaused?.(!bedoStatus.paused)}
                         onToggleWebcam={() => window.twocode?.bedoSetWebcam?.(!bedoStatus.webcamActive)}
+                        onStartBuddy={() => window.twocode?.startBedoBuddy?.()}
                         onCopyReply={() => {
                           if (roboReply) window.twocode?.copyText(roboReply);
                           playRoboSound('tap', islandSettings.soundEffects !== false);
@@ -6388,6 +6691,7 @@ export default function App() {
 
               {/* BOTTOM NAVIGATION DOCK */}
               <footer className="island-dock">
+                {islandSettings.showAppsInDock !== false && (
                 <div className={`dock-shortcuts-pill ${draggingShortcutId ? 'is-reordering' : ''}`}>
                   {shortcuts.map((sc) => (
                     <button
@@ -6455,6 +6759,11 @@ export default function App() {
                         if (suppressShortcutClickRef.current) return;
                         triggerRoboReaction('app-open', 2, 1050);
                         window.twocode?.openApp(sc);
+                        if (islandSettings.closeIslandOnAppOpen) {
+                          setShowMenu(false);
+                          setNotificationHistoryOpen(false);
+                          setIslandMode(resolvedCollapsedMode);
+                        }
                       }}
                     >
                       <span style={{ pointerEvents: 'none', display: 'inline-flex', WebkitUserDrag: 'none' }}>
@@ -6479,6 +6788,7 @@ export default function App() {
                     </button>
                   </div>
                 </div>
+                )}
 
                 <nav className="dock-tabs" ref={dockTabsRef} aria-label={t('dock.modesAria')}>
                   <div

@@ -107,20 +107,32 @@ select {
   );
   --shell-liquid-body: linear-gradient(
     180deg,
-    rgba(5, 7, 11, 0.98) 0%,
-    rgba(10, 13, 20, 0.96) 26%,
-    rgba(7, 9, 15, 0.97) 100%
+    rgba(5, 7, 11, var(--island-bg-opacity, 0.98)) 0%,
+    rgba(10, 13, 20, var(--island-bg-opacity, 0.96)) 26%,
+    rgba(7, 9, 15, var(--island-bg-opacity, 0.97)) 100%
   );
   background: var(--shell-liquid-sheen), var(--shell-liquid-body);
   border: none;
   box-shadow: inset 0 10px 14px -8px rgba(0, 0, 0, 0.88), 0 10px 24px rgba(0, 0, 0, 0.44);
-  transform: translateZ(0);
+  transform: scale(var(--island-scale, 1)) translateZ(0);
+  transform-origin: top center;
   contain: layout style;
-  will-change: width, height;
+  will-change: width, height, transform;
   transition:
     width 0.22s cubic-bezier(0.22, 1, 0.36, 1),
     height 0.22s cubic-bezier(0.22, 1, 0.36, 1),
-    border-radius 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+    border-radius 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+    margin-top 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.notch-morph-shell.is-see-through {
+  backdrop-filter: blur(22px) saturate(165%);
+  -webkit-backdrop-filter: blur(22px) saturate(165%);
+}
+
+.notch-morph-shell.style-floating {
+  margin-top: 8px;
 }
 
 .notch-morph-shell::before {
@@ -134,16 +146,34 @@ select {
   z-index: 40;
 }
 
+.notch-morph-shell.style-floating::before {
+  border-top: 1px solid rgba(var(--shell-border-tint), 0.14);
+}
+
 .notch-morph-shell.state-idle {
-  width: 152px;
+  width: var(--collapsed-base-w, 152px);
   height: 22px;
   border-radius: 0 0 11px 11px;
   cursor: pointer;
-  background: rgba(12, 15, 22, 0.86);
+  background: rgba(12, 15, 22, var(--island-bg-opacity, 0.86));
   border-color: rgba(255, 255, 255, 0.18);
   box-shadow:
     inset 0 -1px 0 rgba(255, 255, 255, 0.14),
     0 6px 18px rgba(0, 0, 0, 0.28);
+}
+
+.notch-morph-shell.style-floating.state-idle,
+.notch-morph-shell.style-floating.state-mini-progress,
+.notch-morph-shell.style-floating.state-hud,
+.notch-morph-shell.style-floating.state-music-bar,
+.notch-morph-shell.style-floating.state-bedo-live {
+  border-radius: 999px;
+}
+
+.notch-morph-shell.style-floating.state-expanded,
+.notch-morph-shell.style-floating.state-notif-toast,
+.notch-morph-shell.style-floating.state-battery {
+  border-radius: 24px;
 }
 
 .notch-morph-shell.state-idle.has-live-activity {
@@ -703,9 +733,55 @@ select {
   justify-content: center;
 }
 
-.layer-idle .robo-eyes-wrap {
-  gap: 5px;
+.idle-resting-row {
+  display: flex;
   align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 100%;
+}
+
+.idle-slot-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: rgba(244, 244, 248, 0.9);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.idle-slot-badge.is-battery.is-charging {
+  color: #55e6a5;
+}
+
+.idle-slot-badge.is-battery.is-low {
+  color: #ff6b6b;
+}
+
+.idle-slot-badge.is-icon.is-on {
+  color: #8dbbff;
+}
+
+.idle-slot-badge.is-icon.is-off {
+  color: rgba(180, 184, 196, 0.55);
+}
+
+.idle-minimal-bar {
+  width: 34px;
+  height: 3.5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.layer-idle .robo-eyes-wrap {
+  gap: 4px;
+  align-items: center;
+  padding: 5px 9px 2px;
 }
 
 .layer-idle .robo-prop-unread,
@@ -737,13 +813,14 @@ select {
 }
 
 .layer-idle .robo-eye {
-  width: 6.5px;
-  height: 11.5px;
+  width: 4.5px;
+  height: 7px;
   border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.42);
   background: var(--robo-eye-color, #ffffff);
   box-shadow:
-    0 0 7px var(--robo-eye-color, rgba(255, 255, 255, 0.96)),
-    0 0 16px var(--robo-eye-color, rgba(255, 255, 255, 0.65));
+    0 0 6px var(--robo-eye-color, rgba(255, 255, 255, 0.96)),
+    0 0 12px var(--robo-eye-color, rgba(255, 255, 255, 0.55));
   transform: none;
   transition:
     background 0.78s cubic-bezier(0.22, 1, 0.36, 1),
@@ -3968,25 +4045,75 @@ select {
   justify-content: center;
 }
 
-/* Robo glowing eyes */
+/* Robo glowing eyes + Bedo dome head */
 .robo-eyes-wrap {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
+  justify-content: center;
+  gap: 4.5px;
+  padding: 6px 10px 2px;
   cursor: pointer;
-  transition: transform 0.18s ease;
+  filter: drop-shadow(0 0 8px rgba(var(--robo-body-rgb, 255, 255, 255), 0.28));
+  transition: transform 0.18s ease, filter 0.35s ease;
+}
+
+.robo-body-dome {
+  position: absolute;
+  inset: 2px 3px 0 3px;
+  border-radius: 16px 16px 6px 6px;
+  background: radial-gradient(
+    circle at 38% 24%,
+    rgba(255, 255, 255, 0.38) 0%,
+    var(--robo-body-hex, #f4f4f5) 58%,
+    rgba(0, 0, 0, 0.28) 100%
+  );
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.45),
+    0 2px 6px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.robo-body-antenna {
+  position: absolute;
+  top: -3px;
+  left: 50%;
+  width: 2px;
+  height: 5px;
+  transform: translateX(-50%);
+  background: var(--robo-body-hex, #f4f4f5);
+  border-radius: 999px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.robo-body-antenna::after {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: 50%;
+  width: 3.5px;
+  height: 3.5px;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: var(--robo-body-hex, #f4f4f5);
+  box-shadow: 0 0 5px rgba(var(--robo-body-rgb, 255, 255, 255), 0.7);
 }
 
 .robo-eye {
+  position: relative;
+  z-index: 2;
   display: block;
-  width: 6.5px;
-  height: 11px;
+  width: 5px;
+  height: 8px;
   background: var(--robo-eye-color, #ffffff);
   border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.4);
   box-shadow:
-    0 0 8px var(--robo-eye-color, rgba(255, 255, 255, 0.95)),
-    0 0 16px var(--robo-eye-color, rgba(255, 255, 255, 0.55));
+    0 0 6px var(--robo-eye-color, rgba(255, 255, 255, 0.9)),
+    0 0 12px var(--robo-eye-color, rgba(255, 255, 255, 0.45));
   transition:
     background 0.78s cubic-bezier(0.22, 1, 0.36, 1),
     box-shadow 0.78s cubic-bezier(0.22, 1, 0.36, 1),
@@ -13649,6 +13776,76 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
   filter: drop-shadow(0 0 5px rgba(132, 170, 255, 0.55));
 }
 
+.robo-prop-sunglasses {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  width: 34px;
+  height: 13px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 3;
+  filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.55));
+}
+
+.robo-prop-crown {
+  position: absolute;
+  top: -4px;
+  left: 50%;
+  width: 14px;
+  height: 8px;
+  transform: translateX(-50%);
+  pointer-events: none;
+  z-index: 3;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.45));
+}
+
+.robo-prop-party {
+  position: absolute;
+  top: -5px;
+  left: 50%;
+  width: 13px;
+  height: 9px;
+  transform: translateX(-50%);
+  pointer-events: none;
+  z-index: 3;
+  filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.45));
+}
+
+.robo-prop-headphones {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  width: 36px;
+  height: 20px;
+  transform: translate(-50%, -56%);
+  pointer-events: none;
+  z-index: 3;
+  filter: drop-shadow(0 0 4px rgba(56, 189, 248, 0.45));
+}
+
+.robo-prop-halo {
+  position: absolute;
+  top: -5px;
+  left: 50%;
+  width: 17px;
+  height: 6px;
+  transform: translateX(-50%);
+  pointer-events: none;
+  z-index: 3;
+  filter: drop-shadow(0 0 5px rgba(253, 224, 71, 0.75));
+}
+
+.robo-prop-bowtie {
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  width: 14px;
+  height: 8px;
+  transform: translateX(-50%);
+  pointer-events: none;
+  z-index: 3;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.5));
+}
+
 .robo-eye.dnd-sleep {
   height: 2.5px !important;
   width: 8px;
@@ -15968,43 +16165,14 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
   width: 36px;
   height: 36px;
   flex-shrink: 0;
-  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  background:
-    radial-gradient(circle at 30% 26%, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.03) 45%, rgba(6, 8, 13, 0.92) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  box-shadow:
-    inset 0 1px 2px rgba(255, 255, 255, 0.2),
-    inset 0 -3px 6px rgba(0, 0, 0, 0.55),
-    0 4px 12px rgba(0, 0, 0, 0.32);
-  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.22s ease;
+  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .home-card.bedo-home-card:hover .bedo-home-orb {
   transform: scale(1.06);
-  border-color: rgba(255, 255, 255, 0.24);
-}
-
-.home-card.bedo-home-card:not(.is-sleeping) .bedo-home-orb::after {
-  content: '';
-  position: absolute;
-  inset: -3px;
-  border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  animation: bedoOrbBreath 2.4s ease-in-out infinite;
-}
-
-@keyframes bedoOrbBreath {
-  0%, 100% {
-    transform: scale(0.98);
-    opacity: 0.35;
-  }
-  50% {
-    transform: scale(1.06);
-    opacity: 0.75;
-  }
 }
 
 .home-card.bedo-home-card .home-card-meta {
@@ -16377,4 +16545,85 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
   width: 12px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.82);
+}
+
+.focus-guard-island-overlay {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  height: 100%;
+  padding: 18px 24px;
+  text-align: center;
+}
+
+.focus-guard-breath-ring {
+  width: 64px;
+  height: 64px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.28) 0%, rgba(16, 185, 129, 0.14) 70%);
+  border: 1.5px solid rgba(147, 197, 253, 0.55);
+  box-shadow: 0 0 28px rgba(59, 130, 246, 0.25);
+  font-size: 22px;
+  font-weight: 700;
+  color: #f8fafc;
+  animation: focusGuardBreathe 3.2s ease-in-out infinite;
+}
+
+@keyframes focusGuardBreathe {
+  0%, 100% { transform: scale(0.94); box-shadow: 0 0 22px rgba(59, 130, 246, 0.2); }
+  50% { transform: scale(1.06); box-shadow: 0 0 38px rgba(59, 130, 246, 0.45); }
+}
+
+.focus-guard-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.focus-guard-copy strong {
+  font-size: 14px;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.focus-guard-copy span {
+  font-size: 12px;
+  color: rgba(203, 213, 225, 0.82);
+}
+
+.focus-guard-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.focus-guard-btn {
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.18s ease, transform 0.18s ease, background 0.18s ease;
+}
+
+.focus-guard-btn.primary {
+  background: #f8fafc;
+  color: #090d16;
+  border-color: #f8fafc;
+}
+
+.focus-guard-btn.ghost {
+  background: rgba(255, 255, 255, 0.08);
+  color: #f8fafc;
+}
+
+.focus-guard-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }

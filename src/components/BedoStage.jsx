@@ -11,6 +11,7 @@ import {
   Video,
   VideoOff,
   X,
+  Scan,
 } from 'lucide-react';
 import RoboEyes from '../RoboEyes';
 import RoboMarkdown from '../RoboMarkdown';
@@ -36,6 +37,9 @@ export default function BedoStage({
   micLevel = 0,
   roboMood,
   roboReaction,
+  outfit = 'Crown',
+  seasonalOutfits = false,
+  blinkingEnabled = true,
   documentVisible,
   userTranscript,
   reply,
@@ -46,6 +50,7 @@ export default function BedoStage({
   onToggleMute,
   onTogglePause,
   onToggleWebcam,
+  onStartBuddy,
   onCopyReply,
   onClearReply,
   onPokeEyes,
@@ -184,6 +189,9 @@ export default function BedoStage({
                       reaction={roboReaction}
                       micLevel={micLevel}
                       showMouth={false}
+                      outfit={outfit}
+                      seasonalOutfits={seasonalOutfits}
+                      blinkingEnabled={blinkingEnabled}
                       active={documentVisible}
                     />
                   </div>
@@ -262,6 +270,15 @@ export default function BedoStage({
                     <span className="bedo-v2-ctrl-divider" aria-hidden="true" />
                   </>
                 )}
+                <button
+                  type="button"
+                  className="bedo-v2-ctrl-btn"
+                  onClick={onStartBuddy}
+                  title="Bedo Buddy — Ekrandan Sor"
+                  aria-label="Bedo Buddy — Ekrandan Sor"
+                >
+                  <Scan size={13} />
+                </button>
                 <button
                   type="button"
                   className={`bedo-v2-ctrl-btn ${webcamActive ? 'is-active' : ''}`}

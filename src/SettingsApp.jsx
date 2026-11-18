@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import RealAppIcon from './RealAppIcon';
 import {
@@ -24,7 +24,6 @@ import {
   ExternalLink,
   Play,
   Search,
-  Sparkles,
   Ban,
   Crown,
   Lock,
@@ -39,6 +38,12 @@ import {
   Monitor,
   Link2,
   RefreshCw,
+  Mic,
+  Volume2,
+  Power,
+  ArrowUp,
+  ArrowDown,
+  Plus,
 } from 'lucide-react';
 import './settings.css';
 import { playRoboSound, playNotifSound } from './sounds';
@@ -109,12 +114,18 @@ const DEFAULT_SETTINGS = {
   mailFileEnabled: false,
   claudeEnabled: true,
   codexEnabled: true,
+  geminiEnabled: true,
   claudeApiKey: '',
   codexApiKey: '',
   geminiApiKey: '',
   bedoVoice: 'Charon',
+  bedoEnableWake: true,
+  bedoPauseMedia: true,
+  bedoAutoStart: true,
   antigravityApiKey: '',
   apps: [],
+  showAppsInDock: true,
+  closeIslandOnAppOpen: false,
   roboBuddy: true,
   roboName: 'Robo',
   eyePreset: 'Classic',
@@ -132,6 +143,9 @@ const DEFAULT_SETTINGS = {
   bodyColor: 'Cloud',
   eyeColorName: 'White',
   eyeColorHex: '#ffffff',
+  soundEffects: true,
+  globalShortcutsEnabled: true,
+  startWithWindows: true,
   seasonalOutfits: true,
   language: 'English',
   windowsNotifications: true,
@@ -155,6 +169,7 @@ const DEFAULT_SETTINGS = {
   clockFormat: 'Automatic',
   lyricsEnabled: true,
   focusGuardEnabled: false,
+  focusGuardOnlyDuringFocus: false,
   focusGuardApps: ['YouTube', 'TikTok', 'Instagram'],
   focusGuardCustom: '',
   focusGuardWaitSec: 5,
@@ -163,21 +178,21 @@ const DEFAULT_SETTINGS = {
 
 const PAGE_HEADERS = {
   home: { title: 'Home', subtitle: '' },
-  connections: { title: 'Agents', subtitle: 'Connect Codex and Antigravity to TwoCode' },
-  aichat: { title: 'AI & Chat', subtitle: "Which AI Robo's chat talks to" },
-  apps: { title: 'Apps', subtitle: 'Pick which apps are in your TwoCode' },
-  robo: { title: 'Robo', subtitle: 'His name, eyes, behaviour and badges', hasSearch: true },
+  connections: { title: 'Agents', subtitle: 'Connect Codex and Antigravity to Bedo' },
+  aichat: { title: 'AI & Chat', subtitle: "Which AI Bedo's chat talks to" },
+  apps: { title: 'Apps', subtitle: 'Pick which apps are in your Bedo' },
+  robo: { title: 'Bedo', subtitle: 'His name, eyes, behaviour and badges', hasSearch: true },
   wardrobe: {
     title: 'Wardrobe',
-    subtitle: 'Pick what Robo wears. He tries it on right away.',
+    subtitle: 'Pick what Bedo wears. He tries it on right away.',
   },
-  account: { title: 'Account', subtitle: 'Your account and your TwoCode' },
+  account: { title: 'Account', subtitle: 'Your account and your Bedo' },
   general: {
     title: 'General',
-    subtitle: 'Language, behaviour and TwoCode itself',
+    subtitle: 'Language, behaviour and Bedo itself',
     hasSearch: true,
   },
-  typography: { title: 'Typography', subtitle: 'Choose the fonts used across TwoCode' },
+  typography: { title: 'Typography', subtitle: 'Choose the fonts used across Bedo' },
   notifications: { title: 'Notifications', subtitle: '' },
   island: {
     title: 'Island',
@@ -186,11 +201,11 @@ const PAGE_HEADERS = {
   },
   focusguard: {
     title: 'Focus guard',
-    subtitle: 'Robo stops you for a moment when something distracts you',
+    subtitle: 'Bedo stops you for a moment when something distracts you',
     hasSearch: true,
   },
-  news: { title: 'News', subtitle: 'What is new in TwoCode' },
-  support: { title: 'Support TwoCode', subtitle: 'Help TwoCode grow' },
+  news: { title: 'News', subtitle: 'What is new in Bedo' },
+  support: { title: 'Support Bedo', subtitle: 'Help Bedo grow' },
 };
 
 const NOTIFICATION_ITEMS = [
@@ -223,8 +238,22 @@ const NOTIFICATION_ITEMS = [
   },
 ];
 
+const BODY_COLOR_HEX = {
+  Cloud: '#f4f4f5',
+  Mint: '#6ee7b7',
+  Sky: '#7dd3fc',
+  Rose: '#f9a8d4',
+  Classic: '#4b5563',
+  Night: '#27272a',
+  Blue: '#3b82f6',
+  Purple: '#8b5cf6',
+  Pink: '#ec4899',
+  Gold: '#f59e0b',
+};
+
 // Crowned Robo SVG Avatar matching the screenshots
-function RoboCrownAvatar({ outfit = 'Best', size = 64, eyeHex = '#ffffff' }) {
+function RoboCrownAvatar({ outfit = 'Best', size = 64, eyeHex = '#ffffff', bodyColor = 'Cloud' }) {
+  const domeColor = BODY_COLOR_HEX[bodyColor] || '#ffffff';
   return (
     <div className="robo-stage-avatar" style={{ width: size, height: size }}>
       <svg viewBox="0 0 120 120" width="100%" height="100%">
@@ -241,8 +270,8 @@ function RoboCrownAvatar({ outfit = 'Best', size = 64, eyeHex = '#ffffff' }) {
         {/* Spotlight cone */}
         <polygon points="48,0 72,0 104,120 16,120" fill="url(#spotlightGrad)" />
         {/* Antenna */}
-        <line x1="60" y1="22" x2="60" y2="48" stroke="#ffffff" strokeWidth="3.5" strokeLinecap="round" />
-        <ellipse cx="60" cy="20" rx="4.5" ry="6.5" fill="#ffffff" />
+        <line x1="60" y1="22" x2="60" y2="48" stroke={domeColor} strokeWidth="3.5" strokeLinecap="round" />
+        <ellipse cx="60" cy="20" rx="4.5" ry="6.5" fill={domeColor} />
         {/* Crown if Best or Crown */}
         {(outfit === 'Best' || outfit === 'Crown') && (
           <g>
@@ -257,20 +286,54 @@ function RoboCrownAvatar({ outfit = 'Best', size = 64, eyeHex = '#ffffff' }) {
         )}
         {/* Party Hat */}
         {outfit === 'Party hat' && (
-          <polygon points="42,88 60,44 78,88" fill="#a855f7" stroke="#f472b6" strokeWidth="2" />
+          <g>
+            <polygon points="42,88 60,44 78,88" fill="#a855f7" stroke="#f472b6" strokeWidth="2" />
+            <circle cx="60" cy="44" r="4" fill="#fde047" />
+          </g>
         )}
-        {/* Robo White Head Dome */}
+        {/* Robo Head Dome */}
         <path
           d="M 28 118 C 32 88, 88 88, 92 118 Z"
-          fill="#ffffff"
-          style={{ filter: 'drop-shadow(0 0 12px rgba(255,255,255,0.65))' }}
+          fill={domeColor}
+          style={{ filter: `drop-shadow(0 0 12px ${domeColor}88)` }}
         />
+        {/* Eyes on Dome */}
+        <ellipse cx="50" cy="105" rx="3.2" ry="4.5" fill={eyeHex} stroke="rgba(0,0,0,0.28)" strokeWidth="0.8" />
+        <ellipse cx="70" cy="105" rx="3.2" ry="4.5" fill={eyeHex} stroke="rgba(0,0,0,0.28)" strokeWidth="0.8" />
         {/* Sunglasses */}
         {outfit === 'Sunglasses' && (
           <g>
-            <rect x="38" y="96" width="18" height="10" rx="2" fill="#111" />
-            <rect x="64" y="96" width="18" height="10" rx="2" fill="#111" />
-            <line x1="56" y1="100" x2="64" y2="100" stroke="#111" strokeWidth="2.5" />
+            <rect x="38" y="99" width="18" height="10" rx="2.5" fill="#111827" stroke="#e2e8f0" strokeWidth="1" />
+            <rect x="64" y="99" width="18" height="10" rx="2.5" fill="#111827" stroke="#e2e8f0" strokeWidth="1" />
+            <line x1="56" y1="104" x2="64" y2="104" stroke="#e2e8f0" strokeWidth="2" />
+          </g>
+        )}
+        {/* Headphones */}
+        {outfit === 'Headphones' && (
+          <g>
+            <path d="M 27 108 C 27 72, 93 72, 93 108" fill="none" stroke="#38bdf8" strokeWidth="4.5" strokeLinecap="round" />
+            <rect x="21" y="100" width="9" height="16" rx="4.5" fill="#0f172a" stroke="#38bdf8" strokeWidth="2" />
+            <rect x="90" y="100" width="9" height="16" rx="4.5" fill="#0f172a" stroke="#38bdf8" strokeWidth="2" />
+          </g>
+        )}
+        {/* Beanie */}
+        {outfit === 'Beanie' && (
+          <g>
+            <path d="M 33 93 C 35 62, 85 62, 87 93 Z" fill="#f97316" />
+            <rect x="30" y="88" width="60" height="8" rx="4" fill="#fb923c" />
+            <circle cx="60" cy="61" r="5.5" fill="#fed7aa" />
+          </g>
+        )}
+        {/* Halo */}
+        {outfit === 'Halo' && (
+          <ellipse cx="60" cy="64" rx="22" ry="6" fill="none" stroke="#fde047" strokeWidth="3.5" style={{ filter: 'drop-shadow(0 0 8px rgba(253,224,71,0.75))' }} />
+        )}
+        {/* Bowtie */}
+        {outfit === 'Bowtie' && (
+          <g>
+            <polygon points="44,111 60,116 44,120" fill="#f43f5e" />
+            <polygon points="76,111 60,116 76,120" fill="#f43f5e" />
+            <circle cx="60" cy="116" r="3" fill="#fda4af" />
           </g>
         )}
       </svg>
@@ -290,6 +353,44 @@ export default function SettingsApp() {
     catch { return 3; }
   });
   const [now, setNow] = useState(new Date());
+  const [fgCustomDraft, setFgCustomDraft] = useState('');
+  const [fgSavedFeedback, setFgSavedFeedback] = useState(false);
+  const [fgStats, setFgStats] = useState(() => {
+    try {
+      const todayKey = new Date().toISOString().slice(0, 10);
+      const raw = JSON.parse(localStorage.getItem('twocode_focus_guard_stats') || '{}');
+      return raw.date === todayKey ? { turnedBack: Number(raw.turnedBack || 0), openedAnyway: Number(raw.openedAnyway || 0) } : { turnedBack: 0, openedAnyway: 0 };
+    } catch {
+      return { turnedBack: 0, openedAnyway: 0 };
+    }
+  });
+
+  useEffect(() => {
+    setFgCustomDraft(settings.focusGuardCustom || '');
+  }, [settings.focusGuardCustom]);
+
+  const [installedApps, setInstalledApps] = useState([]);
+  const [installedAppsLoading, setInstalledAppsLoading] = useState(false);
+  const [installedAppsQuery, setInstalledAppsQuery] = useState('');
+
+  const loadInstalledApps = async (forceRefresh = false) => {
+    if (!window.twocode?.getInstalledApps) return;
+    setInstalledAppsLoading(true);
+    try {
+      const list = await window.twocode.getInstalledApps({ forceRefresh });
+      setInstalledApps(Array.isArray(list) ? list : []);
+    } catch {
+      setInstalledApps([]);
+    } finally {
+      setInstalledAppsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activePage === 'apps' && installedApps.length === 0 && !installedAppsLoading) {
+      loadInstalledApps(false);
+    }
+  }, [activePage]);
   const [liveMedia, setLiveMedia] = useState({ hasSession: false });
   const [aiHistory, setAiHistory] = useState({
     codexJobs: [],
@@ -318,6 +419,13 @@ export default function SettingsApp() {
   const [showKeyCodex, setShowKeyCodex] = useState(false);
   const [showKeyGemini, setShowKeyGemini] = useState(false);
   const [showKeyAntigravity, setShowKeyAntigravity] = useState(false);
+  const [bedoStatus, setBedoStatus] = useState({ running: false, ready: false, paused: true, available: true, jarvisState: 'INITIALISING', lastError: null });
+  const [bedoBusy, setBedoBusy] = useState(false);
+  const [previewingVoice, setPreviewingVoice] = useState('');
+  const [voicePreviewError, setVoicePreviewError] = useState('');
+  const [activeTestEmotion, setActiveTestEmotion] = useState('');
+  const voiceAudioRef = useRef(null);
+  const voicePreviewCacheRef = useRef(new Map());
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);
@@ -406,11 +514,20 @@ export default function SettingsApp() {
       if (m) setLiveMedia(m);
     });
 
+    window.twocode.bedoGetStatus?.().then((st) => {
+      if (st) setBedoStatus(st);
+    });
+
+    const unsubBedo = window.twocode.onBedoStatus?.((st) => {
+      if (st) setBedoStatus(st);
+    });
+
     return () => {
       if (unsubSettings) unsubSettings();
       if (unsubNavigate) unsubNavigate();
       if (unsubAi) unsubAi();
       if (unsubMedia) unsubMedia();
+      if (unsubBedo) unsubBedo();
     };
   }, []);
 
@@ -590,6 +707,33 @@ export default function SettingsApp() {
     updateSetting({ apps: nextApps });
   };
 
+  const handleMoveApp = (index, delta) => {
+    const list = [...(settings.apps || [])];
+    const target = index + delta;
+    if (target < 0 || target >= list.length) return;
+    [list[index], list[target]] = [list[target], list[index]];
+    updateSetting({ apps: list });
+  };
+
+  const handleAddPresetApp = (preset) => {
+    const current = settings.apps || [];
+    if (current.length >= 4) return;
+    if (current.some((a) => a.url === preset.url || a.name.toLowerCase() === preset.name.toLowerCase())) return;
+    updateSetting({
+      apps: [
+        ...current,
+        {
+          id: `app_${Date.now()}_${preset.type}`,
+          name: preset.name,
+          url: preset.url,
+          path: '',
+          type: preset.type,
+          iconUrl: preset.iconUrl || '',
+        },
+      ].slice(0, 4),
+    });
+  };
+
   const triggerEmotionOnIsland = (emotion) => {
     playRoboSound(emotion, settings.soundEffects !== false);
     window.twocode?.triggerIslandEmotion?.(emotion);
@@ -720,10 +864,15 @@ export default function SettingsApp() {
 
         <div className="sidebar-footer-robo" onClick={() => setActivePage('robo')}>
           <div className="mini-robo-crown-box">
-            <RoboCrownAvatar outfit={settings.outfit} size={34} />
+            <RoboCrownAvatar
+              outfit={settings.outfit}
+              size={34}
+              eyeHex={settings.eyeColorHex || '#ffffff'}
+              bodyColor={settings.bodyColor || 'Cloud'}
+            />
           </div>
           <div className="mini-robo-meta">
-            <strong>{settings.roboName || 'Robo'}</strong>
+            <strong>Bedo</strong>
             <span>{t('settings.tasksDone', { count: aiHistory.jobsToday || 2 })}</span>
           </div>
           <button
@@ -1374,8 +1523,8 @@ export default function SettingsApp() {
                     <strong>Claude Code</strong>
                     <span>
                       {langCode === 'tr'
-                        ? 'Terminalde, VS Code’da ve Claude uygulamasının Code sekmesinde Claude Code’u takip eder. Aşağıdaki API anahtarı Robo sohbeti içindir; izleme için gerekmez.'
-                        : 'Follows Claude Code in the terminal, in VS Code and in the Code tab of the Claude app. The API key below is for Robo chat; it is not needed for monitoring.'}
+                        ? 'Terminalde, VS Code’da ve Claude uygulamasının Code sekmesinde Claude Code’u takip eder. Aşağıdaki API anahtarı Bedo sohbeti içindir; izleme için gerekmez.'
+                        : 'Follows Claude Code in the terminal, in VS Code and in the Code tab of the Claude app. The API key below is for Bedo chat; it is not needed for monitoring.'}
                     </span>
                     <em className="amber-notice-text">
                       {langCode === 'tr'
@@ -1444,8 +1593,8 @@ export default function SettingsApp() {
                     <strong>Codex</strong>
                     <span>
                       {langCode === 'tr'
-                        ? 'Sizin için kod yazarken OpenAI Codex’i (uygulama, terminal veya VS Code) takip eder. Aşağıdaki API anahtarı Robo sohbeti içindir; Codex oturumu API erişimi sağlamaz.'
-                        : 'Follows OpenAI Codex (the app, the terminal or VS Code) while it codes for you. The API key below is for Robo chat; Codex sign-in does not provide API access.'}
+                        ? 'Sizin için kod yazarken OpenAI Codex’i (uygulama, terminal veya VS Code) takip eder. Aşağıdaki API anahtarı Bedo sohbeti içindir; Codex oturumu API erişimi sağlamaz.'
+                        : 'Follows OpenAI Codex (the app, the terminal or VS Code) while it codes for you. The API key below is for Bedo chat; Codex sign-in does not provide API access.'}
                     </span>
 
                     <div className="ai-api-key-box">
@@ -1605,919 +1754,1564 @@ export default function SettingsApp() {
         )}
 
         {/* ============================================================
-            PAGE 3: AI & CHAT
+            PAGE 3: AI & CHAT (Liquid Glass & Glassmorphism)
             ============================================================ */}
-        {activePage === 'aichat' && (
-          <div className="settings-page-body">
-            <p className="page-lead-text">
-              {langCode === 'tr'
-                ? 'Robo sohbeti Ajanlar’da açtığınız yapay zekayı kullanır. İkisi de açık mı? Sohbet içinde birini seçersiniz.'
-                : "Robo's chat uses the AI you turned on in Agents. Both on? Then you pick one in the chat."}
-            </p>
+        {activePage === 'aichat' && (() => {
+          const voiceOptions = [
+            { id: 'Charon', tr: 'Varsayılan • Derin', en: 'Default • Deep' },
+            { id: 'Fenrir', tr: 'Net • Güçlü', en: 'Crisp • Strong' },
+            { id: 'Puck', tr: 'Dinamik • Genç', en: 'Dynamic • Youthful' },
+            { id: 'Aoede', tr: 'Yumuşak • Doğal', en: 'Soft • Natural' },
+            { id: 'Kore', tr: 'Sıcak • Sakin', en: 'Warm • Calm' },
+            { id: 'Zephyr', tr: 'Hafif • Akıcı', en: 'Light • Fluid' },
+          ];
+          const bedoIsReady = Boolean(bedoStatus.running && !bedoStatus.paused);
+          const bedoPillLabel = !bedoStatus.available
+            ? (langCode === 'tr' ? 'Köprü bulunamadı' : 'Bridge missing')
+            : !bedoStatus.running
+              ? (langCode === 'tr' ? 'Çevrimdışı' : 'Offline')
+              : bedoStatus.paused
+                ? (langCode === 'tr' ? 'Uyku Modu' : 'Sleeping')
+                : bedoStatus.jarvisState === 'SPEAKING'
+                  ? (langCode === 'tr' ? 'Konuşuyor' : 'Speaking')
+                  : bedoStatus.jarvisState === 'THINKING'
+                    ? (langCode === 'tr' ? 'Düşünüyor' : 'Thinking')
+                    : (langCode === 'tr' ? 'Dinliyor' : 'Listening');
 
-            <div className="settings-card">
-              <div className="settings-row">
-                <div className="row-left-with-icon">
-                  <span className="ai-badge-icon lg claude">
-                    <ProviderSymbol provider="claude" size={22} />
+          const handleToggleBedoService = async () => {
+            if (bedoBusy) return;
+            setBedoBusy(true);
+            try {
+              if (!bedoStatus.running) {
+                const res = await window.twocode?.bedoStart?.({
+                  startPaused: false,
+                  enableWake: settings.bedoEnableWake !== false,
+                  enableClap: false,
+                });
+                if (res?.status) setBedoStatus(res.status);
+              } else {
+                await window.twocode?.bedoSetPaused?.(!bedoStatus.paused);
+              }
+            } finally {
+              setBedoBusy(false);
+            }
+          };
+
+          const handleStopBedoService = async () => {
+            if (bedoBusy || !bedoStatus.running) return;
+            setBedoBusy(true);
+            try {
+              const res = await window.twocode?.bedoStop?.();
+              if (res?.status) setBedoStatus(res.status);
+            } finally {
+              setBedoBusy(false);
+            }
+          };
+
+          const pcmBase64ToPlayableUrl = (base64Data, mimeType = '') => {
+            const bin = atob(base64Data);
+            const bytes = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i += 1) {
+              bytes[i] = bin.charCodeAt(i);
+            }
+            if (/audio\/(wav|mp3|mpeg|ogg|webm)/i.test(mimeType)) {
+              return URL.createObjectURL(new Blob([bytes], { type: mimeType.split(';')[0] }));
+            }
+            const rateMatch = /rate=(\d+)/i.exec(mimeType);
+            const sampleRate = rateMatch ? Number(rateMatch[1]) : 24000;
+            const buffer = new ArrayBuffer(44 + bytes.length);
+            const view = new DataView(buffer);
+            const writeStr = (offset, str) => {
+              for (let i = 0; i < str.length; i += 1) view.setUint8(offset + i, str.charCodeAt(i));
+            };
+            writeStr(0, 'RIFF');
+            view.setUint32(4, 36 + bytes.length, true);
+            writeStr(8, 'WAVE');
+            writeStr(12, 'fmt ');
+            view.setUint32(16, 16, true);
+            view.setUint16(20, 1, true);
+            view.setUint16(22, 1, true);
+            view.setUint32(24, sampleRate, true);
+            view.setUint32(28, sampleRate * 2, true);
+            view.setUint16(32, 2, true);
+            view.setUint16(34, 16, true);
+            writeStr(36, 'data');
+            view.setUint32(40, bytes.length, true);
+            new Uint8Array(buffer, 44).set(bytes);
+            return URL.createObjectURL(new Blob([buffer], { type: 'audio/wav' }));
+          };
+
+          const handleSelectBedoVoice = async (voiceId) => {
+            updateSetting({ bedoVoice: voiceId });
+            setVoicePreviewError('');
+            if (voiceAudioRef.current) {
+              try {
+                voiceAudioRef.current.pause();
+                voiceAudioRef.current.currentTime = 0;
+              } catch {}
+              voiceAudioRef.current = null;
+            }
+            setPreviewingVoice(voiceId);
+            const cacheKey = `${voiceId}:${langCode}`;
+            try {
+              let audioUrl = voicePreviewCacheRef.current.get(cacheKey);
+              if (!audioUrl) {
+                const sampleText = langCode === 'tr'
+                  ? 'Merhaba, ben Bedo. Senin için buradayım, nasıl yardımcı olabilirim?'
+                  : "Hello, I'm Bedo. I'm right here for you, how can I help?";
+                const res = await window.twocode?.bedoPreviewVoice?.({
+                  voice: voiceId,
+                  text: sampleText,
+                });
+                if (!res?.ok || !res?.data) {
+                  setVoicePreviewError(res?.error || (langCode === 'tr' ? 'Ses önizlemesi çalınamadı.' : 'Could not play voice preview.'));
+                  setPreviewingVoice('');
+                  return;
+                }
+                audioUrl = pcmBase64ToPlayableUrl(res.data, res.mimeType);
+                voicePreviewCacheRef.current.set(cacheKey, audioUrl);
+              }
+              const audio = new Audio(audioUrl);
+              voiceAudioRef.current = audio;
+              audio.onended = () => {
+                setPreviewingVoice((curr) => (curr === voiceId ? '' : curr));
+              };
+              audio.onerror = () => {
+                setPreviewingVoice((curr) => (curr === voiceId ? '' : curr));
+              };
+              await audio.play();
+            } catch (err) {
+              setVoicePreviewError(err?.message || (langCode === 'tr' ? 'Ses oynatılamadı.' : 'Audio playback failed.'));
+              setPreviewingVoice('');
+            }
+          };
+
+          return (
+            <div className="settings-page-body ai-lg-page">
+              {/* Liquid Glass Hero */}
+              <section className="ai-lg-hero">
+                <div className="ai-lg-hero-glow" aria-hidden="true" />
+                <div className="ai-lg-hero-copy">
+                  <span className="ai-lg-eyebrow">
+                    {langCode === 'tr' ? 'BEDO & YAPAY ZEKA' : 'BEDO & AI'}
                   </span>
-                  <div className="row-text-col">
-                    <strong>Claude</strong>
-                    <span>{langCode === 'tr' ? 'Robo sohbetinde Claude API anahtarını kullanır. Claude Code görevleri ayrı olarak izlenir.' : 'Uses your Claude API key in Robo chat. Claude Code tasks are monitored separately.'}</span>
-                  </div>
-                </div>
-                <span className={`status-badge ${settings.claudeApiKey ? 'green' : 'amber'}`}>
-                  {settings.claudeApiKey ? (langCode === 'tr' ? 'API anahtarı kayıtlı' : 'API key saved') : (langCode === 'tr' ? 'API anahtarı yok' : 'No API key')}
-                </span>
-              </div>
-
-              <div className="settings-row">
-                <div className="row-left-with-icon">
-                  <span className="ai-badge-icon lg codex">
-                    <ProviderSymbol provider="codex" size={22} />
-                  </span>
-                  <div className="row-text-col">
-                    <strong>Codex</strong>
-                    <span>{langCode === 'tr' ? 'Robo sohbetinde OpenAI API anahtarını kullanır. Google bağlantısı yalnızca Gmail ve Takvim içindir.' : 'Uses your OpenAI API key in Robo chat. Google sign-in is only for Gmail and Calendar.'}</span>
-                  </div>
-                </div>
-                <span className={`status-badge ${settings.codexApiKey ? 'green' : 'amber'}`}>
-                  {settings.codexApiKey ? (langCode === 'tr' ? 'API anahtarı kayıtlı' : 'API key saved') : (langCode === 'tr' ? 'API anahtarı yok' : 'No API key')}
-                </span>
-              </div>
-            </div>
-
-            <div className="settings-card" style={{ marginTop: 14 }}>
-              <div className="settings-row no-border">
-                <div className="row-left-with-icon">
-                  <span className="ai-badge-icon lg gemini">
-                    <RealAppIcon sc={{ id: 'settings-api-gemini', type: 'gemini' }} size={22} />
-                  </span>
-                  <div className="row-text-col">
-                    <strong>{langCode === 'tr' ? 'Google Gemini API Anahtarı' : 'Google Gemini API Key'}</strong>
-                    <span>{langCode === 'tr' ? 'Robo sohbeti için Gemini API. Google API kullanımı için ücret alabilir.' : 'Gemini API for Robo chat. Google may charge for API usage.'}</span>
-                  </div>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <input
-                    type="password"
-                    placeholder={langCode === 'tr' ? 'AIzaSy... (İsteğe bağlı)' : 'AIzaSy... (Optional)'}
-                    value={settings.geminiApiKey || ''}
-                    onChange={(e) => updateSetting({ geminiApiKey: e.target.value })}
-                    style={{
-                      background: 'rgba(255,255,255,0.07)',
-                      border: '1px solid rgba(255,255,255,0.12)',
-                      borderRadius: 8,
-                      padding: '6px 12px',
-                      color: '#ffffff',
-                      fontSize: 12,
-                      width: 180,
-                      outline: 'none',
-                    }}
-                  />
-                  {settings.geminiApiKey ? (
-                    <span className="status-badge green">{langCode === 'tr' ? 'API anahtarı kayıtlı' : 'API key saved'}</span>
-                  ) : (
-                    <span className="status-badge">{langCode === 'tr' ? 'API anahtarı gerekli' : 'API key required'}</span>
-                  )}
-                </div>
-              </div>
-
-              <div className="settings-row">
-                <div className="row-info">
-                  <strong>{langCode === 'tr' ? 'Bedo Ses Karakteri' : 'Bedo Voice'}</strong>
-                  <span>
+                  <h2>
+                    {langCode === 'tr' ? 'Sesli Asistan' : 'Voice Assistant'}{' '}
+                    <span>{langCode === 'tr' ? '& API Motoru' : '& AI Engine'}</span>
+                  </h2>
+                  <p>
                     {langCode === 'tr'
-                      ? 'Bedo sesli yanıt verirken kullanılacak ses tonu (değişince otomatik yeniden bağlanır)'
-                      : 'Voice persona used by Bedo (reconnects automatically on change)'}
+                      ? 'Bedo’nun ses karakterini, uyandırma davranışını ve yapay zeka API anahtarlarını buradan yönetin.'
+                      : 'Manage Bedo’s voice persona, wake behavior, and AI API keys from one place.'}
+                  </p>
+                </div>
+                <div className="ai-lg-hero-action">
+                  <span className={`ai-lg-status-pill ${bedoIsReady ? 'is-active' : bedoStatus.running ? 'is-standby' : ''}`}>
+                    {bedoPillLabel}
                   </span>
-                </div>
-                <div className="row-right-group">
-                  <select
-                    value={settings.bedoVoice || 'Charon'}
-                    onChange={(e) => updateSetting({ bedoVoice: e.target.value })}
-                    style={{
-                      background: 'rgba(255,255,255,0.07)',
-                      border: '1px solid rgba(255,255,255,0.14)',
-                      borderRadius: 8,
-                      padding: '6px 10px',
-                      color: '#ffffff',
-                      fontSize: 12,
-                      outline: 'none',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <option value="Charon" style={{ background: '#14161c' }}>Charon (Varsayılan • Derin)</option>
-                    <option value="Fenrir" style={{ background: '#14161c' }}>Fenrir (Net • Güçlü)</option>
-                    <option value="Puck" style={{ background: '#14161c' }}>Puck (Dinamik • Genç)</option>
-                    <option value="Aoede" style={{ background: '#14161c' }}>Aoede (Yumuşak • Doğal)</option>
-                    <option value="Kore" style={{ background: '#14161c' }}>Kore (Sıcak • Sakin)</option>
-                    <option value="Zephyr" style={{ background: '#14161c' }}>Zephyr (Hafif • Akıcı)</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ============================================================
-            PAGE 4: APPS
-            ============================================================ */}
-        {activePage === 'apps' && (
-          <div className="settings-page-body">
-            <div className="settings-card">
-              <div className="settings-row no-border">
-                <div className="row-left-with-icon">
-                  <div className="stat-icon-sq blue">
-                    <ExternalLink size={16} />
+                  <div className="ai-lg-hero-btns">
+                    <button
+                      type="button"
+                      className="agents-lg-connect-btn"
+                      disabled={bedoBusy || !bedoStatus.available}
+                      onClick={handleToggleBedoService}
+                    >
+                      <Mic size={14} />
+                      <span>
+                        {!bedoStatus.running
+                          ? (langCode === 'tr' ? 'Bedo’yu Başlat' : 'Start Bedo')
+                          : bedoStatus.paused
+                            ? (langCode === 'tr' ? 'Uyandır' : 'Wake Up')
+                            : (langCode === 'tr' ? 'Uyku Moduna Al' : 'Put to Sleep')}
+                      </span>
+                    </button>
+                    {bedoStatus.running && (
+                      <button
+                        type="button"
+                        className="ai-lg-icon-btn"
+                        disabled={bedoBusy}
+                        onClick={handleStopBedoService}
+                        title={langCode === 'tr' ? 'Servisi Durdur' : 'Stop Service'}
+                      >
+                        <Power size={14} />
+                      </button>
+                    )}
                   </div>
+                </div>
+              </section>
+
+              {/* Bedo Voice Persona */}
+              <section className="ai-lg-card">
+                <div className="ai-lg-card-head">
+                  <div className="row-left-with-icon">
+                    <span className="ai-lg-icon-badge violet">
+                      <Volume2 size={17} />
+                    </span>
+                    <div className="row-text-col">
+                      <strong>{langCode === 'tr' ? 'Bedo Ses Karakteri' : 'Bedo Voice Persona'}</strong>
+                      <span>
+                        {langCode === 'tr'
+                          ? 'Sesli yanıt verirken kullanılacak ton (değişince otomatik yeniden bağlanır)'
+                          : 'Voice tone used for spoken replies (reconnects automatically on change)'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <div className="ai-lg-voice-grid">
+                  {voiceOptions.map((voice) => {
+                    const active = (settings.bedoVoice || 'Charon') === voice.id;
+                    const isPreviewing = previewingVoice === voice.id;
+                    return (
+                      <button
+                        key={voice.id}
+                        type="button"
+                        className={`ai-lg-voice-btn ${active ? 'is-active' : ''} ${isPreviewing ? 'is-previewing' : ''}`}
+                        onClick={() => handleSelectBedoVoice(voice.id)}
+                      >
+                        <div className="ai-lg-voice-top">
+                          <strong>{voice.id}</strong>
+                          {isPreviewing ? (
+                            <span className="ai-lg-voice-check is-speaking" title={langCode === 'tr' ? 'Örnek cümle okunuyor...' : 'Playing sample...'}>
+                              <Volume2 size={11} strokeWidth={2.4} />
+                            </span>
+                          ) : active ? (
+                            <span className="ai-lg-voice-check">
+                              <Check size={11} strokeWidth={2.6} />
+                            </span>
+                          ) : null}
+                        </div>
+                        <span>{langCode === 'tr' ? voice.tr : voice.en}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {voicePreviewError && (
+                  <div className="ai-lg-voice-error">{voicePreviewError}</div>
+                )}
+              </section>
+
+              {/* Behavior & Missing Settings */}
+              <section className="ai-lg-card">
+                <div className="settings-row">
                   <div className="row-text-col">
-                    <strong>{langCode === 'tr' ? 'Kendi uygulamaların' : 'Your own apps'}</strong>
+                    <strong>{langCode === 'tr' ? 'Sesle Uyandırma (“Bedo”)' : 'Wake Word (“Bedo”)'}</strong>
                     <span>
                       {langCode === 'tr'
-                        ? 'En fazla 4 web sitesi veya program. Her sayfada sekmelerin yanında adada dururlar. Birine tıklayın, açılsın.'
-                        : 'Up to 4 websites or programs. They sit in the island next to your tabs, on every page. Click one and it opens.'}
+                        ? 'Arka planda “Bedo” kelimesini dinler ve seslendiğinizde adayı otomatik açar.'
+                        : 'Listens for “Bedo” in the background and opens the island when called.'}
                     </span>
                   </div>
-                </div>
-              </div>
-
-              {(settings.apps || []).map((app) => (
-                <div key={app.id} className="settings-row app-item-row">
-                  <div className="app-item-left">
-                    <span className="app-brand-badge" style={{ background: 'rgba(255,255,255,0.06)' }}>
-                      <RealAppIcon sc={app} size={16} />
-                    </span>
-                    <strong className="app-item-name">{app.name}</strong>
-                    <span className="app-item-path">{app.url}</span>
-                  </div>
                   <button
                     type="button"
-                    className="dark-pill-btn"
-                    onClick={() => handleRemoveApp(app.id)}
-                  >
-                    {t('common.remove')}
-                  </button>
-                </div>
-              ))}
-
-              <div className="apps-add-form-row">
-                <input
-                  type="text"
-                  className="settings-input"
-                  placeholder={langCode === 'tr' ? 'Ad (ör. YouTube)' : 'Name (e.g. YouTube)'}
-                  value={newAppName}
-                  onChange={(e) => setNewAppName(e.target.value)}
-                />
-                <input
-                  type="text"
-                  className="settings-input"
-                  placeholder={langCode === 'tr' ? 'Adres (ör. youtube.com)' : 'Address (e.g. youtube.com)'}
-                  value={newAppUrl}
-                  onChange={(e) => setNewAppUrl(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleAddApp()}
-                />
-                <button type="button" className="white-pill-btn" onClick={handleAddApp}>
-                  {t('common.add')}
-                </button>
-                <button type="button" className="dark-pill-btn" onClick={handleChooseProgram}>
-                  {langCode === 'tr' ? 'Program seç...' : 'Choose a program...'}
-                </button>
-              </div>
-            </div>
-
-            <div className="apps-bottom-three-grid">
-              <div className="settings-card feature-card">
-                <div className="feature-card-top">
-                  <div className="row-left-with-icon">
-                    <div className="stat-icon-sq blue">
-                      <Shield size={16} />
-                    </div>
-                    <div className="row-text-col">
-                      <strong>{langCode === 'tr' ? 'Odak koruması' : 'Focus guard'}</strong>
-                      <span>{langCode === 'tr' ? 'Şimdilik ücretsiz ✓' : 'Free for now ✓'}</span>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    className="dark-pill-btn"
-                    onClick={() => setActivePage('focusguard')}
-                  >
-                    {t('common.open')}
-                  </button>
-                </div>
-                <p>{langCode === 'tr' ? 'Dikkatinizi dağıtan bir şey açtığınızda Robo sizi kısa bir an durdurur.' : 'Robo stops you for a moment when you open something that distracts you.'}</p>
-                <button
-                  type="button"
-                  className="how-it-works-btn"
-                  onClick={() => setActivePage('focusguard')}
-                >
-                  <Play size={11} /> {langCode === 'tr' ? 'Nasıl çalışır?' : 'How does it work?'}
-                </button>
-              </div>
-
-              <div className="settings-card feature-card">
-                <div className="feature-card-top">
-                  <div className="row-left-with-icon">
-                    <div className="stat-icon-sq green">
-                      <Bot size={16} />
-                    </div>
-                    <div className="row-text-col">
-                      <strong>{langCode === 'tr' ? 'Yapay zeka asistanları' : 'AI assistants'}</strong>
-                      <span>{langCode === 'tr' ? 'Ücretsiz' : 'Free'}</span>
-                    </div>
-                  </div>
-                  <span className="status-badge subtle">{langCode === 'tr' ? 'Her zaman açık' : 'Always on'}</span>
-                </div>
-                <p>
-                  {langCode === 'tr'
-                    ? 'Claude Code ve Codex: Robo yapay zekanızın meşgul olduğunu, sorusu olduğunu veya işi bitirdiğini gösterir.'
-                    : 'Claude Code and Codex: Robo shows whether your AI is busy, has a question or is done.'}
-                </p>
-                <button
-                  type="button"
-                  className="how-it-works-btn"
-                  onClick={() => setActivePage('connections')}
-                >
-                  <Play size={11} /> {langCode === 'tr' ? 'Nasıl çalışır?' : 'How does it work?'}
-                </button>
-              </div>
-
-              <div className="settings-card feature-card">
-                <div className="feature-card-top">
-                  <div className="row-left-with-icon">
-                    <div className="stat-icon-sq blue">
-                      <Hand size={16} />
-                    </div>
-                    <div className="row-text-col">
-                      <strong>Robo Buddy</strong>
-                      <span>{langCode === 'tr' ? 'TwoCode’unun içinde' : 'In your TwoCode'}</span>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    className={`settings-switch ${settings.roboBuddy ? 'on' : ''}`}
-                    onClick={() => updateSetting({ roboBuddy: !settings.roboBuddy })}
+                    className={`settings-switch ${settings.bedoEnableWake !== false ? 'on' : ''}`}
+                    onClick={() => updateSetting({ bedoEnableWake: settings.bedoEnableWake === false })}
                   >
                     <i />
                   </button>
                 </div>
-                <p>{langCode === 'tr' ? 'Robo’yu adadan tutup çıkarın, herhangi bir şeyin üzerine bırakın ve hakkında soru sorun.' : 'Grab Robo out of the island, drop him on anything and ask about it.'}</p>
-                <button
-                  type="button"
-                  className="how-it-works-btn"
-                  onClick={() => setActivePage('robo')}
-                >
-                  <Play size={11} /> {langCode === 'tr' ? 'Nasıl çalışır?' : 'How does it work?'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
 
-        {/* ============================================================
-            PAGE 5: ROBO
-            ============================================================ */}
-        {activePage === 'robo' && (
-          <div className="settings-page-body">
-            <div className="settings-card robo-hero-card">
-              <div className="robo-hero-avatar-box">
-                <RoboCrownAvatar outfit={settings.outfit} size={110} />
-              </div>
-              <div className="robo-hero-info">
-                <h2>{settings.roboName || 'Robo'}</h2>
-                <span>{langCode === 'tr' ? `${aiHistory.jobsToday || 2} görev tamamlandı · 12 rozetten 5'i` : `${aiHistory.jobsToday || 2} tasks done · 5 of 12 badges`}</span>
-                <div className="robo-badge-progress">
-                  <div className="robo-badge-fill" style={{ width: '42%' }} />
-                </div>
-              </div>
-            </div>
-
-            <span className="section-eyebrow">{langCode === 'tr' ? 'İSİM' : 'NAME'}</span>
-            <div className="settings-card">
-              <div className="settings-row">
-                <div className="row-text-col">
-                  <strong>{langCode === 'tr' ? 'Adı ne olsun?' : "What's his name?"}</strong>
-                  <span>{langCode === 'tr' ? 'Merhaba derken bu adı söyler' : 'He says it when he says hi'}</span>
-                </div>
-                <div className="row-right-group">
-                  <input
-                    type="text"
-                    className="settings-input w-180"
-                    value={roboNameDraft}
-                    onChange={(e) => setRoboNameDraft(e.target.value)}
-                  />
+                <div className="settings-row">
+                  <div className="row-text-col">
+                    <strong>{langCode === 'tr' ? 'Konuşurken Medyayı Duraklat' : 'Pause Media When Listening'}</strong>
+                    <span>
+                      {langCode === 'tr'
+                        ? 'Bedo uyandığında çalan müzik veya videoyu duraklatır, uyuduğunda devam ettirir.'
+                        : 'Pauses playing music or video when Bedo wakes up and resumes when it sleeps.'}
+                    </span>
+                  </div>
                   <button
                     type="button"
-                    className="white-pill-btn"
-                    onClick={() => updateSetting({ roboName: roboNameDraft || 'Robo' })}
+                    className={`settings-switch ${settings.bedoPauseMedia !== false ? 'on' : ''}`}
+                    onClick={() => updateSetting({ bedoPauseMedia: settings.bedoPauseMedia === false })}
                   >
-                    {t('common.save')}
+                    <i />
                   </button>
                 </div>
-              </div>
-            </div>
 
-            <span className="section-eyebrow" style={{ marginTop: 18 }}>
-              {langCode === 'tr' ? 'GÖRÜNÜM' : 'LOOK'}
-            </span>
-            <div className="settings-card">
-              <div className="settings-row no-border">
-                <div className="row-text-col">
-                  <strong>{langCode === 'tr' ? 'Trafik ışığı gözler' : 'Traffic-light eyes'}</strong>
-                  <span>{langCode === 'tr' ? 'Her durum için rengi seçin. Test etmek için bloğa tıklayın.' : 'Pick the colour for each state. Click the block for a test.'}</span>
-                  <div className="preset-pills-row">
-                    {[
-                      { value: 'Classic', label: langCode === 'tr' ? 'Klasik' : 'Classic' },
-                      { value: 'Soft', label: langCode === 'tr' ? 'Yumuşak' : 'Soft' },
-                      { value: 'Colour-blind', label: langCode === 'tr' ? 'Renk körlüğü dostu' : 'Colour-blind' },
-                    ].map((preset) => (
-                      <button
-                        key={preset.value}
-                        type="button"
-                        className={`preset-pill-btn ${
-                          settings.eyePreset === preset.value ? 'active' : ''
-                        }`}
-                        onClick={() => updateSetting({ eyePreset: preset.value })}
-                      >
-                        <span className="preset-dots">
-                          <i style={{ background: '#f59e0b' }} />
-                          <i style={{ background: '#22c55e' }} />
-                          <i style={{ background: '#ef4444' }} />
-                        </span>
-                        <span>{preset.label}</span>
-                      </button>
-                    ))}
+                <div className="settings-row no-border">
+                  <div className="row-text-col">
+                    <strong>{langCode === 'tr' ? 'Açılışta Bedo’yu Hazır Beklet' : 'Auto-Start Bedo on Launch'}</strong>
+                    <span>
+                      {langCode === 'tr'
+                        ? 'Bedo açıldığında ses servisini uyku modunda hazır başlatır.'
+                        : 'Starts the Bedo voice service in standby automatically when Bedo launches.'}
+                    </span>
                   </div>
+                  <button
+                    type="button"
+                    className={`settings-switch ${settings.bedoAutoStart !== false ? 'on' : ''}`}
+                    onClick={() => updateSetting({ bedoAutoStart: settings.bedoAutoStart === false })}
+                  >
+                    <i />
+                  </button>
                 </div>
-              </div>
+              </section>
 
-              <div className="traffic-subrow" onClick={() => triggerEmotionOnIsland('curious')}>
-                <div className="traffic-left">
-                  <i className="state-dot" style={{ background: settings.workingEyeColor }} />
-                  <strong>{langCode === 'tr' ? 'Çalışıyor veya sorusu var' : 'Working or a question'}</strong>
-                </div>
-                <div className="swatch-group">
-                  {['#f59e0b', '#fbbf24', '#fde047', '#f472b6', '#c084fc', '#60a5fa'].map((c) => (
-                    <button
-                      key={c}
-                      type="button"
-                      className={`color-dot-btn ${
-                        settings.workingEyeColor === c ? 'selected' : ''
-                      }`}
-                      style={{ background: c }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        updateSetting({ workingEyeColor: c });
-                        triggerEmotionOnIsland('curious');
-                      }}
-                    />
-                  ))}
-                </div>
-              </div>
-
-              <div className="traffic-subrow" onClick={() => triggerEmotionOnIsland('happy')}>
-                <div className="traffic-left">
-                  <i className="state-dot" style={{ background: settings.doneEyeColor }} />
-                  <strong>{t('common.done')}</strong>
-                </div>
-                <div className="swatch-group">
-                  {['#22c55e', '#86efac', '#bef264', '#2dd4bf', '#3b82f6', '#ffffff'].map((c) => (
-                    <button
-                      key={c}
-                      type="button"
-                      className={`color-dot-btn ${settings.doneEyeColor === c ? 'selected' : ''}`}
-                      style={{ background: c }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        updateSetting({ doneEyeColor: c });
-                        triggerEmotionOnIsland('happy');
-                      }}
-                    />
-                  ))}
-                </div>
-              </div>
-
-              <div className="traffic-subrow" onClick={() => triggerEmotionOnIsland('dizzy')}>
-                <div className="traffic-left">
-                  <i className="state-dot" style={{ background: settings.errorEyeColor }} />
-                  <strong>{t('agents.error')}</strong>
-                </div>
-                <div className="swatch-group">
-                  {['#ef4444', '#f87171', '#fb7185', '#e879f9', '#a855f7', '#f97316'].map((c) => (
-                    <button
-                      key={c}
-                      type="button"
-                      className={`color-dot-btn ${settings.errorEyeColor === c ? 'selected' : ''}`}
-                      style={{ background: c }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        updateSetting({ errorEyeColor: c });
-                        triggerEmotionOnIsland('dizzy');
-                      }}
-                    />
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <span className="section-eyebrow" style={{ marginTop: 18 }}>
-              {langCode === 'tr' ? 'DAVRANIŞ · ÖRNEK İÇİN BİR BLOĞA TIKLAYIN' : 'BEHAVIOUR · CLICK A BLOCK FOR AN EXAMPLE'}
-            </span>
-            <div className="settings-card">
-              <div className="settings-row">
-                <div className="row-text-col">
-                  <strong>{langCode === 'tr' ? 'İfadeler' : 'Faces'}</strong>
-                  <span>{langCode === 'tr' ? 'Mutlu, üzgün, meraklı, odaklı' : 'Happy, sad, curious, focused'}</span>
-                </div>
-                <button
-                  type="button"
-                  className={`settings-switch ${settings.facesEnabled ? 'on' : ''}`}
-                  onClick={() => updateSetting({ facesEnabled: !settings.facesEnabled })}
-                >
-                  <i />
-                </button>
-              </div>
-
-              <div className="settings-row align-top">
-                <div className="row-text-col">
-                  <strong>{langCode === 'tr' ? 'Duyguları gör' : 'See emotions'}</strong>
-                  <span>{langCode === 'tr' ? 'Görmek için birine tıklayın' : 'Click one to see it'}</span>
-                </div>
-                <div className="emotions-grid">
-                  {[
-                    { label: langCode === 'tr' ? '😊 Mutlu' : '😊 Happy', mood: 'happy' },
-                    { label: langCode === 'tr' ? '😍 Aşık' : '😍 In love', mood: 'happy' },
-                    { label: langCode === 'tr' ? '😮 Şaşkın' : '😮 Surprised', mood: 'curious' },
-                    { label: langCode === 'tr' ? '🧐 Meraklı' : '🧐 Curious', mood: 'curious' },
-                    { label: langCode === 'tr' ? '🤨 Odaklı' : '🤨 Focused', mood: 'focus-arc' },
-                    { label: langCode === 'tr' ? '😉 Göz kırp' : '😉 Wink', mood: 'wink' },
-                    { label: langCode === 'tr' ? '😢 Üzgün' : '😢 Sad', mood: 'normal' },
-                    { label: langCode === 'tr' ? '😵 Baş dönmesi' : '😵 Dizzy', mood: 'dizzy' },
-                    { label: langCode === 'tr' ? '😴 Uykulu' : '😴 Sleepy', mood: 'focus-arc' },
-                  ].map((em) => (
-                    <button
-                      key={em.label}
-                      type="button"
-                      className="emotion-chip-btn"
-                      onClick={() => triggerEmotionOnIsland(em.mood)}
-                    >
-                      {em.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="settings-row">
-                <div className="row-text-col">
-                  <strong>{langCode === 'tr' ? 'Göz kırpma' : 'Blinking'}</strong>
-                  <span>{langCode === 'tr' ? 'Ara sıra göz kırpar' : 'He blinks now and then'}</span>
-                </div>
-                <button
-                  type="button"
-                  className={`settings-switch ${settings.blinkingEnabled ? 'on' : ''}`}
-                  onClick={() => updateSetting({ blinkingEnabled: !settings.blinkingEnabled })}
-                >
-                  <i />
-                </button>
-              </div>
-
-              <div className="settings-row">
-                <div className="row-text-col">
-                  <strong>{langCode === 'tr' ? 'Müzikle dans' : 'Dancing to music'}</strong>
-                  <span>{langCode === 'tr' ? 'Spotify çalarken eşlik eder' : 'Moves along when Spotify plays'}</span>
-                </div>
-                <button
-                  type="button"
-                  className={`settings-switch ${settings.dancingEnabled ? 'on' : ''}`}
-                  onClick={() => updateSetting({ dancingEnabled: !settings.dancingEnabled })}
-                >
-                  <i />
-                </button>
-              </div>
-
-              <div className="settings-row">
-                <div className="row-text-col">
-                  <strong>{langCode === 'tr' ? 'Uyku efekti' : 'Sleep effect'}</strong>
-                  <span>{langCode === 'tr' ? 'Bir süre hiçbir şey olmadığında uykuya dalar' : 'He falls asleep when nothing happens for a while'}</span>
-                </div>
-                <button
-                  type="button"
-                  className={`settings-switch ${settings.sleepEffectEnabled ? 'on' : ''}`}
-                  onClick={() => updateSetting({ sleepEffectEnabled: !settings.sleepEffectEnabled })}
-                >
-                  <i />
-                </button>
-              </div>
-
-              <div className="settings-row">
-                <div className="row-text-col">
-                  <strong>{langCode === 'tr' ? 'Uyku süresi' : 'Fall asleep after'}</strong>
-                  <span>{langCode === 'tr' ? 'Hiçbir şey olmadığında (Uyku efekti açık olmalı)' : 'When nothing happens (Sleep effect must be on)'}</span>
-                </div>
-                <div className="seg-btn-group">
-                  {[5, 10, 30].map((m) => (
-                    <button
-                      key={m}
-                      type="button"
-                      className={`seg-choice-btn ${
-                        settings.fallAsleepMinutes === m ? 'active' : ''
-                      }`}
-                      onClick={() => updateSetting({ fallAsleepMinutes: m })}
-                    >
-                      {langCode === 'tr' ? `${m} dk` : `${m} min`}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="settings-row">
-                <div className="row-text-col">
-                  <strong>{langCode === 'tr' ? 'Başlangıç animasyonu' : 'Startup animation'}</strong>
-                  <span>{langCode === 'tr' ? 'Açılışta el sallayıp "merhaba" der' : 'Wave and say "hi" at startup'}</span>
-                </div>
-                <button
-                  type="button"
-                  className={`settings-switch ${settings.startupAnimEnabled ? 'on' : ''}`}
-                  onClick={() => updateSetting({ startupAnimEnabled: !settings.startupAnimEnabled })}
-                >
-                  <i />
-                </button>
-              </div>
-
-              <div className="settings-row">
-                <div className="row-text-col">
-                  <strong>{langCode === 'tr' ? 'Açlık' : 'Hunger'}</strong>
-                  <span>{langCode === 'tr' ? 'Robo %100 tok. Her görev yiyecek verir 🍪' : 'Robo is 100% full. Every task gives food 🍪'}</span>
-                </div>
-                <button
-                  type="button"
-                  className={`settings-switch ${settings.hungerEnabled ? 'on' : ''}`}
-                  onClick={() => updateSetting({ hungerEnabled: !settings.hungerEnabled })}
-                >
-                  <i />
-                </button>
-              </div>
-            </div>
-
-            <span className="section-eyebrow" style={{ marginTop: 18 }}>
-              {langCode === 'tr' ? 'BAŞARIMLAR · 5/12' : 'ACHIEVEMENTS · 5/12'}
-            </span>
-            <div className="achievements-grid">
-              {[
-                { icon: '🌱', title: langCode === 'tr' ? 'İlk görev' : 'First task', unlocked: true },
-                { icon: '🔒', title: langCode === 'tr' ? 'On görev' : 'Ten tasks', unlocked: false },
-                { icon: '🔒', title: langCode === 'tr' ? 'Elli görev' : 'Fifty tasks', unlocked: false },
-                { icon: '🔒', title: langCode === 'tr' ? 'Yardımsever' : 'Helpful', unlocked: false },
-                { icon: '🦉', title: langCode === 'tr' ? 'Gece kuşu' : 'Night owl', unlocked: true },
-                { icon: '🌅', title: langCode === 'tr' ? 'Erkenci kuş' : 'Early bird', unlocked: true },
-                { icon: '🎵', title: langCode === 'tr' ? 'Müziksever' : 'Music lover', unlocked: true },
-                { icon: '🎯', title: langCode === 'tr' ? 'Derin odak' : 'Deep focus', unlocked: true },
-                { icon: '🔒', title: langCode === 'tr' ? '7 günlük seri' : 'Streak 7', unlocked: false },
-                { icon: '🔒', title: langCode === 'tr' ? 'Pano ustası' : 'Clipboard pro', unlocked: false },
-                { icon: '🔒', title: langCode === 'tr' ? 'Not tutucu' : 'Note taker', unlocked: false },
-                { icon: '🔒', title: langCode === 'tr' ? 'En şık' : 'Best dressed', unlocked: false },
-              ].map((ach) => (
-                <div
-                  key={ach.title}
-                  className={`achievement-card ${ach.unlocked ? 'unlocked' : 'locked'}`}
-                >
-                  <span className="ach-emoji">{ach.icon}</span>
-                  <strong>{ach.title}</strong>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* ============================================================
-            PAGE 6: WARDROBE
-            ============================================================ */}
-        {activePage === 'wardrobe' && (
-          <div className="settings-page-body">
-            <div className="wardrobe-layout">
-              <div className="settings-card wardrobe-preview-card">
-                <RoboCrownAvatar
-                  outfit={settings.outfit}
-                  size={170}
-                  eyeHex={settings.eyeColorHex}
-                />
-                <div className="wardrobe-preview-caption">
-                  <strong>{settings.roboName || 'Robo'}</strong>
-                  <span>{langCode === 'tr' ? `Giydiği: ${({ Best: 'En iyi', None: 'Yok', 'Party hat': 'Parti şapkası', Sunglasses: 'Güneş gözlüğü', Crown: 'Taç' }[settings.outfit] || settings.outfit)}` : `Wearing: ${settings.outfit}`}</span>
-                </div>
-              </div>
-
-              <div className="wardrobe-options-col">
-                <div className="wardrobe-group">
-                  <div className="wardrobe-group-header">
-                    <strong>{langCode === 'tr' ? 'Kıyafet' : 'Outfit'}</strong>
-                    <span>{langCode === 'tr' ? 'Görev tamamlayarak daha fazlasını kazanın' : 'Earn more by finishing tasks'}</span>
-                  </div>
-                  <div className="outfit-cards-grid">
-                    {[
-                      { id: 'Best', label: langCode === 'tr' ? 'En iyi' : 'Best', icon: '✨', sub: '' },
-                      { id: 'None', label: langCode === 'tr' ? 'Yok' : 'None', icon: '🚫', sub: '' },
-                      { id: 'Party hat', label: langCode === 'tr' ? 'Parti şapkası' : 'Party hat', icon: '🥳', sub: langCode === 'tr' ? '5 görevde açılır' : 'Earned at 5 tasks' },
-                      { id: 'Sunglasses', label: langCode === 'tr' ? 'Güneş gözlüğü' : 'Sunglasses', icon: '😎', sub: langCode === 'tr' ? '15 görevde açılır' : 'Earned at 15 tasks' },
-                      { id: 'Crown', label: langCode === 'tr' ? 'Taç' : 'Crown', icon: '👑', sub: langCode === 'tr' ? '30 görevde açılır' : 'Earned at 30 tasks' },
-                    ].map((o) => (
-                      <button
-                        key={o.id}
-                        type="button"
-                        className={`outfit-tile-btn ${settings.outfit === o.id ? 'selected' : ''}`}
-                        onClick={() => updateSetting({ outfit: o.id })}
-                      >
-                        {settings.outfit === o.id && (
-                          <span className="outfit-check-badge">
-                            <Check size={10} strokeWidth={3.2} color="#050507" />
-                          </span>
-                        )}
-                        <span className="outfit-emoji">{o.icon}</span>
-                        <strong>{o.label}</strong>
-                        {o.sub && <span>{o.sub}</span>}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="wardrobe-group">
-                  <div className="wardrobe-group-header">
-                    <strong>{langCode === 'tr' ? 'Gövde' : 'Body'}</strong>
-                  </div>
-                  <div className="sphere-swatches-row">
-                    {[
-                      { name: 'Cloud', label: langCode === 'tr' ? 'Bulut' : 'Cloud', bg: 'radial-gradient(circle at 30% 30%, #ffffff, #d4d4d8)' },
-                      { name: 'Mint', label: langCode === 'tr' ? 'Nane' : 'Mint', bg: 'radial-gradient(circle at 30% 30%, #d1fae5, #6ee7b7)' },
-                      { name: 'Sky', label: langCode === 'tr' ? 'Gökyüzü' : 'Sky', bg: 'radial-gradient(circle at 30% 30%, #e0f2fe, #7dd3fc)' },
-                      { name: 'Rose', label: langCode === 'tr' ? 'Gül' : 'Rose', bg: 'radial-gradient(circle at 30% 30%, #fce7f3, #f9a8d4)' },
-                      {
-                        name: 'Classic',
-                        label: langCode === 'tr' ? 'Klasik' : 'Classic',
-                        bg: 'radial-gradient(circle at 30% 30%, #4b5563, #1f2937)',
-                      },
-                      { name: 'Night', label: langCode === 'tr' ? 'Gece' : 'Night', bg: 'radial-gradient(circle at 30% 30%, #3f3f46, #18181b)' },
-                      { name: 'Blue', label: langCode === 'tr' ? 'Mavi' : 'Blue', bg: 'radial-gradient(circle at 30% 30%, #3b82f6, #1d4ed8)' },
-                      {
-                        name: 'Purple',
-                        label: langCode === 'tr' ? 'Mor' : 'Purple',
-                        bg: 'radial-gradient(circle at 30% 30%, #8b5cf6, #4c1d95)',
-                      },
-                      { name: 'Pink', label: langCode === 'tr' ? 'Pembe' : 'Pink', bg: 'radial-gradient(circle at 30% 30%, #be185d, #500724)' },
-                      { name: 'Gold', label: langCode === 'tr' ? 'Altın' : 'Gold', bg: 'radial-gradient(circle at 30% 30%, #a16207, #422006)' },
-                    ].map((b) => (
-                      <div
-                        key={b.name}
-                        className="sphere-swatch-item"
-                        onClick={() => updateSetting({ bodyColor: b.name })}
-                      >
-                        <span
-                          className={`sphere-circle ${
-                            settings.bodyColor === b.name ? 'selected' : ''
-                          }`}
-                          style={{ background: b.bg }}
-                        />
-                        <small>{b.label}</small>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="wardrobe-group">
-                  <div className="wardrobe-group-header">
-                    <strong>{langCode === 'tr' ? 'Gözler' : 'Eyes'}</strong>
-                  </div>
-                  <div className="sphere-swatches-row">
-                    {[
-                      { name: 'Mint', label: langCode === 'tr' ? 'Nane' : 'Mint', hex: '#a7f3d0' },
-                      { name: 'White', label: langCode === 'tr' ? 'Beyaz' : 'White', hex: '#ffffff' },
-                      { name: 'Blue', label: langCode === 'tr' ? 'Mavi' : 'Blue', hex: '#7dd3fc' },
-                      { name: 'Pink', label: langCode === 'tr' ? 'Pembe' : 'Pink', hex: '#f9a8d4' },
-                      { name: 'Purple', label: langCode === 'tr' ? 'Mor' : 'Purple', hex: '#c4b5fd' },
-                      { name: 'Yellow', label: langCode === 'tr' ? 'Sarı' : 'Yellow', hex: '#fef08a' },
-                    ].map((ey) => (
-                      <div
-                        key={ey.name}
-                        className="sphere-swatch-item"
-                        onClick={() =>
-                          updateSetting({ eyeColorName: ey.name, eyeColorHex: ey.hex })
-                        }
-                      >
-                        <span
-                          className={`sphere-circle ${
-                            settings.eyeColorName === ey.name ? 'selected' : ''
-                          }`}
-                          style={{ background: ey.hex }}
-                        />
-                        <small>{ey.label}</small>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="settings-card">
-                  <div className="settings-row">
-                    <div className="row-left-with-icon">
-                      <div className="stat-icon-sq amber">
-                        <Sparkles size={15} />
-                      </div>
-                      <div className="row-text-col">
-                        <strong>{langCode === 'tr' ? 'Mevsimlik kıyafetler' : 'Seasonal outfits'}</strong>
-                        <span>{langCode === 'tr' ? 'Noel Baba şapkası, cadı şapkası, özel gün taçları' : "Santa hat, witch hat, orange crown on King's Day"}</span>
+              {/* API Keys (All working & editable) */}
+              <section className="ai-lg-card">
+                {/* 1. Google Gemini */}
+                <div className="settings-row align-top">
+                  <div className="row-left-with-icon align-top" style={{ flex: 1 }}>
+                    <span className="ai-badge-icon lg gemini">
+                      <RealAppIcon sc={{ id: 'settings-api-gemini', type: 'gemini' }} size={22} />
+                    </span>
+                    <div className="row-text-col" style={{ flex: 1, minWidth: 0 }}>
+                      <strong>Google Gemini API</strong>
+                      <span>
+                        {langCode === 'tr'
+                          ? 'Bedo sesli asistanı ve Gemini sohbeti için birincil motor.'
+                          : 'Primary engine for Bedo voice assistant and Gemini chat.'}
+                      </span>
+                      <div className="ai-api-key-box">
+                        <button
+                          type="button"
+                          className="ai-get-key-btn"
+                          onClick={() => window.twocode?.openExternal?.('https://aistudio.google.com/app/apikey')}
+                        >
+                          <ExternalLink size={12} />
+                          <span>{langCode === 'tr' ? 'API Anahtarı Al' : 'Get API Key'}</span>
+                        </button>
+                        <div className="ai-api-key-input-wrap">
+                          <input
+                            type={showKeyGemini ? 'text' : 'password'}
+                            className="ai-api-key-input"
+                            placeholder="AIzaSy..."
+                            value={settings.geminiApiKey || ''}
+                            onChange={(e) => updateSetting({ geminiApiKey: e.target.value.trim() })}
+                          />
+                          <button
+                            type="button"
+                            className="ai-api-key-eye-btn"
+                            onClick={() => setShowKeyGemini(!showKeyGemini)}
+                            title={showKeyGemini ? (langCode === 'tr' ? 'Gizle' : 'Hide') : (langCode === 'tr' ? 'Göster' : 'Show')}
+                          >
+                            {showKeyGemini ? <EyeOff size={13} /> : <Eye size={13} />}
+                          </button>
+                        </div>
+                        {settings.geminiApiKey ? (
+                          <span className="key-saved-pill">{langCode === 'tr' ? '✓ Kaydedildi' : '✓ Saved'}</span>
+                        ) : null}
                       </div>
                     </div>
+                  </div>
+                  <div className="row-right-group">
+                    <span className={`status-badge ${settings.geminiApiKey ? 'green' : 'amber'}`}>
+                      {settings.geminiApiKey ? (langCode === 'tr' ? 'Kayıtlı' : 'Saved') : (langCode === 'tr' ? 'Gerekli' : 'Required')}
+                    </span>
                     <button
                       type="button"
-                      className={`settings-switch ${settings.seasonalOutfits ? 'on' : ''}`}
-                      onClick={() => updateSetting({ seasonalOutfits: !settings.seasonalOutfits })}
+                      className={`settings-switch ${settings.geminiEnabled !== false ? 'on' : ''}`}
+                      onClick={() => updateSetting({ geminiEnabled: settings.geminiEnabled === false })}
                     >
                       <i />
                     </button>
                   </div>
                 </div>
-              </div>
-            </div>
-          </div>
-        )}
 
-        {/* ============================================================
-            PAGE 8: GENERAL
-            ============================================================ */}
-        {activePage === 'general' && (
-          <div className="settings-page-body narrow-body">
-            <span className="section-eyebrow">{t('settings.general.shortcuts')}</span>
-            <div className="settings-card">
-              {[
-                { label: t('settings.general.openIsland'), keys: 'Ctrl + Alt + T' },
-                { label: t('settings.general.tuckIsland'), keys: 'Ctrl + Alt + H' },
-                { label: langCode === 'tr' ? "Robo ile konuş" : 'Talk to Robo', keys: 'Ctrl + Alt + Space' },
-                { label: t('settings.nav.home'), keys: 'Ctrl + Alt + Shift + 1' },
-                { label: t('settings.opt.Music'), keys: 'Ctrl + Alt + Shift + 2' },
-                { label: 'Claude Code', keys: 'Ctrl + Alt + Shift + 3' },
-                { label: langCode === 'tr' ? 'Odak sayacı' : 'Focus timer', keys: 'Ctrl + Alt + Shift + 4' },
-                { label: langCode === 'tr' ? 'Pano' : 'Clipboard', keys: 'Ctrl + Alt + Shift + 5' },
-                { label: langCode === 'tr' ? 'Not' : 'Note', keys: 'Ctrl + Alt + Shift + 6' },
-              ].map((sc) => (
-                <div key={sc.label} className="settings-row">
-                  <strong>{sc.label}</strong>
-                  <kbd className="shortcut-kbd-pill">{sc.keys}</kbd>
-                </div>
-              ))}
-              <div className="settings-row">
-                <strong>{t('settings.general.resetShortcuts')}</strong>
-                <button type="button" className="dark-pill-btn sm">
-                  {t('common.reset')}
-                </button>
-              </div>
-            </div>
-
-            <span className="section-eyebrow" style={{ marginTop: 20 }}>
-              {t('settings.general.languageEyebrow')}
-            </span>
-            <div className="settings-card">
-              <div className="settings-row">
-                <div className="row-text-col">
-                  <strong>{t('settings.general.languageTitle')}</strong>
-                  <span>{t('settings.general.languageDesc')}</span>
-                </div>
-                <div className="seg-btn-group">
-                  {['Türkçe', 'English'].map((lang) => (
+                {/* 2. Anthropic Claude */}
+                <div className="settings-row align-top">
+                  <div className="row-left-with-icon align-top" style={{ flex: 1 }}>
+                    <span className="ai-badge-icon lg claude">
+                      <ProviderSymbol provider="claude" size={22} />
+                    </span>
+                    <div className="row-text-col" style={{ flex: 1, minWidth: 0 }}>
+                      <strong>Anthropic Claude API</strong>
+                      <span>
+                        {langCode === 'tr'
+                          ? 'İsteğe bağlı — Bedo’ya bağlı Claude destekli araç ve yanıtlar için.'
+                          : 'Optional — for Claude-backed tools and replies inside Bedo.'}
+                      </span>
+                      <div className="ai-api-key-box">
+                        <button
+                          type="button"
+                          className="ai-get-key-btn"
+                          onClick={() => window.twocode?.openExternal?.('https://console.anthropic.com/settings/keys')}
+                        >
+                          <ExternalLink size={12} />
+                          <span>{langCode === 'tr' ? 'API Anahtarı Al' : 'Get API Key'}</span>
+                        </button>
+                        <div className="ai-api-key-input-wrap">
+                          <input
+                            type={showKeyClaude ? 'text' : 'password'}
+                            className="ai-api-key-input"
+                            placeholder="sk-ant-api03-..."
+                            value={settings.claudeApiKey || ''}
+                            onChange={(e) => updateSetting({ claudeApiKey: e.target.value.trim() })}
+                          />
+                          <button
+                            type="button"
+                            className="ai-api-key-eye-btn"
+                            onClick={() => setShowKeyClaude(!showKeyClaude)}
+                            title={showKeyClaude ? (langCode === 'tr' ? 'Gizle' : 'Hide') : (langCode === 'tr' ? 'Göster' : 'Show')}
+                          >
+                            {showKeyClaude ? <EyeOff size={13} /> : <Eye size={13} />}
+                          </button>
+                        </div>
+                        {settings.claudeApiKey ? (
+                          <span className="key-saved-pill">{langCode === 'tr' ? '✓ Kaydedildi' : '✓ Saved'}</span>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="row-right-group">
+                    <span className={`status-badge ${settings.claudeApiKey ? 'green' : ''}`}>
+                      {settings.claudeApiKey ? (langCode === 'tr' ? 'Kayıtlı' : 'Saved') : (langCode === 'tr' ? 'İsteğe bağlı' : 'Optional')}
+                    </span>
                     <button
-                      key={lang}
                       type="button"
-                      className={`seg-choice-btn ${languageLabel(settings.language) === lang ? 'active' : ''}`}
-                      onClick={() => updateSetting({ language: lang })}
+                      className={`settings-switch ${settings.claudeEnabled ? 'on' : ''}`}
+                      onClick={() => updateSetting({ claudeEnabled: !settings.claudeEnabled })}
                     >
-                      {lang}
+                      <i />
                     </button>
-                  ))}
+                  </div>
                 </div>
-              </div>
-            </div>
 
-            <span className="section-eyebrow" style={{ marginTop: 20 }}>
-              {t('settings.general.behaviourEyebrow')}
-            </span>
-            <div className="settings-card">
-              <div className="settings-row">
-                <div className="row-text-col">
-                  <strong>{t('settings.general.startWithWindows')}</strong>
-                  <span>{t('settings.general.startWithWindowsDesc')}</span>
+                {/* 3. OpenAI / Codex */}
+                <div className="settings-row align-top no-border">
+                  <div className="row-left-with-icon align-top" style={{ flex: 1 }}>
+                    <span className="ai-badge-icon lg codex">
+                      <ProviderSymbol provider="codex" size={22} />
+                    </span>
+                    <div className="row-text-col" style={{ flex: 1, minWidth: 0 }}>
+                      <strong>OpenAI API</strong>
+                      <span>
+                        {langCode === 'tr'
+                          ? 'İsteğe bağlı — Bedo’ya bağlı OpenAI destekli araç ve yanıtlar için.'
+                          : 'Optional — for OpenAI-backed tools and replies inside Bedo.'}
+                      </span>
+                      <div className="ai-api-key-box">
+                        <button
+                          type="button"
+                          className="ai-get-key-btn"
+                          onClick={() => window.twocode?.openExternal?.('https://platform.openai.com/api-keys')}
+                        >
+                          <ExternalLink size={12} />
+                          <span>{langCode === 'tr' ? 'API Anahtarı Al' : 'Get API Key'}</span>
+                        </button>
+                        <div className="ai-api-key-input-wrap">
+                          <input
+                            type={showKeyCodex ? 'text' : 'password'}
+                            className="ai-api-key-input"
+                            placeholder="sk-proj-..."
+                            value={settings.codexApiKey || ''}
+                            onChange={(e) => updateSetting({ codexApiKey: e.target.value.trim() })}
+                          />
+                          <button
+                            type="button"
+                            className="ai-api-key-eye-btn"
+                            onClick={() => setShowKeyCodex(!showKeyCodex)}
+                            title={showKeyCodex ? (langCode === 'tr' ? 'Gizle' : 'Hide') : (langCode === 'tr' ? 'Göster' : 'Show')}
+                          >
+                            {showKeyCodex ? <EyeOff size={13} /> : <Eye size={13} />}
+                          </button>
+                        </div>
+                        {settings.codexApiKey ? (
+                          <span className="key-saved-pill">{langCode === 'tr' ? '✓ Kaydedildi' : '✓ Saved'}</span>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="row-right-group">
+                    <span className={`status-badge ${settings.codexApiKey ? 'green' : ''}`}>
+                      {settings.codexApiKey ? (langCode === 'tr' ? 'Kayıtlı' : 'Saved') : (langCode === 'tr' ? 'İsteğe bağlı' : 'Optional')}
+                    </span>
+                    <button
+                      type="button"
+                      className={`settings-switch ${settings.codexEnabled ? 'on' : ''}`}
+                      onClick={() => updateSetting({ codexEnabled: !settings.codexEnabled })}
+                    >
+                      <i />
+                    </button>
+                  </div>
                 </div>
-                <button
-                  type="button"
-                  className={`settings-switch ${settings.startWithWindows !== false ? 'on' : ''}`}
-                  onClick={() =>
-                    updateSetting({ startWithWindows: settings.startWithWindows === false })
-                  }
-                >
-                  <i />
-                </button>
-              </div>
-              <div className="settings-row">
-                <div className="row-text-col">
-                  <strong>{t('settings.general.soundEffects')}</strong>
-                  <span>{t('settings.general.soundEffectsDesc')}</span>
-                </div>
-                <button
-                  type="button"
-                  className={`settings-switch ${settings.soundEffects !== false ? 'on' : ''}`}
-                  onClick={() => updateSetting({ soundEffects: settings.soundEffects === false })}
-                >
-                  <i />
-                </button>
-              </div>
-              <div className="settings-row">
-                <div className="row-text-col">
-                  <strong>{langCode === 'tr' ? 'Karşılama Ekranı' : 'Welcome Setup'}</strong>
-                  <span>
-                    {langCode === 'tr'
-                      ? 'İlk kurulum sihirbazını ve Bedo başlangıç ayarlarını yeniden aç'
-                      : 'Re-open the Apple-style welcome and setup assistant'}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  className="dark-pill-btn"
-                  onClick={() => {
-                    setOnboardingStep(1);
-                    setShowOnboarding(true);
-                  }}
-                >
-                  {langCode === 'tr' ? 'Başlat' : 'Open'}
-                </button>
-              </div>
+              </section>
             </div>
-          </div>
-        )}
-
-        {activePage === 'typography' && (
-          <div className="settings-page-body narrow-body typography-settings-page">
-            <span className="section-eyebrow">{langCode === 'tr' ? 'ARAYÜZ METNİ' : 'INTERFACE TEXT'}</span>
-            <p className="typography-intro">{langCode === 'tr' ? 'Tek bir seçim TwoCode genelindeki etiketleri, menüleri, kartları ve açıklamaları günceller.' : 'One choice updates labels, menus, cards and descriptions throughout TwoCode.'}</p>
-            <div className="typography-font-grid">
-              {TEXT_FONT_OPTIONS.map((font, index) => (
-                <button
-                  key={font.id}
-                  type="button"
-                  className={`typography-font-option ${textFontIndex === index ? 'active' : ''}`}
-                  onClick={() => selectTextFont(index)}
-                  aria-pressed={textFontIndex === index}
-                >
-                  <span className="typography-font-preview" style={{ fontFamily: font.family }}>Ag</span>
-                  <span className="typography-font-name">{font.name}</span>
-                  <span className="typography-font-sample" style={{ fontFamily: font.family }}>{langCode === 'tr' ? 'Pijamalı hasta yağız şoföre çabucak güvendi' : 'The quick brown fox'}</span>
-                  {textFontIndex === index && <Check size={15} className="typography-font-check" />}
-                </button>
-              ))}
-            </div>
-
-            <span className="section-eyebrow typography-number-eyebrow">{langCode === 'tr' ? 'SAYILAR VE SAAT' : 'NUMBERS & CLOCK'}</span>
-            <p className="typography-intro">{langCode === 'tr' ? 'Bu ayar Ana Sayfa’daki saat yazı tipi seçici ile paylaşılır. Zamanlayıcılar, tarihler ve sayısal göstergeler bunu takip eder.' : 'This is shared with the clock font picker on Home. Timers, dates and numeric readouts follow it.'}</p>
-            <div className="typography-font-grid number-font-grid">
-              {CLOCK_FONT_OPTIONS.map((font, index) => (
-                <button
-                  key={font.id}
-                  type="button"
-                  className={`typography-font-option ${numberFontIndex === index ? 'active' : ''}`}
-                  onClick={() => selectNumberFont(index)}
-                  aria-pressed={numberFontIndex === index}
-                >
-                  <span className="typography-number-preview" style={{ fontFamily: font.family }}>12:34</span>
-                  <span className="typography-font-name">{font.name}</span>
-                  {numberFontIndex === index && <Check size={15} className="typography-font-check" />}
-                </button>
-              ))}
-            </div>
-
-            <div className="typography-role-note">
-              <span className="typography-code-sample">&lt;/&gt;</span>
-              <span><strong>Code and technical values</strong><small>JetBrains Mono · consistent throughout</small></span>
-            </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* ============================================================
-            PAGE 9: NOTIFICATIONS
+            PAGE 4: APPS (Liquid Glass & Glassmorphism)
             ============================================================ */}
-        {activePage === 'notifications' && (
-          <div className="notifications-split-layout">
-            <div className="notif-left-list">
-              <div className="notif-top-toggles">
-                <div className="notif-toggle-line">
-                  <strong>{langCode === 'tr' ? 'Windows bildirimleri' : 'Windows notifications'}</strong>
+        {activePage === 'apps' && (() => {
+          const appsList = settings.apps || [];
+          const isFull = appsList.length >= 4;
+          const presetApps = [
+            { name: 'YouTube', url: 'https://youtube.com', type: 'youtube' },
+            { name: 'Spotify', url: 'https://open.spotify.com', type: 'spotify' },
+            { name: 'GitHub', url: 'https://github.com', type: 'github' },
+            { name: 'WhatsApp', url: 'https://web.whatsapp.com', type: 'whatsapp' },
+            { name: 'Gemini', url: 'https://gemini.google.com', type: 'gemini' },
+            { name: 'ChatGPT', url: 'https://chatgpt.com', type: 'custom', iconUrl: 'https://www.google.com/s2/favicons?domain=chatgpt.com&sz=64' },
+          ];
+
+          return (
+            <div className="settings-page-body apps-lg-page">
+              {/* Liquid Glass Hero */}
+              <section className="apps-lg-hero">
+                <div className="apps-lg-hero-glow" aria-hidden="true" />
+                <div className="ai-lg-hero-copy">
+                  <span className="apps-lg-eyebrow">
+                    {langCode === 'tr' ? 'ADA KISAYOLLARI' : 'ISLAND SHORTCUTS'}
+                  </span>
+                  <h2>
+                    {langCode === 'tr' ? 'Uygulamalar' : 'Apps'}{' '}
+                    <span>{langCode === 'tr' ? '& Hızlı Erişim' : '& Quick Launch'}</span>
+                  </h2>
+                  <p>
+                    {langCode === 'tr'
+                      ? 'En fazla 4 web sitesi veya yerel program ekleyin. Adanın alt çubuğundan ve Tüm Uygulamalar menüsünden tek tıkla açılır.'
+                      : 'Add up to 4 websites or local programs. Launch them in one click from the Island dock and All Apps menu.'}
+                  </p>
+                </div>
+                <div className="ai-lg-hero-action">
+                  <span className={`ai-lg-status-pill ${appsList.length > 0 ? 'is-active' : ''}`}>
+                    {appsList.length} / 4 {langCode === 'tr' ? 'dolu' : 'used'}
+                  </span>
                   <button
                     type="button"
-                    className={`settings-switch ${settings.windowsNotifications ? 'on' : ''}`}
-                    onClick={() =>
-                      updateSetting({ windowsNotifications: !settings.windowsNotifications })
-                    }
+                    className="agents-lg-connect-btn"
+                    disabled={isFull}
+                    onClick={handleChooseProgram}
+                  >
+                    <Plus size={14} />
+                    <span>{langCode === 'tr' ? 'Program Seç (.exe)' : 'Choose Program'}</span>
+                  </button>
+                </div>
+              </section>
+
+              {/* Installed Shortcuts + Add Form */}
+              <section className="ai-lg-card">
+                <div className="apps-lg-list-head">
+                  <div className="row-text-col">
+                    <strong>{langCode === 'tr' ? 'Ekli Kısayollar' : 'Pinned Shortcuts'}</strong>
+                    <span>
+                      {langCode === 'tr'
+                        ? 'Sıralamayı değiştirebilir, doğrudan test edebilir veya kaldırabilirsiniz.'
+                        : 'Reorder, test-launch, or remove your pinned shortcuts.'}
+                    </span>
+                  </div>
+                </div>
+
+                {appsList.length === 0 ? (
+                  <div className="apps-lg-empty">
+                    <LayoutGrid size={18} />
+                    <span>
+                      {langCode === 'tr'
+                        ? 'Henüz kısayol eklenmedi. Aşağıdan web sitesi, popüler uygulama veya .exe seçin.'
+                        : 'No shortcuts added yet. Add a website, preset app, or .exe below.'}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="apps-lg-list">
+                    {appsList.map((app, index) => (
+                      <div key={app.id} className="apps-lg-item">
+                        <div className="app-item-left">
+                          <span className="app-brand-badge">
+                            <RealAppIcon sc={app} size={17} />
+                          </span>
+                          <div className="apps-lg-item-meta">
+                            <strong className="app-item-name">{app.name}</strong>
+                            <span className="app-item-path">{app.url}</span>
+                          </div>
+                        </div>
+                        <div className="apps-lg-item-actions">
+                          <button
+                            type="button"
+                            className="apps-lg-mini-btn"
+                            disabled={index === 0}
+                            onClick={() => handleMoveApp(index, -1)}
+                            title={langCode === 'tr' ? 'Yukarı taşı' : 'Move up'}
+                          >
+                            <ArrowUp size={13} />
+                          </button>
+                          <button
+                            type="button"
+                            className="apps-lg-mini-btn"
+                            disabled={index === appsList.length - 1}
+                            onClick={() => handleMoveApp(index, 1)}
+                            title={langCode === 'tr' ? 'Aşağı taşı' : 'Move down'}
+                          >
+                            <ArrowDown size={13} />
+                          </button>
+                          <button
+                            type="button"
+                            className="apps-lg-mini-btn"
+                            onClick={() => window.twocode?.openApp?.(app)}
+                            title={langCode === 'tr' ? 'Şimdi aç' : 'Open now'}
+                          >
+                            <ExternalLink size={13} />
+                          </button>
+                          <button
+                            type="button"
+                            className="apps-lg-remove-btn"
+                            onClick={() => handleRemoveApp(app.id)}
+                          >
+                            {t('common.remove')}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Add custom URL / local path */}
+                <div className="apps-lg-add-row">
+                  <input
+                    type="text"
+                    className="settings-input"
+                    disabled={isFull}
+                    placeholder={langCode === 'tr' ? 'Ad (ör. YouTube)' : 'Name (e.g. YouTube)'}
+                    value={newAppName}
+                    onChange={(e) => setNewAppName(e.target.value)}
+                  />
+                  <input
+                    type="text"
+                    className="settings-input"
+                    disabled={isFull}
+                    placeholder={langCode === 'tr' ? 'Adres veya dosya yolu (ör. youtube.com)' : 'URL or path (e.g. youtube.com)'}
+                    value={newAppUrl}
+                    onChange={(e) => setNewAppUrl(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && !isFull && handleAddApp()}
+                  />
+                  <button
+                    type="button"
+                    className="white-pill-btn"
+                    disabled={isFull || !newAppName.trim() || !newAppUrl.trim()}
+                    onClick={handleAddApp}
+                  >
+                    {t('common.add')}
+                  </button>
+                </div>
+
+                {/* One-click popular presets */}
+                <div className="apps-lg-presets-wrap">
+                  <span className="apps-lg-presets-label">
+                    {isFull
+                      ? (langCode === 'tr' ? 'Maksimum 4 kısayol sınırına ulaşıldı.' : 'Maximum of 4 shortcuts reached.')
+                      : (langCode === 'tr' ? 'Hızlı Ekle:' : 'Quick Add:')}
+                  </span>
+                  <div className="apps-lg-presets">
+                    {presetApps.map((preset) => {
+                      const alreadyAdded = appsList.some(
+                        (a) => a.url === preset.url || a.name.toLowerCase() === preset.name.toLowerCase()
+                      );
+                      return (
+                        <button
+                          key={preset.name}
+                          type="button"
+                          className={`apps-lg-preset-chip ${alreadyAdded ? 'is-added' : ''}`}
+                          disabled={isFull || alreadyAdded}
+                          onClick={() => handleAddPresetApp(preset)}
+                        >
+                          <RealAppIcon sc={{ id: `preset-${preset.name}`, ...preset }} size={13} />
+                          <span>{preset.name}</span>
+                          {alreadyAdded ? <Check size={11} /> : <Plus size={11} />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </section>
+
+              {/* Installed Apps Auto-Discovery */}
+              <section className="ai-lg-card">
+                <div className="apps-lg-installed-head">
+                  <div className="row-text-col">
+                    <strong>
+                      {langCode === 'tr' ? 'Bu Bilgisayarda Yüklü Uygulamalar' : 'Installed Apps on This PC'}
+                    </strong>
+                    <span>
+                      {installedAppsLoading
+                        ? langCode === 'tr'
+                          ? 'Başlat Menüsü ve Microsoft Store uygulamaları taranıyor…'
+                          : 'Scanning Start Menu and Microsoft Store apps…'
+                        : langCode === 'tr'
+                        ? `${installedApps.length} uygulama algılandı · Tek tıkla adaya ekle`
+                        : `${installedApps.length} apps detected · Add to island in one click`}
+                    </span>
+                  </div>
+                  <div className="apps-lg-installed-tools">
+                    <input
+                      type="text"
+                      className="settings-input apps-lg-installed-search"
+                      placeholder={langCode === 'tr' ? 'Uygulama ara…' : 'Search apps…'}
+                      value={installedAppsQuery}
+                      onChange={(e) => setInstalledAppsQuery(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="apps-lg-mini-btn"
+                      disabled={installedAppsLoading}
+                      onClick={() => loadInstalledApps(true)}
+                      title={langCode === 'tr' ? 'Listeyi yenile' : 'Refresh list'}
+                    >
+                      <RefreshCw size={13} className={installedAppsLoading ? 'spin-icon' : ''} />
+                    </button>
+                  </div>
+                </div>
+
+                {installedAppsLoading && installedApps.length === 0 ? (
+                  <div className="apps-lg-empty">
+                    <RefreshCw size={16} className="spin-icon" />
+                    <span>
+                      {langCode === 'tr' ? 'Yüklü programlar taranıyor…' : 'Scanning installed programs…'}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="apps-lg-installed-grid">
+                    {installedApps
+                      .filter((item) =>
+                        !installedAppsQuery.trim()
+                          ? true
+                          : item.name.toLowerCase().includes(installedAppsQuery.trim().toLowerCase())
+                      )
+                      .slice(0, 24)
+                      .map((item) => {
+                        const alreadyAdded = appsList.some(
+                          (a) =>
+                            a.name.toLowerCase() === item.name.toLowerCase() ||
+                            (item.path && a.path === item.path) ||
+                            (item.aumid && a.aumid === item.aumid)
+                        );
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            className={`apps-lg-installed-item ${alreadyAdded ? 'is-added' : ''}`}
+                            disabled={isFull || alreadyAdded}
+                            onClick={() => {
+                              if (isFull || alreadyAdded) return;
+                              const nextApp = {
+                                id: `app-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                                name: item.name,
+                                url: item.path || item.aumid || '',
+                                path: item.path || '',
+                                aumid: item.aumid || '',
+                                type: item.type,
+                                iconUrl: item.iconDataUrl || '',
+                              };
+                              updateSetting({ apps: [...appsList, nextApp] });
+                            }}
+                          >
+                            <span className="apps-lg-installed-icon">
+                              {item.iconDataUrl ? (
+                                <img src={item.iconDataUrl} alt="" />
+                              ) : (
+                                <span className="apps-lg-installed-mono">
+                                  {item.name.slice(0, 1).toUpperCase()}
+                                </span>
+                              )}
+                            </span>
+                            <span className="apps-lg-installed-info">
+                              <strong>{item.name}</strong>
+                              <small>
+                                {item.source === 'store'
+                                  ? 'Store'
+                                  : langCode === 'tr'
+                                  ? 'Masaüstü'
+                                  : 'Desktop'}
+                              </small>
+                            </span>
+                            <span className="apps-lg-installed-act">
+                              {alreadyAdded ? <Check size={12} /> : <Plus size={12} />}
+                            </span>
+                          </button>
+                        );
+                      })}
+                  </div>
+                )}
+              </section>
+
+              {/* Island Dock Behavior Settings */}
+              <section className="ai-lg-card">
+                <div className="settings-row">
+                  <div className="row-text-col">
+                    <strong>{langCode === 'tr' ? 'Adada Hızlı Kısayollar' : 'Show Shortcuts in Island Dock'}</strong>
+                    <span>
+                      {langCode === 'tr'
+                        ? 'Eklediğiniz uygulamaları genişletilmiş adanın alt çubuğunda gösterir.'
+                        : 'Displays your pinned apps in the bottom dock of the expanded island.'}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className={`settings-switch ${settings.showAppsInDock !== false ? 'on' : ''}`}
+                    onClick={() => updateSetting({ showAppsInDock: settings.showAppsInDock === false })}
                   >
                     <i />
                   </button>
                 </div>
-                <div className="notif-toggle-line">
-                  <strong>{langCode === 'tr' ? 'Rahatsız etme' : 'Do not disturb'}</strong>
+
+                <div className="settings-row no-border">
+                  <div className="row-text-col">
+                    <strong>{langCode === 'tr' ? 'Uygulama Açılınca Adayı Küçült' : 'Collapse Island on App Launch'}</strong>
+                    <span>
+                      {langCode === 'tr'
+                        ? 'Bir kısayola tıkladığınızda uygulamayı açar ve adayı otomatik kapatır.'
+                        : 'Automatically collapses the island after launching a shortcut.'}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className={`settings-switch ${settings.closeIslandOnAppOpen ? 'on' : ''}`}
+                    onClick={() => updateSetting({ closeIslandOnAppOpen: !settings.closeIslandOnAppOpen })}
+                  >
+                    <i />
+                  </button>
+                </div>
+              </section>
+            </div>
+          );
+        })()}
+
+        {/* ============================================================
+            PAGE 5: ROBO (Liquid Glass & Glassmorphism)
+            ============================================================ */}
+        {activePage === 'robo' && (() => {
+          const eyeColorOptions = [
+            { name: 'White', label: langCode === 'tr' ? 'Beyaz' : 'White', hex: '#ffffff' },
+            { name: 'Sky', label: langCode === 'tr' ? 'Mavi' : 'Sky', hex: '#38bdf8' },
+            { name: 'Mint', label: langCode === 'tr' ? 'Nane' : 'Mint', hex: '#34d399' },
+            { name: 'Violet', label: langCode === 'tr' ? 'Mor' : 'Violet', hex: '#a78bfa' },
+            { name: 'Rose', label: langCode === 'tr' ? 'Pembe' : 'Rose', hex: '#f472b6' },
+            { name: 'Amber', label: langCode === 'tr' ? 'Kehribar' : 'Amber', hex: '#fbbf24' },
+          ];
+          const emotionOptions = [
+            { label: langCode === 'tr' ? '😊 Mutlu' : '😊 Happy', mood: 'happy' },
+            { label: langCode === 'tr' ? '😍 Aşık' : '😍 In love', mood: 'inlove' },
+            { label: langCode === 'tr' ? '🧐 Meraklı' : '🧐 Curious', mood: 'curious' },
+            { label: langCode === 'tr' ? '🤨 Odaklı' : '🤨 Focused', mood: 'focus-arc' },
+            { label: langCode === 'tr' ? '😉 Göz kırp' : '😉 Wink', mood: 'wink' },
+            { label: langCode === 'tr' ? '😢 Üzgün' : '😢 Sad', mood: 'sad' },
+            { label: langCode === 'tr' ? '😵 Baş dönmesi' : '😵 Dizzy', mood: 'dizzy' },
+            { label: langCode === 'tr' ? '😴 Uykulu' : '😴 Sleepy', mood: 'dnd-sleep' },
+            { label: langCode === 'tr' ? '💭 Düşünüyor' : '💭 Thinking', mood: 'thinking' },
+          ];
+
+          return (
+            <div className="settings-page-body robo-lg-page">
+              {/* Liquid Glass Hero */}
+              <section className="robo-lg-hero">
+                <div className="robo-lg-hero-glow" aria-hidden="true" />
+                <div className="robo-lg-avatar-wrap">
+                  <RoboCrownAvatar
+                    outfit={settings.outfit}
+                    size={96}
+                    eyeHex={settings.eyeColorHex || '#ffffff'}
+                    bodyColor={settings.bodyColor || 'Cloud'}
+                  />
+                </div>
+                <div className="ai-lg-hero-copy">
+                  <span className="robo-lg-eyebrow">
+                    {langCode === 'tr' ? 'BEDO KARAKTERİ' : 'BEDO CHARACTER'}
+                  </span>
+                  <h2>
+                    Bedo <span>{langCode === 'tr' ? '& İfadeler' : '& Expressions'}</span>
+                  </h2>
+                  <p>
+                    {langCode === 'tr'
+                      ? 'Adadaki göz rengini, ses efektlerini, göz kırpma davranışını ve canlı ifadeleri buradan kontrol edin.'
+                      : 'Control Bedo’s eye colour, sound effects, blinking behaviour, and live island expressions.'}
+                  </p>
+                </div>
+                <div className="ai-lg-hero-action">
+                  <button
+                    type="button"
+                    className="agents-lg-connect-btn"
+                    onClick={() => setActivePage('wardrobe')}
+                  >
+                    <Shirt size={14} />
+                    <span>{langCode === 'tr' ? 'Gardırobu Aç' : 'Open Wardrobe'}</span>
+                  </button>
+                </div>
+              </section>
+
+              {/* Eye Color & Visibility */}
+              <section className="ai-lg-card">
+                <div className="settings-row">
+                  <div className="row-text-col">
+                    <strong>{langCode === 'tr' ? 'Göz Rengi' : 'Eye Colour'}</strong>
+                    <span>
+                      {langCode === 'tr'
+                        ? 'Adadaki Bedo gözlerinin parlama rengini seçin.'
+                        : 'Pick the glow colour for Bedo’s eyes in the island.'}
+                    </span>
+                  </div>
+                  <div className="robo-lg-swatches">
+                    {eyeColorOptions.map((opt) => {
+                      const selected = (settings.eyeColorHex || '#ffffff').toLowerCase() === opt.hex.toLowerCase();
+                      return (
+                        <button
+                          key={opt.name}
+                          type="button"
+                          className={`robo-lg-swatch ${selected ? 'is-selected' : ''}`}
+                          style={{ background: opt.hex }}
+                          title={opt.label}
+                          onClick={() => updateSetting({ eyeColorHex: opt.hex, eyeColorName: opt.name })}
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="settings-row no-border">
+                  <div className="row-text-col">
+                    <strong>{langCode === 'tr' ? 'Adada Gözleri Göster' : 'Show Eyes in Island'}</strong>
+                    <span>
+                      {langCode === 'tr'
+                        ? 'Ada beklemedeyken Bedo’nun gözlerini üst çubukta gösterir.'
+                        : 'Shows Bedo’s eyes in the island when idle.'}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className={`settings-switch ${settings.roboEyesVisible !== false ? 'on' : ''}`}
+                    onClick={() => updateSetting({ roboEyesVisible: settings.roboEyesVisible === false })}
+                  >
+                    <i />
+                  </button>
+                </div>
+              </section>
+
+              {/* Behaviour & Sound */}
+              <section className="ai-lg-card">
+                <div className="settings-row">
+                  <div className="row-text-col">
+                    <strong>{langCode === 'tr' ? 'Göz Kırpma' : 'Blinking'}</strong>
+                    <span>
+                      {langCode === 'tr'
+                        ? 'Bedo’nun doğal aralıklarla göz kırpmasını sağlar.'
+                        : 'Makes Bedo blink naturally at intervals.'}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className={`settings-switch ${settings.blinkingEnabled !== false ? 'on' : ''}`}
+                    onClick={() => updateSetting({ blinkingEnabled: settings.blinkingEnabled === false })}
+                  >
+                    <i />
+                  </button>
+                </div>
+
+                <div className="settings-row no-border">
+                  <div className="row-text-col">
+                    <strong>{langCode === 'tr' ? 'Bedo Ses Efektleri' : 'Bedo Sound Effects'}</strong>
+                    <span>
+                      {langCode === 'tr'
+                        ? 'Tıklama, bildirim ve ifade tepkilerinde yumuşak ses efektleri çalar.'
+                        : 'Plays subtle sound effects for taps, notifications, and reactions.'}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className={`settings-switch ${settings.soundEffects !== false ? 'on' : ''}`}
+                    onClick={() => updateSetting({ soundEffects: settings.soundEffects === false })}
+                  >
+                    <i />
+                  </button>
+                </div>
+              </section>
+
+              {/* Live Expression Test */}
+              <section className="ai-lg-card">
+                <div className="robo-lg-emotions-head">
+                  <div className="row-text-col">
+                    <strong>{langCode === 'tr' ? 'Canlı İfade Testi' : 'Live Expression Test'}</strong>
+                    <span>
+                      {langCode === 'tr'
+                        ? 'Adadaki Bedo’nun tepkisini anlık görmek için bir ifadeye tıklayın.'
+                        : 'Click an expression to preview Bedo’s reaction live on the island.'}
+                    </span>
+                  </div>
+                </div>
+                <div className="robo-lg-emotions-grid">
+                  {emotionOptions.map((em) => (
+                    <button
+                      key={em.mood}
+                      type="button"
+                      className={`robo-lg-emotion-btn ${activeTestEmotion === em.mood ? 'is-active' : ''}`}
+                      onClick={() => {
+                        setActiveTestEmotion(em.mood);
+                        triggerEmotionOnIsland(em.mood);
+                        setTimeout(() => {
+                          setActiveTestEmotion((curr) => (curr === em.mood ? '' : curr));
+                        }, 3200);
+                      }}
+                    >
+                      {em.label}
+                    </button>
+                  ))}
+                </div>
+              </section>
+            </div>
+          );
+        })()}
+
+        {/* ============================================================
+            PAGE 6: WARDROBE (Liquid Glass & Glassmorphism)
+            ============================================================ */}
+        {activePage === 'wardrobe' && (() => {
+          const normalizedOutfit = settings.outfit === 'Best' ? 'Crown' : (settings.outfit || 'Crown');
+          const outfitLabelMap = {
+            None: langCode === 'tr' ? 'Yok' : 'None',
+            Crown: langCode === 'tr' ? 'Taç' : 'Crown',
+            'Party hat': langCode === 'tr' ? 'Parti şapkası' : 'Party hat',
+            Sunglasses: langCode === 'tr' ? 'Güneş gözlüğü' : 'Sunglasses',
+            Headphones: langCode === 'tr' ? 'Kulaklık' : 'Headphones',
+            Beanie: langCode === 'tr' ? 'Bere' : 'Beanie',
+            Halo: langCode === 'tr' ? 'Hale' : 'Halo',
+            Bowtie: langCode === 'tr' ? 'Papyon' : 'Bowtie',
+          };
+          const outfits = [
+            { id: 'None', label: outfitLabelMap.None, icon: '🚫' },
+            { id: 'Crown', label: outfitLabelMap.Crown, icon: '👑' },
+            { id: 'Party hat', label: outfitLabelMap['Party hat'], icon: '🥳' },
+            { id: 'Sunglasses', label: outfitLabelMap.Sunglasses, icon: '😎' },
+            { id: 'Headphones', label: outfitLabelMap.Headphones, icon: '🎧' },
+            { id: 'Beanie', label: outfitLabelMap.Beanie, icon: '🧢' },
+            { id: 'Halo', label: outfitLabelMap.Halo, icon: '😇' },
+            { id: 'Bowtie', label: outfitLabelMap.Bowtie, icon: '🎀' },
+          ];
+          const bodyColors = [
+            { name: 'Cloud', label: langCode === 'tr' ? 'Bulut' : 'Cloud', bg: 'radial-gradient(circle at 30% 30%, #ffffff, #d4d4d8)' },
+            { name: 'Mint', label: langCode === 'tr' ? 'Nane' : 'Mint', bg: 'radial-gradient(circle at 30% 30%, #d1fae5, #6ee7b7)' },
+            { name: 'Sky', label: langCode === 'tr' ? 'Gökyüzü' : 'Sky', bg: 'radial-gradient(circle at 30% 30%, #e0f2fe, #7dd3fc)' },
+            { name: 'Rose', label: langCode === 'tr' ? 'Gül' : 'Rose', bg: 'radial-gradient(circle at 30% 30%, #fce7f3, #f9a8d4)' },
+            { name: 'Classic', label: langCode === 'tr' ? 'Klasik' : 'Classic', bg: 'radial-gradient(circle at 30% 30%, #4b5563, #1f2937)' },
+            { name: 'Night', label: langCode === 'tr' ? 'Gece' : 'Night', bg: 'radial-gradient(circle at 30% 30%, #3f3f46, #18181b)' },
+            { name: 'Blue', label: langCode === 'tr' ? 'Mavi' : 'Blue', bg: 'radial-gradient(circle at 30% 30%, #3b82f6, #1d4ed8)' },
+            { name: 'Purple', label: langCode === 'tr' ? 'Mor' : 'Purple', bg: 'radial-gradient(circle at 30% 30%, #8b5cf6, #4c1d95)' },
+            { name: 'Pink', label: langCode === 'tr' ? 'Pembe' : 'Pink', bg: 'radial-gradient(circle at 30% 30%, #be185d, #500724)' },
+            { name: 'Gold', label: langCode === 'tr' ? 'Altın' : 'Gold', bg: 'radial-gradient(circle at 30% 30%, #a16207, #422006)' },
+          ];
+          const eyeColors = [
+            { name: 'Mint', label: langCode === 'tr' ? 'Nane' : 'Mint', hex: '#a7f3d0' },
+            { name: 'White', label: langCode === 'tr' ? 'Beyaz' : 'White', hex: '#ffffff' },
+            { name: 'Blue', label: langCode === 'tr' ? 'Mavi' : 'Blue', hex: '#7dd3fc' },
+            { name: 'Pink', label: langCode === 'tr' ? 'Pembe' : 'Pink', hex: '#f9a8d4' },
+            { name: 'Purple', label: langCode === 'tr' ? 'Mor' : 'Purple', hex: '#c4b5fd' },
+            { name: 'Yellow', label: langCode === 'tr' ? 'Sarı' : 'Yellow', hex: '#fef08a' },
+          ];
+
+          return (
+            <div className="settings-page-body wardrobe-lg-page">
+              <div className="wardrobe-lg-layout">
+                {/* Left Liquid Glass Live Preview */}
+                <section className="wardrobe-lg-preview">
+                  <div
+                    className="wardrobe-lg-preview-glow"
+                    aria-hidden="true"
+                    style={{
+                      background: `radial-gradient(circle at center, ${BODY_COLOR_HEX[settings.bodyColor || 'Cloud'] || '#ffffff'}33 0%, transparent 72%)`,
+                    }}
+                  />
+                  <RoboCrownAvatar
+                    outfit={normalizedOutfit}
+                    size={164}
+                    eyeHex={settings.eyeColorHex || '#ffffff'}
+                    bodyColor={settings.bodyColor || 'Cloud'}
+                  />
+                  <div className="wardrobe-lg-preview-meta">
+                    <strong>Bedo</strong>
+                    <span>
+                      {langCode === 'tr'
+                        ? `Kıyafet: ${outfitLabelMap[normalizedOutfit] || normalizedOutfit}`
+                        : `Wearing: ${outfitLabelMap[normalizedOutfit] || normalizedOutfit}`}
+                    </span>
+                  </div>
+                </section>
+
+                {/* Right Options */}
+                <div className="wardrobe-lg-options">
+                  <section className="ai-lg-card">
+                    <div className="wardrobe-lg-group-head">
+                      <strong>{langCode === 'tr' ? 'Kıyafet' : 'Outfit'}</strong>
+                      <span>
+                        {langCode === 'tr'
+                          ? 'Seçtiğiniz aksesuar adadaki Bedo üzerinde anında görünür.'
+                          : 'Selected accessory appears immediately on Bedo in the island.'}
+                      </span>
+                    </div>
+                    <div className="wardrobe-lg-outfit-grid">
+                      {outfits.map((o) => {
+                        const selected = normalizedOutfit === o.id;
+                        return (
+                          <button
+                            key={o.id}
+                            type="button"
+                            className={`wardrobe-lg-outfit-btn ${selected ? 'is-selected' : ''}`}
+                            onClick={() => updateSetting({ outfit: o.id })}
+                          >
+                            {selected && (
+                              <span className="wardrobe-lg-check">
+                                <Check size={10} strokeWidth={3} />
+                              </span>
+                            )}
+                            <span className="wardrobe-lg-emoji">{o.icon}</span>
+                            <strong>{o.label}</strong>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </section>
+
+                  <section className="ai-lg-card">
+                    <div className="wardrobe-lg-group-head">
+                      <strong>{langCode === 'tr' ? 'Gövde Rengi' : 'Body Colour'}</strong>
+                    </div>
+                    <div className="wardrobe-lg-spheres">
+                      {bodyColors.map((b) => (
+                        <button
+                          key={b.name}
+                          type="button"
+                          className="wardrobe-lg-sphere-item"
+                          onClick={() => updateSetting({ bodyColor: b.name })}
+                        >
+                          <span
+                            className={`wardrobe-lg-sphere ${settings.bodyColor === b.name ? 'is-selected' : ''}`}
+                            style={{ background: b.bg }}
+                          />
+                          <small>{b.label}</small>
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+
+                  <section className="ai-lg-card">
+                    <div className="wardrobe-lg-group-head">
+                      <strong>{langCode === 'tr' ? 'Göz Rengi' : 'Eye Colour'}</strong>
+                    </div>
+                    <div className="wardrobe-lg-spheres">
+                      {eyeColors.map((ey) => (
+                        <button
+                          key={ey.name}
+                          type="button"
+                          className="wardrobe-lg-sphere-item"
+                          onClick={() => updateSetting({ eyeColorName: ey.name, eyeColorHex: ey.hex })}
+                        >
+                          <span
+                            className={`wardrobe-lg-sphere ${(settings.eyeColorHex || '#ffffff').toLowerCase() === ey.hex.toLowerCase() ? 'is-selected' : ''}`}
+                            style={{ background: ey.hex }}
+                          />
+                          <small>{ey.label}</small>
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+
+                  <section className="ai-lg-card">
+                    <div className="settings-row no-border">
+                      <div className="row-left-with-icon">
+                        <div className="stat-icon-sq amber">
+                          <Calendar size={15} />
+                        </div>
+                        <div className="row-text-col">
+                          <strong>{langCode === 'tr' ? 'Mevsimlik kıyafetler' : 'Seasonal outfits'}</strong>
+                          <span>
+                            {langCode === 'tr'
+                              ? 'Yılbaşı ve Cadılar Bayramı gibi özel günlerde otomatik şapka takar.'
+                              : 'Automatically wears themed hats on holidays like Halloween and New Year.'}
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className={`settings-switch ${settings.seasonalOutfits ? 'on' : ''}`}
+                        onClick={() => updateSetting({ seasonalOutfits: !settings.seasonalOutfits })}
+                      >
+                        <i />
+                      </button>
+                    </div>
+                  </section>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ============================================================
+            PAGE 8: GENERAL (Liquid Glass & Glassmorphism)
+            ============================================================ */}
+        {activePage === 'general' && (() => {
+          const shortcutsEnabled = settings.globalShortcutsEnabled !== false;
+          const shortcuts = [
+            { label: t('settings.general.openIsland'), keys: 'Ctrl + Alt + T' },
+            { label: t('settings.general.tuckIsland'), keys: 'Ctrl + Alt + H' },
+            { label: langCode === 'tr' ? 'Bedo ile konuş' : 'Talk to Bedo', keys: 'Ctrl + Alt + Space' },
+            { label: t('settings.nav.home'), keys: 'Ctrl + Alt + Shift + 1' },
+            { label: t('settings.opt.Music'), keys: 'Ctrl + Alt + Shift + 2' },
+            { label: 'Bedo', keys: 'Ctrl + Alt + Shift + 3' },
+            { label: langCode === 'tr' ? 'Odak sayacı' : 'Focus timer', keys: 'Ctrl + Alt + Shift + 4' },
+            { label: langCode === 'tr' ? 'Notlar' : 'Notes', keys: 'Ctrl + Alt + Shift + 5' },
+            { label: langCode === 'tr' ? 'Takvim' : 'Calendar', keys: 'Ctrl + Alt + Shift + 6' },
+          ];
+
+          return (
+            <div className="settings-page-body general-lg-page">
+              {/* Liquid Glass Hero */}
+              <section className="general-lg-hero">
+                <div className="general-lg-hero-glow" aria-hidden="true" />
+                <div className="ai-lg-hero-copy">
+                  <span className="general-lg-eyebrow">
+                    {langCode === 'tr' ? 'SİSTEM & TERCİHLER' : 'SYSTEM & PREFERENCES'}
+                  </span>
+                  <h2>
+                    {langCode === 'tr' ? 'Genel' : 'General'}{' '}
+                    <span>{langCode === 'tr' ? '& Kısayollar' : '& Shortcuts'}</span>
+                  </h2>
+                  <p>
+                    {langCode === 'tr'
+                      ? 'Uygulama dili, Windows başlangıç davranışı, ses efektleri ve global klavye kısayollarını yönetin.'
+                      : 'Manage app language, Windows startup behaviour, sound effects, and global keyboard shortcuts.'}
+                  </p>
+                </div>
+                <div className="ai-lg-hero-action">
+                  <span className={`ai-lg-status-pill ${shortcutsEnabled ? 'is-active' : ''}`}>
+                    {shortcutsEnabled
+                      ? (langCode === 'tr' ? 'Kısayollar Aktif' : 'Shortcuts Active')
+                      : (langCode === 'tr' ? 'Kısayollar Kapalı' : 'Shortcuts Paused')}
+                  </span>
+                  <button
+                    type="button"
+                    className="agents-lg-connect-btn"
+                    onClick={() => {
+                      setOnboardingStep(1);
+                      setShowOnboarding(true);
+                    }}
+                  >
+                    <SlidersHorizontal size={14} />
+                    <span>{langCode === 'tr' ? 'Karşılama Ekranı' : 'Welcome Setup'}</span>
+                  </button>
+                </div>
+              </section>
+
+              {/* Language & System Behaviour */}
+              <section className="ai-lg-card">
+                <div className="settings-row">
+                  <div className="row-text-col">
+                    <strong>{t('settings.general.languageTitle')}</strong>
+                    <span>{t('settings.general.languageDesc')}</span>
+                  </div>
+                  <div className="seg-btn-group">
+                    {['Türkçe', 'English'].map((lang) => (
+                      <button
+                        key={lang}
+                        type="button"
+                        className={`seg-choice-btn ${languageLabel(settings.language) === lang ? 'active' : ''}`}
+                        onClick={() => updateSetting({ language: lang })}
+                      >
+                        {lang}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="settings-row">
+                  <div className="row-text-col">
+                    <strong>{t('settings.general.startWithWindows')}</strong>
+                    <span>{t('settings.general.startWithWindowsDesc')}</span>
+                  </div>
+                  <button
+                    type="button"
+                    className={`settings-switch ${settings.startWithWindows !== false ? 'on' : ''}`}
+                    onClick={() => updateSetting({ startWithWindows: settings.startWithWindows === false })}
+                  >
+                    <i />
+                  </button>
+                </div>
+
+                <div className="settings-row">
+                  <div className="row-text-col">
+                    <strong>{t('settings.general.soundEffects')}</strong>
+                    <span>{t('settings.general.soundEffectsDesc')}</span>
+                  </div>
+                  <button
+                    type="button"
+                    className={`settings-switch ${settings.soundEffects !== false ? 'on' : ''}`}
+                    onClick={() => updateSetting({ soundEffects: settings.soundEffects === false })}
+                  >
+                    <i />
+                  </button>
+                </div>
+
+                <div className="settings-row no-border">
+                  <div className="row-text-col">
+                    <strong>{langCode === 'tr' ? 'Global Klavye Kısayolları' : 'Global Keyboard Shortcuts'}</strong>
+                    <span>
+                      {langCode === 'tr'
+                        ? 'Adayı ve Bedo’yu herhangi bir uygulamadayken klavye ile açmanızı sağlar.'
+                        : 'Allows opening the Island and Bedo from anywhere using keyboard shortcuts.'}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className={`settings-switch ${shortcutsEnabled ? 'on' : ''}`}
+                    onClick={() => updateSetting({ globalShortcutsEnabled: !shortcutsEnabled })}
+                  >
+                    <i />
+                  </button>
+                </div>
+              </section>
+
+              {/* Working Global Shortcuts Grid */}
+              <section className="ai-lg-card">
+                <div className="general-lg-shortcuts-head">
+                  <div className="row-text-col">
+                    <strong>{t('settings.general.shortcuts')}</strong>
+                    <span>
+                      {langCode === 'tr'
+                        ? 'Tüm kısayollar sistem genelinde anlık olarak çalışır.'
+                        : 'All shortcuts work system-wide in real time.'}
+                    </span>
+                  </div>
+                </div>
+                <div className={`general-lg-shortcuts-grid ${!shortcutsEnabled ? 'is-disabled' : ''}`}>
+                  {shortcuts.map((sc) => (
+                    <div key={sc.label} className="general-lg-shortcut-item">
+                      <span>{sc.label}</span>
+                      <kbd className="general-lg-kbd">{sc.keys}</kbd>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            </div>
+          );
+        })()}
+
+        {activePage === 'typography' && (() => {
+          const activeTextFont = TEXT_FONT_OPTIONS[textFontIndex] || TEXT_FONT_OPTIONS[0];
+          const activeNumFont = CLOCK_FONT_OPTIONS[numberFontIndex] || CLOCK_FONT_OPTIONS[3] || CLOCK_FONT_OPTIONS[0];
+          const isDefault = textFontIndex === 0 && numberFontIndex === 3;
+
+          return (
+            <div className="settings-page-body typo-lg-page">
+              {/* Liquid Glass Hero */}
+              <section className="typo-lg-hero">
+                <div className="typo-lg-hero-glow" aria-hidden="true" />
+                <div className="ai-lg-hero-copy">
+                  <span className="typo-lg-eyebrow">
+                    {langCode === 'tr' ? 'YAZI TİPİ & OKUNABİLİRLİK' : 'TYPOGRAPHY & READABILITY'}
+                  </span>
+                  <h2>
+                    {langCode === 'tr' ? 'Tipografi' : 'Typography'}{' '}
+                    <span>{langCode === 'tr' ? '& Saat Stili' : '& Clock Style'}</span>
+                  </h2>
+                  <p>
+                    {langCode === 'tr'
+                      ? 'Seçtiğiniz yazı tipleri Ada, Ayarlar ve tüm sayısal göstergelerde anlık olarak güncellenir.'
+                      : 'Selected fonts update instantaneously across the Island, Settings, and all numeric readouts.'}
+                  </p>
+                </div>
+                <div className="ai-lg-hero-action">
+                  <div className="typo-lg-live-pill">
+                    <span style={{ fontFamily: activeTextFont?.family }}>Ag</span>
+                    <strong style={{ fontFamily: activeNumFont?.family }}>12:34</strong>
+                  </div>
+                  <button
+                    type="button"
+                    className="agents-lg-connect-btn"
+                    disabled={isDefault}
+                    onClick={() => {
+                      selectTextFont(0);
+                      selectNumberFont(3);
+                    }}
+                  >
+                    <RefreshCw size={13} />
+                    <span>{langCode === 'tr' ? 'Varsayılana Sıfırla' : 'Reset to Default'}</span>
+                  </button>
+                </div>
+              </section>
+
+              {/* Interface Text */}
+              <section className="ai-lg-card">
+                <div className="wardrobe-lg-group-head">
+                  <strong>{langCode === 'tr' ? 'Arayüz Metni' : 'Interface Text'}</strong>
+                  <span>
+                    {langCode === 'tr'
+                      ? 'Etiketler, menüler, kartlar ve açıklamalar için yazı tipi.'
+                      : 'Font used for labels, menus, cards, and descriptions.'}
+                  </span>
+                </div>
+                <div className="typo-lg-grid">
+                  {TEXT_FONT_OPTIONS.map((font, index) => {
+                    const active = textFontIndex === index;
+                    return (
+                      <button
+                        key={font.id}
+                        type="button"
+                        className={`typo-lg-tile ${active ? 'is-active' : ''}`}
+                        onClick={() => selectTextFont(index)}
+                        aria-pressed={active}
+                      >
+                        {active && (
+                          <span className="typo-lg-check">
+                            <Check size={10} strokeWidth={3} />
+                          </span>
+                        )}
+                        <span className="typo-lg-preview" style={{ fontFamily: font.family }}>Ag</span>
+                        <strong className="typo-lg-name">{font.name}</strong>
+                        <span className="typo-lg-sample" style={{ fontFamily: font.family }}>
+                          {langCode === 'tr' ? 'Hızlı kahverengi tilki' : 'The quick brown fox'}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+
+              {/* Numbers & Clock */}
+              <section className="ai-lg-card">
+                <div className="wardrobe-lg-group-head">
+                  <strong>{langCode === 'tr' ? 'Sayılar ve Saat' : 'Numbers & Clock'}</strong>
+                  <span>
+                    {langCode === 'tr'
+                      ? 'Ana Sayfa saati, zamanlayıcılar, tarihler ve sayısal göstergeler bunu takip eder.'
+                      : 'Shared with the Home clock; timers, dates, and numeric readouts follow it.'}
+                  </span>
+                </div>
+                <div className="typo-lg-grid">
+                  {CLOCK_FONT_OPTIONS.map((font, index) => {
+                    const active = numberFontIndex === index;
+                    return (
+                      <button
+                        key={font.id}
+                        type="button"
+                        className={`typo-lg-tile ${active ? 'is-active' : ''}`}
+                        onClick={() => selectNumberFont(index)}
+                        aria-pressed={active}
+                      >
+                        {active && (
+                          <span className="typo-lg-check">
+                            <Check size={10} strokeWidth={3} />
+                          </span>
+                        )}
+                        <span className="typo-lg-num-preview" style={{ fontFamily: font.family }}>12:34</span>
+                        <strong className="typo-lg-name">{font.name}</strong>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+
+              {/* Code Font Note */}
+              <section className="ai-lg-card">
+                <div className="settings-row no-border">
+                  <div className="row-left-with-icon">
+                    <span className="typo-lg-code-badge">&lt;/&gt;</span>
+                    <div className="row-text-col">
+                      <strong>{langCode === 'tr' ? 'Kod ve Teknik Değerler' : 'Code and Technical Values'}</strong>
+                      <span>
+                        {langCode === 'tr'
+                          ? 'JetBrains Mono · Uygulama genelinde sabit kullanılır.'
+                          : 'JetBrains Mono · Consistent throughout the app.'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            </div>
+          );
+        })()}
+
+        {/* ============================================================
+            PAGE 9: NOTIFICATIONS (Liquid Glass & Glassmorphism)
+            ============================================================ */}
+        {activePage === 'notifications' && (() => {
+          const isMutedAll = settings.doNotDisturb || settings.windowsNotifications === false;
+          const hideText = settings.notifShowText === 'Hide';
+
+          return (
+            <div className="settings-page-body notif-lg-page">
+              {/* Liquid Glass Hero */}
+              <section className="notif-lg-hero">
+                <div className="notif-lg-hero-glow" aria-hidden="true" />
+                <div className="ai-lg-hero-copy">
+                  <span className="notif-lg-eyebrow">
+                    {langCode === 'tr' ? 'BİLDİRİMLER & GİZLİLİK' : 'NOTIFICATIONS & PRIVACY'}
+                  </span>
+                  <h2>
+                    {langCode === 'tr' ? 'Bildirimler' : 'Notifications'}{' '}
+                    <span>{langCode === 'tr' ? '& Sesler' : '& Sounds'}</span>
+                  </h2>
+                  <p>
+                    {langCode === 'tr'
+                      ? 'Windows bildirimlerini, Rahatsız Etme modunu, G-Helper köprüsünü ve bildirim gizliliğini yönetin.'
+                      : 'Manage Windows notifications, Do Not Disturb, G-Helper Bridge, and notification privacy.'}
+                  </p>
+                </div>
+                <div className="ai-lg-hero-action">
+                  <span className={`ai-lg-status-pill ${!isMutedAll ? 'is-active' : ''}`}>
+                    {settings.doNotDisturb
+                      ? (langCode === 'tr' ? 'Rahatsız Etme' : 'Do Not Disturb')
+                      : settings.windowsNotifications === false
+                        ? (langCode === 'tr' ? 'Kapalı' : 'Off')
+                        : (langCode === 'tr' ? 'Bildirimler Aktif' : 'Active')}
+                  </span>
+                  <button
+                    type="button"
+                    className="agents-lg-connect-btn"
+                    onClick={triggerTestNotificationOnIsland}
+                  >
+                    <Bell size={14} />
+                    <span>{langCode === 'tr' ? 'Bildirim Test Et' : 'Test Notification'}</span>
+                  </button>
+                </div>
+              </section>
+
+              {/* Live Preview */}
+              <section className="notif-lg-preview-stage">
+                <div className="notif-lg-preview-pill">
+                  <span className="notif-lg-preview-icon">
+                    <Bell size={15} />
+                  </span>
+                  <div className="notif-preview-copy">
+                    <small>{langCode === 'tr' ? 'BEDO · AZ ÖNCE' : 'BEDO · JUST NOW'}</small>
+                    <strong>
+                      {hideText
+                        ? (langCode === 'tr' ? 'Yeni bildirim' : 'New notification')
+                        : (langCode === 'tr' ? 'Örnek Bildirim' : 'Sample Notification')}
+                    </strong>
+                    {!hideText && (
+                      <span>
+                        {langCode === 'tr'
+                          ? 'Bildiriminiz adada bu şekilde görüntülenir'
+                          : 'Your notification appears like this in the island'}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </section>
+
+              {/* Core Notification Controls & G-Helper Bridge */}
+              <section className="ai-lg-card">
+                <div className="settings-row">
+                  <div className="row-text-col">
+                    <strong>{langCode === 'tr' ? 'Windows Bildirimleri' : 'Windows Notifications'}</strong>
+                    <span>
+                      {langCode === 'tr'
+                        ? 'Sistem ve uygulama bildirimlerini adada gösterir.'
+                        : 'Shows system and app notifications in the island.'}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className={`settings-switch ${settings.windowsNotifications !== false ? 'on' : ''}`}
+                    onClick={() => updateSetting({ windowsNotifications: settings.windowsNotifications === false })}
+                  >
+                    <i />
+                  </button>
+                </div>
+
+                <div className="settings-row">
+                  <div className="row-text-col">
+                    <strong>{langCode === 'tr' ? 'Rahatsız Etme' : 'Do Not Disturb'}</strong>
+                    <span>
+                      {langCode === 'tr'
+                        ? 'Açıkken hiçbir bildirim adayı bölmez.'
+                        : 'Silences all incoming notifications while enabled.'}
+                    </span>
+                  </div>
                   <button
                     type="button"
                     className={`settings-switch ${settings.doNotDisturb ? 'on' : ''}`}
@@ -2526,29 +3320,51 @@ export default function SettingsApp() {
                     <i />
                   </button>
                 </div>
-              </div>
 
-              {/* G-Helper Bridge Section (21st.dev / Minimal Obsidian Card) */}
-              <div className="gh-bridge-card">
-                <div className="gh-bridge-header">
-                  <div className="gh-bridge-meta">
-                    <div className="gh-bridge-title-row">
-                      <span className="gh-bridge-title">G-Helper Bridge</span>
-                      <span className={`gh-bridge-status-pill ${ghelperStatus.running ? 'is-active' : ghelperStatus.installed ? 'is-idle' : 'is-action'}`}>
-                        {langCode === 'tr'
-                          ? (ghelperStatus.running ? 'BAĞLI' : ghelperStatus.installed ? 'BEKLEMEDE' : 'KURULUM')
-                          : (ghelperStatus.running ? 'CONNECTED' : ghelperStatus.installed ? 'IDLE' : 'SETUP')}
-                      </span>
-                    </div>
-                    <span className="gh-bridge-subtitle">
+                <div className="settings-row">
+                  <div className="row-text-col">
+                    <strong>{langCode === 'tr' ? 'Odak Sırasında Bildirimler' : 'Show During Focus Timer'}</strong>
+                    <span>
                       {langCode === 'tr'
-                        ? (ghelperStatus.running ? 'OSD adaya yönlendirildi' : ghelperStatus.installed ? 'Kurulu (Çalışmıyor)' : 'Yetkili görev kurulumu gerekiyor')
-                        : (ghelperStatus.running ? 'OSD routed to island' : ghelperStatus.installed ? 'Installed (Not running)' : 'Elevated task setup required')}
+                        ? 'Odak sayacı çalışırken gelen bildirimlerin görünmesine izin verir.'
+                        : 'Allows notifications to appear while the Focus timer is running.'}
                     </span>
                   </div>
                   <button
                     type="button"
-                    className="gh-bridge-action-btn"
+                    className={`settings-switch ${settings.notifDuringFocus ? 'on' : ''}`}
+                    onClick={() => updateSetting({ notifDuringFocus: !settings.notifDuringFocus })}
+                  >
+                    <i />
+                  </button>
+                </div>
+
+                <div className="settings-row no-border">
+                  <div className="row-text-col">
+                    <div className="notif-lg-bridge-title">
+                      <strong>G-Helper Bridge</strong>
+                      <span className={`status-badge ${ghelperStatus.running ? 'green' : ghelperStatus.installed ? 'amber' : ''}`}>
+                        {langCode === 'tr'
+                          ? (ghelperStatus.running ? 'Bağlı' : ghelperStatus.installed ? 'Beklemede' : 'Kurulum gerekli')
+                          : (ghelperStatus.running ? 'Connected' : ghelperStatus.installed ? 'Idle' : 'Setup required')}
+                      </span>
+                    </div>
+                    <span>
+                      {langCode === 'tr'
+                        ? (ghelperStatus.running
+                            ? 'G-Helper OSD bildirimleri adaya yönlendiriliyor.'
+                            : 'ASUS G-Helper mod ve fan bildirimlerini adada gösterir.')
+                        : (ghelperStatus.running
+                            ? 'G-Helper OSD notifications are routed to the island.'
+                            : 'Routes ASUS G-Helper mode and fan OSD alerts into the island.')}
+                    </span>
+                    {ghelperMessage && (
+                      <em className="notif-lg-bridge-msg">{ghelperMessage}</em>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    className="dark-pill-btn"
                     onClick={installGHelperBridge}
                     disabled={ghelperBusy}
                   >
@@ -2557,170 +3373,42 @@ export default function SettingsApp() {
                       : (ghelperBusy ? 'Working…' : ghelperStatus.running ? 'Reinstall' : ghelperStatus.installed ? 'Start' : 'Connect')}
                   </button>
                 </div>
-                {ghelperMessage && (
-                  <div className={`gh-bridge-alert ${ghelperMessage.includes('Could not') || ghelperMessage.includes('kurulamadı') ? 'is-err' : 'is-ok'}`}>
-                    {ghelperMessage}
-                  </div>
-                )}
-              </div>
+              </section>
 
-              {NOTIFICATION_ITEMS.map((grp) => {
-                const trGroup = {
-                  'MAIL AND OTHER APPS': 'POSTA VE DİĞER UYGULAMALAR',
-                  'CLAUDE AND AI': 'CLAUDE VE YAPAY ZEKA',
-                  FOCUS: 'ODAK',
-                  'MUSIC AND SOUND': 'MÜZİK VE SES',
-                  'PHONE, CALENDAR, BATTERY': 'TELEFON, TAKVİM, PİL',
-                }[grp.group] || grp.group;
-                const trItem = (it) => ({
-                  'New mail': 'Yeni posta',
-                  'Mail sent': 'Posta gönderildi',
-                  "Other apps' notifications": 'Diğer uygulama bildirimleri',
-                  'Claude asks for permission': 'Claude izin istiyor',
-                  'Claude has a question': 'Claude’un bir sorusu var',
-                  'Claude is done': 'Claude tamamladı',
-                  'Claude: error': 'Claude: hata',
-                  'ChatGPT or Claude in your browser': 'Tarayıcıda ChatGPT veya Claude',
-                  'Claude limit almost full': 'Claude limiti neredeyse doldu',
-                  'Focus done': 'Odak tamamlandı',
-                  'Back to work': 'İşe dönüş',
-                  'Next or previous song': 'Sonraki veya önceki şarkı',
-                  'Sound moved': 'Ses aktarıldı',
-                  "Can't jump in this song": 'Bu şarkıda ileri/geri sarma yok',
-                  Volume: 'Ses düzeyi',
-                  'Received from your phone': 'Telefonunuzdan alındı',
-                  'Calendar: in 10 minutes': 'Takvim: 10 dakika içinde',
-                  'Calendar linked': 'Takvim bağlandı',
-                  'Battery low': 'Pil düşük',
-                  'Headphones almost empty': 'Kulaklık şarjı bitmek üzere',
-                }[it] || it);
-                return (
-                <div key={grp.group} className="notif-group-block">
-                  <span className="notif-group-title">{langCode === 'tr' ? trGroup : grp.group}</span>
-                  {grp.items.map((it) => (
-                    <button
-                      key={it}
-                      type="button"
-                      className={`notif-item-btn ${selectedNotifItem === it ? 'active' : ''}`}
-                      onClick={() => setSelectedNotifItem(it)}
-                    >
-                      {langCode === 'tr' ? trItem(it) : it}
-                    </button>
-                  ))}
-                </div>
-                );
-              })}
-            </div>
-
-            <div className="notif-right-detail">
-              <div
-                className="notif-preview-stage"
-                style={{ '--notif-preview-accent': settings.notifColor }}
-              >
-                <div className="notif-preview-island">
-                  <span
-                    className="notif-preview-check"
-                    style={{ background: settings.notifColor }}
-                  >
-                    <Check size={14} strokeWidth={3} color="#fff" />
-                  </span>
-                  <div className="notif-preview-copy">
-                    <small>{langCode === 'tr' ? 'TWOCODE · AZ ÖNCE' : 'TWOCODE · JUST NOW'}</small>
-                    <strong>{langCode === 'tr' ? ({
-                      'New mail': 'Yeni posta',
-                      'Mail sent': 'Posta gönderildi',
-                      "Other apps' notifications": 'Diğer uygulama bildirimleri',
-                      'Claude asks for permission': 'Claude izin istiyor',
-                      'Claude has a question': 'Claude’un bir sorusu var',
-                      'Claude is done': 'Claude tamamladı',
-                      'Claude: error': 'Claude: hata',
-                      'ChatGPT or Claude in your browser': 'Tarayıcıda ChatGPT veya Claude',
-                      'Claude limit almost full': 'Claude limiti neredeyse doldu',
-                      'Focus done': 'Odak tamamlandı',
-                      'Back to work': 'İşe dönüş',
-                      'Next or previous song': 'Sonraki veya önceki şarkı',
-                      'Sound moved': 'Ses aktarıldı',
-                      "Can't jump in this song": 'Bu şarkıda ileri/geri sarma yok',
-                      Volume: 'Ses düzeyi',
-                      'Received from your phone': 'Telefonunuzdan alındı',
-                      'Calendar: in 10 minutes': 'Takvim: 10 dakika içinde',
-                      'Calendar linked': 'Takvim bağlandı',
-                      'Battery low': 'Pil düşük',
-                      'Headphones almost empty': 'Kulaklık şarjı bitmek üzere',
-                    }[selectedNotifItem] || selectedNotifItem) : selectedNotifItem}</strong>
-                    <span>{langCode === 'tr' ? 'Bildiriminiz görüntülenmeye hazır' : 'Your notification is ready to view'}</span>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  className="white-pill-btn try-it-btn"
-                  onClick={triggerTestNotificationOnIsland}
-                >
-                  {langCode === 'tr' ? 'Dene' : 'Try it'}
-                </button>
-              </div>
-
-              <div className="notif-options-table">
+              {/* Duration, Sound, Privacy */}
+              <section className="ai-lg-card">
                 <div className="settings-row">
-                  <strong>{langCode === 'tr' ? 'Gösterim yeri' : 'Show it'}</strong>
-                  <div className="seg-btn-group">
-                    {[
-                      { value: 'In the island', label: langCode === 'tr' ? 'Ada içinde' : 'In the island' },
-                      { value: 'Own card', label: langCode === 'tr' ? 'Kendi kartında' : 'Own card' },
-                      { value: 'Windows', label: 'Windows' },
-                      { value: 'Off', label: t('common.off') },
-                    ].map((opt) => (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        className={`seg-choice-btn ${
-                          settings.notifShowWhere === opt.value ? 'active' : ''
-                        }`}
-                        onClick={() => updateSetting({ notifShowWhere: opt.value })}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
+                  <div className="row-text-col">
+                    <strong>{langCode === 'tr' ? 'Kalma Süresi' : 'Stay Duration'}</strong>
+                    <span>
+                      {langCode === 'tr'
+                        ? 'Bildirimin adada kaç saniye kalacağını belirler.'
+                        : 'How many seconds a notification stays visible.'}
+                    </span>
                   </div>
-                </div>
-
-                <div className="settings-row">
-                  <strong>{langCode === 'tr' ? 'Boyut' : 'Size'}</strong>
-                  <div className="seg-btn-group">
-                    {[
-                      { value: 'Small', label: langCode === 'tr' ? 'Küçük' : 'Small' },
-                      { value: 'Big', label: langCode === 'tr' ? 'Büyük' : 'Big' },
-                    ].map((sz) => (
-                      <button
-                        key={sz.value}
-                        type="button"
-                        className={`seg-choice-btn ${settings.notifSize === sz.value ? 'active' : ''}`}
-                        onClick={() => updateSetting({ notifSize: sz.value })}
-                      >
-                        {sz.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="settings-row">
-                  <strong>{langCode === 'tr' ? 'Kalma süresi' : 'Stay for'}</strong>
                   <div className="slider-with-val">
                     <input
                       type="range"
                       min="2"
                       max="15"
-                      value={settings.notifDurationSec}
+                      value={settings.notifDurationSec || 5}
                       onChange={(e) =>
                         updateSetting({ notifDurationSec: parseInt(e.target.value, 10) })
                       }
                     />
-                    <span>{langCode === 'tr' ? `${settings.notifDurationSec} sn` : `${settings.notifDurationSec} s`}</span>
+                    <span>{langCode === 'tr' ? `${settings.notifDurationSec || 5} sn` : `${settings.notifDurationSec || 5} s`}</span>
                   </div>
                 </div>
 
                 <div className="settings-row">
-                  <strong>{langCode === 'tr' ? 'Ses' : 'Sound'}</strong>
+                  <div className="row-text-col">
+                    <strong>{langCode === 'tr' ? 'Bildirim Sesi' : 'Notification Sound'}</strong>
+                    <span>
+                      {langCode === 'tr'
+                        ? 'Önizlemek için bir ses tonuna tıklayın.'
+                        : 'Click a sound to preview it.'}
+                    </span>
+                  </div>
                   <div className="seg-btn-group">
                     {[
                       { value: 'Ding', label: 'Ding' },
@@ -2733,7 +3421,7 @@ export default function SettingsApp() {
                       <button
                         key={snd.value}
                         type="button"
-                        className={`seg-choice-btn ${settings.notifSound === snd.value ? 'active' : ''}`}
+                        className={`seg-choice-btn ${(settings.notifSound || 'Ding') === snd.value ? 'active' : ''}`}
                         onClick={() => {
                           updateSetting({ notifSound: snd.value });
                           playNotifSound(snd.value, settings.soundEffects !== false);
@@ -2745,53 +3433,15 @@ export default function SettingsApp() {
                   </div>
                 </div>
 
-                <div className="settings-row">
-                  <strong>{langCode === 'tr' ? 'Renk' : 'Colour'}</strong>
-                  <div className="swatch-group">
-                    <button
-                      type="button"
-                      className={`color-dot-btn rainbow-dot ${
-                        settings.notifColor === '#3b82f6' ? 'selected' : ''
-                      }`}
-                      onClick={() => updateSetting({ notifColor: '#3b82f6' })}
-                      title={langCode === 'tr' ? 'Özel renk' : 'Custom colour'}
-                    />
-                    {['#f97316', '#ef4444', '#8b5cf6', '#3b82f6', '#22c55e', '#ffffff'].map((c) => (
-                      <button
-                        key={c}
-                        type="button"
-                        className={`color-dot-btn ${settings.notifColor === c ? 'selected' : ''}`}
-                        style={{ background: c }}
-                        onClick={() => updateSetting({ notifColor: c })}
-                      />
-                    ))}
+                <div className="settings-row no-border">
+                  <div className="row-text-col">
+                    <strong>{langCode === 'tr' ? 'Bildirim İçeriği (Gizlilik)' : 'Notification Content (Privacy)'}</strong>
+                    <span>
+                      {langCode === 'tr'
+                        ? 'Gizle seçildiğinde yalnızca uygulama adı görünür, mesaj içeriği saklanır.'
+                        : 'When hidden, only the app name is shown and message text is masked.'}
+                    </span>
                   </div>
-                </div>
-
-                <div
-                  className={`settings-row ${
-                    settings.notifShowWhere !== 'Own card' ? 'row-dimmed' : ''
-                  }`}
-                >
-                  <strong>{langCode === 'tr' ? 'Konum' : 'Place'}</strong>
-                  <div className="notif-place-grid">
-                    {['top-left', 'top-center', 'top-right', 'bottom-left', 'bottom-center', 'bottom-right'].map(
-                      (pos) => (
-                        <button
-                          key={pos}
-                          type="button"
-                          className={`notif-place-cell ${
-                            (settings.notifPlace || 'top-center') === pos ? 'active' : ''
-                          }`}
-                          onClick={() => updateSetting({ notifPlace: pos })}
-                        />
-                      )
-                    )}
-                  </div>
-                </div>
-
-                <div className="settings-row">
-                  <strong>{langCode === 'tr' ? 'Metniniz' : 'Your text'}</strong>
                   <div className="seg-btn-group">
                     {[
                       { value: 'Show', label: langCode === 'tr' ? 'Göster' : 'Show' },
@@ -2800,9 +3450,7 @@ export default function SettingsApp() {
                       <button
                         key={tx.value}
                         type="button"
-                        className={`seg-choice-btn ${
-                          settings.notifShowText === tx.value ? 'active' : ''
-                        }`}
+                        className={`seg-choice-btn ${(settings.notifShowText || 'Show') === tx.value ? 'active' : ''}`}
                         onClick={() => updateSetting({ notifShowText: tx.value })}
                       >
                         {tx.label}
@@ -2810,38 +3458,10 @@ export default function SettingsApp() {
                     ))}
                   </div>
                 </div>
-
-                <div className="settings-row">
-                  <strong>{langCode === 'tr' ? 'Ayrıca şu sırada' : 'Also during'}</strong>
-                  <div className="row-right-group">
-                    <span className="inline-toggle-label">{langCode === 'tr' ? 'Odak' : 'Focus'}</span>
-                    <button
-                      type="button"
-                      className={`settings-switch ${settings.notifDuringFocus ? 'on' : ''}`}
-                      onClick={() =>
-                        updateSetting({ notifDuringFocus: !settings.notifDuringFocus })
-                      }
-                    >
-                      <i />
-                    </button>
-                    <span className="inline-toggle-label" style={{ marginLeft: 10 }}>
-                      Games
-                    </span>
-                    <button
-                      type="button"
-                      className={`settings-switch ${settings.notifDuringGames ? 'on' : ''}`}
-                      onClick={() =>
-                        updateSetting({ notifDuringGames: !settings.notifDuringGames })
-                      }
-                    >
-                      <i />
-                    </button>
-                  </div>
-                </div>
-              </div>
+              </section>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* ============================================================
             PAGE 10: ISLAND
@@ -2858,22 +3478,80 @@ export default function SettingsApp() {
             Nothing: langCode === 'tr' ? 'Hiçbiri' : 'Nothing',
             Time: langCode === 'tr' ? 'Saat' : 'Time',
             Battery: langCode === 'tr' ? 'Pil' : 'Battery',
-            CPU: 'CPU',
-            RAM: 'RAM',
             'Wi-Fi': 'Wi-Fi',
             Bluetooth: 'Bluetooth',
             Automatic: langCode === 'tr' ? 'Otomatik' : 'Automatic',
             '12-hour · 6:30 PM': langCode === 'tr' ? '12 saat · 6:30 PM' : '12-hour · 6:30 PM',
             '24-hour · 18:30': langCode === 'tr' ? '24 saat · 18:30' : '24-hour · 18:30',
           };
+          const restingOptions = ['Nothing', 'Time', 'Battery', 'Wi-Fi', 'Bluetooth'];
+          const previewOpacity = Math.max(0.32, 1 - (Math.min(60, Math.max(0, Number(settings.islandSeeThrough || 0))) / 100) * 0.95);
+          const previewScale = settings.islandSize === 'Compact' ? 0.92 : settings.islandSize === 'Large' ? 1.06 : 1;
+          const isFloating = settings.islandStyle === 'Floating';
+          const renderPreviewSlot = (val) => {
+            if (!val || val === 'Nothing') return null;
+            if (val === 'Time') return <span className="island-lg-preview-slot">{settings.clockFormat === '12-hour · 6:30 PM' ? '10:12 PM' : '22:12'}</span>;
+            if (val === 'Battery') return <span className="island-lg-preview-slot is-battery">84%</span>;
+            if (val === 'Wi-Fi') return <span className="island-lg-preview-slot is-net">Wi-Fi</span>;
+            if (val === 'Bluetooth') return <span className="island-lg-preview-slot is-net">BT</span>;
+            return null;
+          };
+
           return (
-          <div className="settings-page-body narrow-body">
+          <div className="settings-page-body narrow-body island-lg-page">
+            <div className="island-lg-hero">
+              <div className="island-lg-hero-glow" aria-hidden="true" />
+              <div className="island-lg-hero-top">
+                <div className="island-lg-hero-copy">
+                  <span className="island-lg-eyebrow">
+                    <PanelTop size={13} />
+                    {langCode === 'tr' ? 'DİNAMİK ADA STÜDYOSU' : 'DYNAMIC ISLAND STUDIO'}
+                  </span>
+                  <h3>{langCode === 'tr' ? 'Ada Görünümü ve Davranışı' : 'Island Appearance & Behavior'}</h3>
+                  <p>
+                    {langCode === 'tr'
+                      ? 'Boyut, saydamlık, bekleme göstergeleri ve dock davranışları adaya anlık olarak yansır.'
+                      : 'Size, translucency, resting indicators, and dock behavior apply to the island in real time.'}
+                  </p>
+                </div>
+                <div className="island-lg-status-pill">
+                  <span>{optMap[settings.islandStyle || 'Attached']}</span>
+                  <span className="island-lg-sep">·</span>
+                  <span>{optMap[settings.islandSize || 'Normal']}</span>
+                  <span className="island-lg-sep">·</span>
+                  <span>{settings.islandSeeThrough || 0}%</span>
+                </div>
+              </div>
+
+              <div className="island-lg-preview-stage">
+                <div
+                  className={`island-lg-preview-pill ${isFloating ? 'is-floating' : 'is-attached'}`}
+                  style={{
+                    background: `rgba(10, 13, 20, ${previewOpacity.toFixed(2)})`,
+                    transform: `scale(${previewScale})`,
+                  }}
+                >
+                  {renderPreviewSlot(settings.leftOfRobo)}
+                  {settings.roboEyesVisible !== false ? (
+                    <span className="island-lg-preview-eyes" aria-hidden="true">
+                      <i style={{ background: settings.eyeColorHex || '#ffffff' }} />
+                      <i style={{ background: settings.eyeColorHex || '#ffffff' }} />
+                    </span>
+                  ) : (
+                    !renderPreviewSlot(settings.leftOfRobo) &&
+                    !renderPreviewSlot(settings.rightOfRobo) && <span className="island-lg-preview-bar" />
+                  )}
+                  {renderPreviewSlot(settings.rightOfRobo)}
+                </div>
+              </div>
+            </div>
+
             <span className="section-eyebrow">{langCode === 'tr' ? 'GÖRÜNÜM' : 'LOOK'}</span>
-            <div className="settings-card">
+            <div className="settings-card ai-lg-card">
               <div className="settings-row">
                 <div className="row-text-col">
                   <strong>{langCode === 'tr' ? 'Boyut' : 'Size'}</strong>
-                  <span>{langCode === 'tr' ? 'Adanın ne kadar büyük olacağı' : 'How big the island is'}</span>
+                  <span>{langCode === 'tr' ? 'Adanın ölçeği ve kapladığı alan' : 'Overall scale of the island'}</span>
                 </div>
                 <div className="seg-btn-group">
                   {['Compact', 'Normal', 'Large'].map((sz) => (
@@ -2894,8 +3572,8 @@ export default function SettingsApp() {
                   <strong>{langCode === 'tr' ? 'Stil' : 'Style'}</strong>
                   <span>
                     {langCode === 'tr'
-                      ? 'Dizüstü bilgisayar çentiği gibi üst kenara yapışık veya iPhone’daki gibi hemen altında yüzen'
-                      : "Attached to the top edge like a laptop's notch, or floating just below it like on an iPhone"}
+                      ? 'Üst kenara yapışık çentik veya hemen altında yüzen kapsül'
+                      : 'Attached to the top edge like a notch, or floating just below it'}
                   </span>
                 </div>
                 <div className="seg-btn-group">
@@ -2915,7 +3593,7 @@ export default function SettingsApp() {
               <div className="settings-row">
                 <div className="row-text-col">
                   <strong>{langCode === 'tr' ? 'Saydamlık' : 'See-through'}</strong>
-                  <span>{langCode === 'tr' ? 'Adanın arkasının ne kadar görüneceği' : 'How much you see through the island'}</span>
+                  <span>{langCode === 'tr' ? 'Liquid Glass bulanıklığı ve arka plan geçirgenliği' : 'Liquid Glass blur and background translucency'}</span>
                 </div>
                 <div className="slider-with-val">
                   <input
@@ -2936,8 +3614,8 @@ export default function SettingsApp() {
                   <strong>{langCode === 'tr' ? 'Müzik rengi' : 'Music colour'}</strong>
                   <span>
                     {langCode === 'tr'
-                      ? 'Ada saydamken çalan albüm kapağının rengini alır'
-                      : 'When the island is see-through, it takes on the colour of the album cover that is playing'}
+                      ? 'Çalan albüm kapağının baskın rengini adaya yansıtır'
+                      : 'Reflects the dominant colour of the playing album cover on the island'}
                   </span>
                 </div>
                 <button
@@ -2976,14 +3654,14 @@ export default function SettingsApp() {
             <span className="section-eyebrow" style={{ marginTop: 20 }}>
               {langCode === 'tr' ? 'BEKLEME ADASI' : 'RESTING ISLAND'}
             </span>
-            <div className="settings-card">
+            <div className="settings-card ai-lg-card">
               <div className="settings-row">
                 <div className="row-text-col">
-                  <strong>{langCode === 'tr' ? 'Robo’nun solu' : 'Left of Robo'}</strong>
-                  <span>{langCode === 'tr' ? 'Hiçbir şey yokken sol tarafta ne gösterilsin' : 'What it shows when nothing is going on'}</span>
+                  <strong>{langCode === 'tr' ? 'Bedo’nun solu' : 'Left of Bedo'}</strong>
+                  <span>{langCode === 'tr' ? 'Ada boştayken sol tarafta gösterilecek bilgi' : 'What it shows on the left when nothing is going on'}</span>
                 </div>
                 <div className="seg-btn-group">
-                  {['Nothing', 'Time', 'Battery', 'CPU', 'RAM', 'Wi-Fi', 'Bluetooth'].map((opt) => (
+                  {restingOptions.map((opt) => (
                     <button
                       key={opt}
                       type="button"
@@ -2998,8 +3676,8 @@ export default function SettingsApp() {
 
               <div className="settings-row">
                 <div className="row-text-col">
-                  <strong>{langCode === 'tr' ? 'Robo’nun gözleri' : "Robo's eyes"}</strong>
-                  <span>{langCode === 'tr' ? 'Ortada, dizüstü bilgisayarının kamerasının olduğu yerde' : "In the middle, where your laptop's camera is"}</span>
+                  <strong>{langCode === 'tr' ? 'Bedo’nun gözleri' : "Bedo's eyes"}</strong>
+                  <span>{langCode === 'tr' ? 'Bekleme adasının ortasında Bedo’nun gözlerini gösterir' : 'Shows Bedo’s eyes in the center of the resting island'}</span>
                 </div>
                 <button
                   type="button"
@@ -3012,11 +3690,11 @@ export default function SettingsApp() {
 
               <div className="settings-row">
                 <div className="row-text-col">
-                  <strong>{langCode === 'tr' ? 'Robo’nun sağı' : 'Right of Robo'}</strong>
-                  <span>{langCode === 'tr' ? 'Hiçbir şey yokken sağ tarafta ne gösterilsin' : 'What it shows when nothing is going on'}</span>
+                  <strong>{langCode === 'tr' ? 'Bedo’nun sağı' : 'Right of Bedo'}</strong>
+                  <span>{langCode === 'tr' ? 'Ada boştayken sağ tarafta gösterilecek bilgi' : 'What it shows on the right when nothing is going on'}</span>
                 </div>
                 <div className="seg-btn-group">
-                  {['Nothing', 'Time', 'Battery', 'CPU', 'RAM', 'Wi-Fi', 'Bluetooth'].map((opt) => (
+                  {restingOptions.map((opt) => (
                     <button
                       key={opt}
                       type="button"
@@ -3050,9 +3728,9 @@ export default function SettingsApp() {
             </div>
 
             <span className="section-eyebrow" style={{ marginTop: 20 }}>
-              {langCode === 'tr' ? 'ADA ÜZERİNDE' : 'ON THE ISLAND'}
+              {langCode === 'tr' ? 'ADA DAVRANIŞI VE İÇERİK' : 'ISLAND BEHAVIOR & CONTENT'}
             </span>
-            <div className="settings-card">
+            <div className="settings-card ai-lg-card">
               <div className="settings-row">
                 <div className="row-text-col">
                   <strong>{langCode === 'tr' ? 'Şarkı sözleri' : 'Lyrics'}</strong>
@@ -3070,6 +3748,42 @@ export default function SettingsApp() {
                   <i />
                 </button>
               </div>
+
+              <div className="settings-row">
+                <div className="row-text-col">
+                  <strong>{langCode === 'tr' ? 'Dock’ta uygulamaları göster' : 'Show apps in dock'}</strong>
+                  <span>
+                    {langCode === 'tr'
+                      ? 'Genişletilmiş adanın alt çubuğunda sabitlenmiş uygulama kısayollarını gösterir'
+                      : 'Displays pinned app shortcuts in the expanded island dock'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className={`settings-switch ${settings.showAppsInDock !== false ? 'on' : ''}`}
+                  onClick={() => updateSetting({ showAppsInDock: settings.showAppsInDock === false })}
+                >
+                  <i />
+                </button>
+              </div>
+
+              <div className="settings-row">
+                <div className="row-text-col">
+                  <strong>{langCode === 'tr' ? 'Uygulama açılınca adayı kapat' : 'Close island on app open'}</strong>
+                  <span>
+                    {langCode === 'tr'
+                      ? 'Adadan bir uygulama başlattığında adayı otomatik olarak küçültür'
+                      : 'Automatically collapses the island after launching an app from it'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className={`settings-switch ${settings.closeIslandOnAppOpen ? 'on' : ''}`}
+                  onClick={() => updateSetting({ closeIslandOnAppOpen: !settings.closeIslandOnAppOpen })}
+                >
+                  <i />
+                </button>
+              </div>
             </div>
           </div>
           );
@@ -3078,17 +3792,91 @@ export default function SettingsApp() {
         {/* ============================================================
             PAGE 11: FOCUS GUARD
             ============================================================ */}
-        {activePage === 'focusguard' && (
-          <div className="settings-page-body narrow-body">
-            <span className="section-eyebrow">{langCode === 'tr' ? 'ODAK KORUMASI' : 'FOCUS GUARD'}</span>
-            <div className="settings-card">
+        {activePage === 'focusguard' && (() => {
+          const focusSites = [
+            { name: 'YouTube', domain: 'youtube.com' },
+            { name: 'TikTok', domain: 'tiktok.com' },
+            { name: 'Instagram', domain: 'instagram.com' },
+            { name: 'X', domain: 'x.com' },
+            { name: 'Reddit', domain: 'reddit.com' },
+            { name: 'Facebook', domain: 'facebook.com' },
+            { name: 'Netflix', domain: 'netflix.com' },
+            { name: 'Twitch', domain: 'twitch.tv' },
+            { name: 'Discord', domain: 'discord.com' },
+          ];
+          const selectedCount = (settings.focusGuardApps || []).length + (
+            String(settings.focusGuardCustom || '')
+              .split(',')
+              .map((s) => s.trim())
+              .filter((s) => s.length >= 2).length
+          );
+          const saveCustomTerms = () => {
+            updateSetting({ focusGuardCustom: fgCustomDraft.trim() });
+            setFgSavedFeedback(true);
+            setTimeout(() => setFgSavedFeedback(false), 1800);
+          };
+          const resetTodayStats = () => {
+            try {
+              const todayKey = new Date().toISOString().slice(0, 10);
+              localStorage.setItem('twocode_focus_guard_stats', JSON.stringify({ date: todayKey, turnedBack: 0, openedAnyway: 0 }));
+            } catch {}
+            setFgStats({ turnedBack: 0, openedAnyway: 0 });
+          };
+
+          return (
+          <div className="settings-page-body narrow-body fg-lg-page">
+            <div className="fg-lg-hero">
+              <div className="fg-lg-hero-glow" aria-hidden="true" />
+              <div className="fg-lg-hero-main">
+                <div className="fg-lg-hero-copy">
+                  <span className="fg-lg-eyebrow">
+                    <Shield size={13} />
+                    {langCode === 'tr' ? 'BİLİNÇLİ ODAK KORUMASI' : 'MINDFUL FOCUS GUARD'}
+                  </span>
+                  <h3>{langCode === 'tr' ? 'Dikkat Dağıtıcıları Durdur' : 'Pause Distractions Before They Start'}</h3>
+                  <p>
+                    {langCode === 'tr'
+                      ? 'Seçtiğin uygulama veya site öne geldiğinde ada nefes molası başlatır; geri dönüp dönmeyeceğine sen karar verirsin.'
+                      : 'When a selected app or site comes into focus, the island triggers a breathing pause so you decide intentionally.'}
+                  </p>
+                </div>
+                <div className={`fg-lg-status-pill ${settings.focusGuardEnabled ? 'is-on' : ''}`}>
+                  <span>
+                    {settings.focusGuardEnabled
+                      ? langCode === 'tr'
+                        ? `Aktif · ${selectedCount} hedef`
+                        : `Active · ${selectedCount} targets`
+                      : langCode === 'tr'
+                      ? 'Kapalı'
+                      : 'Off'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="fg-lg-stats-bar">
+                <div className="fg-lg-stat-chip">
+                  <strong>{fgStats.turnedBack}×</strong>
+                  <span>{langCode === 'tr' ? 'Geri döndün' : 'Turned back'}</span>
+                </div>
+                <div className="fg-lg-stat-chip">
+                  <strong>{fgStats.openedAnyway}×</strong>
+                  <span>{langCode === 'tr' ? 'Yine de açtın' : 'Opened anyway'}</span>
+                </div>
+                <button type="button" className="fg-lg-reset-btn" onClick={resetTodayStats}>
+                  {langCode === 'tr' ? 'Bugünü sıfırla' : 'Reset today'}
+                </button>
+              </div>
+            </div>
+
+            <span className="section-eyebrow">{langCode === 'tr' ? 'KORUMA VE HEDEFLER' : 'GUARD & TARGETS'}</span>
+            <div className="settings-card ai-lg-card">
               <div className="settings-row">
                 <div className="row-text-col">
                   <strong>{langCode === 'tr' ? 'Odak koruması' : 'Focus guard'}</strong>
                   <span>
                     {langCode === 'tr'
-                      ? 'Dikkatinizi dağıtan bir şey açtığınızda Robo sizi bir an durdurur: önce nefes alın, sonra karar verin. Telefonunuzdaki "one sec" gibi.'
-                      : 'Open something that distracts you and Robo stops you for a moment: breathe first, then you choose. Like "one sec" on your phone.'}
+                      ? 'Dikkatinizi dağıtan bir şey açtığınızda Bedo sizi bir an durdurur: önce nefes alın, sonra karar verin.'
+                      : 'Open something that distracts you and Bedo stops you for a moment: breathe first, then you choose.'}
                   </span>
                 </div>
                 <button
@@ -3100,36 +3888,53 @@ export default function SettingsApp() {
                 </button>
               </div>
 
+              <div className="settings-row">
+                <div className="row-text-col">
+                  <strong>{langCode === 'tr' ? 'Yalnızca Odak Sayacı çalışırken' : 'Only while Focus Timer runs'}</strong>
+                  <span>
+                    {langCode === 'tr'
+                      ? 'Açıkken odak koruması yalnızca ada üzerindeki odak sayacı aktifken devreye girer'
+                      : 'When enabled, Focus Guard only triggers while the island Focus Timer is running'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className={`settings-switch ${settings.focusGuardOnlyDuringFocus ? 'on' : ''}`}
+                  onClick={() => updateSetting({ focusGuardOnlyDuringFocus: !settings.focusGuardOnlyDuringFocus })}
+                >
+                  <i />
+                </button>
+              </div>
+
               <div className="settings-row align-top">
                 <div className="row-text-col">
                   <strong>{langCode === 'tr' ? 'Uygulamalar ve siteler' : 'Apps and sites'}</strong>
                   <span>{langCode === 'tr' ? 'Dikkatinizi neyin dağıttığını seçin' : 'Pick what distracts you'}</span>
                 </div>
-                <div className="seg-btn-group wrap-right">
-                  {[
-                    'YouTube',
-                    'TikTok',
-                    'Instagram',
-                    'X',
-                    'Reddit',
-                    'Facebook',
-                    'Netflix',
-                    'Twitch',
-                    'Discord',
-                  ].map((site) => {
-                    const active = (settings.focusGuardApps || []).includes(site);
+                <div className="fg-lg-site-grid">
+                  {focusSites.map(({ name, domain }) => {
+                    const active = (settings.focusGuardApps || []).includes(name);
                     return (
                       <button
-                        key={site}
+                        key={name}
                         type="button"
-                        className={`seg-choice-btn ${active ? 'active' : ''}`}
+                        className={`fg-lg-site-chip ${active ? 'active' : ''}`}
                         onClick={() => {
                           const curr = settings.focusGuardApps || [];
-                          const next = active ? curr.filter((x) => x !== site) : [...curr, site];
+                          const next = active ? curr.filter((x) => x !== name) : [...curr, name];
                           updateSetting({ focusGuardApps: next });
                         }}
                       >
-                        {site}
+                        <img
+                          src={`https://www.google.com/s2/favicons?domain=${domain}&sz=64`}
+                          alt=""
+                          className="fg-lg-site-logo"
+                          loading="lazy"
+                          onError={(e) => {
+                            e.currentTarget.style.display = 'none';
+                          }}
+                        />
+                        <span>{name}</span>
                       </button>
                     );
                   })}
@@ -3146,15 +3951,23 @@ export default function SettingsApp() {
                     type="text"
                     className="settings-input w-200"
                     placeholder="roblox, fortnite"
-                    value={settings.focusGuardCustom || ''}
-                    onChange={(e) => updateSetting({ focusGuardCustom: e.target.value })}
+                    value={fgCustomDraft}
+                    onChange={(e) => setFgCustomDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') saveCustomTerms();
+                    }}
                   />
-                  <button type="button" className="dark-pill-btn sm">
-                    {t('common.save')}
+                  <button type="button" className="dark-pill-btn sm" onClick={saveCustomTerms}>
+                    {fgSavedFeedback ? (langCode === 'tr' ? 'Kaydedildi ✓' : 'Saved ✓') : t('common.save')}
                   </button>
                 </div>
               </div>
+            </div>
 
+            <span className="section-eyebrow" style={{ marginTop: 20 }}>
+              {langCode === 'tr' ? 'ZAMANLAMA VE GİZLİLİK' : 'TIMING & PRIVACY'}
+            </span>
+            <div className="settings-card ai-lg-card">
               <div className="settings-row">
                 <div className="row-text-col">
                   <strong>{langCode === 'tr' ? 'Bekleme' : 'Wait'}</strong>
@@ -3179,7 +3992,7 @@ export default function SettingsApp() {
               <div className="settings-row">
                 <div className="row-text-col">
                   <strong>{langCode === 'tr' ? 'Sonra şu kadar rahat bırak' : 'Then leave you alone for'}</strong>
-                  <span>{langCode === 'tr' ? 'Yine de açtığınızda Robo’nun sizi ne kadar süre rahatsız etmeyeceği' : 'How long Robo lets you be when you open it anyway'}</span>
+                  <span>{langCode === 'tr' ? 'Yine de açtığınızda Bedo’nun sizi ne kadar süre rahatsız etmeyeceği' : 'How long Bedo lets you be when you open it anyway'}</span>
                 </div>
                 <div className="seg-btn-group">
                   {[5, 15, 30].map((m) => (
@@ -3199,24 +4012,18 @@ export default function SettingsApp() {
 
               <div className="settings-row">
                 <div className="row-text-col">
-                  <strong>{t('common.today')}</strong>
-                  <span>{langCode === 'tr' ? '0× geri döndünüz · 0× yine de açtınız' : 'You went back 0× · opened it anyway 0×'}</span>
-                </div>
-              </div>
-
-              <div className="settings-row">
-                <div className="row-text-col">
                   <strong>{langCode === 'tr' ? 'Gizlilik' : 'Privacy'}</strong>
                   <span>
                     {langCode === 'tr'
-                      ? 'TwoCode yalnızca kendi PC’nizdeki ön pencerenin adına bakar. Hiçbir şey saklanmaz veya gönderilmez.'
-                      : 'TwoCode only looks at the name of the window in front, on your own PC. Nothing is stored or sent.'}
+                      ? 'Bedo yalnızca kendi PC’nizdeki ön pencerenin adına bakar. Hiçbir şey saklanmaz veya gönderilmez.'
+                      : 'Bedo only looks at the name of the window in front, on your own PC. Nothing is stored or sent.'}
                   </span>
                 </div>
               </div>
             </div>
           </div>
-        )}
+          );
+        })()}
 
         {/* ============================================================
             PAGE 12: END
