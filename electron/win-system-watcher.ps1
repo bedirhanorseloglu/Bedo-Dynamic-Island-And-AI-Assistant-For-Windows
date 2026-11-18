@@ -13,6 +13,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Text;
 
 [Guid("5CDF2C82-841E-4546-9722-0CF74078229A"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
 interface IAudioEndpointVolume {
@@ -112,7 +113,124 @@ public static class WinWindowHelper {
     [DllImport("user32.dll")] static extern IntPtr MonitorFromWindow(IntPtr hWnd, uint flags);
     [DllImport("user32.dll", CharSet = CharSet.Auto)] static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO info);
     [DllImport("kernel32.dll")] static extern IntPtr GetCurrentProcess();
+    [DllImport("kernel32.dll", SetLastError = true)] static extern IntPtr OpenProcess(uint dwDesiredAccess, bool bInheritHandle, uint dwProcessId);
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)] static extern bool QueryFullProcessImageName(IntPtr hProcess, uint dwFlags, StringBuilder lpExeName, ref uint lpdwSize);
+    [DllImport("kernel32.dll", SetLastError = true)] static extern bool CloseHandle(IntPtr hObject);
+    [DllImport("shell32.dll")] static extern int SHQueryUserNotificationState(out int pquns);
     [DllImport("psapi.dll")] static extern bool EmptyWorkingSet(IntPtr hProcess);
+
+    const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+    const int QUNS_RUNNING_D3D_FULL_SCREEN = 3;
+
+    static uint cachedPid = 0;
+    static bool cachedIsGame = false;
+    static bool cachedIsExcluded = false;
+    static bool cachedPathDenied = false;
+
+    static string GetProcessImagePath(uint processId, out bool accessDenied) {
+        accessDenied = false;
+        IntPtr hProc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, processId);
+        if (hProc == IntPtr.Zero) {
+            int err = Marshal.GetLastWin32Error();
+            if (err == 5) accessDenied = true;
+            return null;
+        }
+        try {
+            StringBuilder sb = new StringBuilder(1024);
+            uint size = (uint)sb.Capacity;
+            if (QueryFullProcessImageName(hProc, 0, sb, ref size)) {
+                return sb.ToString();
+            }
+            return null;
+        } finally {
+            CloseHandle(hProc);
+        }
+    }
+
+    static readonly string[] NonGameProcesses = {
+        "chrome", "chromium", "chrome_proxy", "msedge", "msedgewebview2", "firefox",
+        "brave", "opera", "opera_gx", "vivaldi", "arc", "librewolf", "waterfox",
+        "thorium", "yandex", "duckduckgo", "zen", "comet", "browser", "applicationframehost",
+        "vlc", "mpc-hc", "mpc-hc64", "mpc-be", "potplayer", "potplayermini64", "wmplayer", "moviesandtv",
+        "netflix", "spotify", "steam", "steamwebhelper", "epicgameslauncher", "battle.net", "eadesktop",
+        "explorer", "lockapp", "searchhost", "shellexperiencehost", "startmenuexperiencehost",
+        "textinputhost", "dwm", "mstsc", "rdpclip", "taskmgr", "code", "cursor", "windsurf",
+        "antigravity", "windowsterminal", "wt", "powershell", "pwsh", "cmd", "discord", "zoom", "teams", "ms-teams"
+    };
+
+    static readonly string[] NonGamePathMarkers = {
+        "\\google\\chrome\\", "\\microsoft\\edge\\", "\\mozilla firefox\\",
+        "\\bravesoftware\\brave-browser\\", "\\opera software\\",
+        "\\videolan\\vlc\\", "\\windows media player\\", "\\windows\\system32\\", "\\windows\\explorer.exe"
+    };
+
+    static readonly string[] GameInstallMarkers = {
+        "\\steamapps\\common\\", "\\epic games\\", "\\xboxgames\\",
+        "\\gog games\\", "\\riot games\\", "\\ubisoft game launcher\\games\\",
+        "\\ea games\\", "\\origin games\\", "\\games\\"
+    };
+
+    static void ClassifyProcess(uint processId, out bool isGame, out bool isExcluded, out bool pathDenied) {
+        if (processId == cachedPid && processId != 0) {
+            isGame = cachedIsGame;
+            isExcluded = cachedIsExcluded;
+            pathDenied = cachedPathDenied;
+            return;
+        }
+        isGame = false;
+        isExcluded = false;
+        pathDenied = false;
+        try {
+            string processName = "";
+            try {
+                using (Process process = Process.GetProcessById((int)processId)) {
+                    processName = (process.ProcessName ?? "").ToLowerInvariant();
+                }
+            } catch {}
+
+            foreach (string excluded in NonGameProcesses) {
+                if (processName == excluded) {
+                    isExcluded = true;
+                    break;
+                }
+            }
+
+            if (!isExcluded) {
+                string executablePath = GetProcessImagePath(processId, out pathDenied);
+                if (!string.IsNullOrEmpty(executablePath)) {
+                    string normalizedPath = executablePath.Replace('/', '\\').ToLowerInvariant();
+                    string fileBase = Path.GetFileNameWithoutExtension(executablePath).ToLowerInvariant();
+                    foreach (string excluded in NonGameProcesses) {
+                        if (fileBase == excluded) {
+                            isExcluded = true;
+                            break;
+                        }
+                    }
+                    if (!isExcluded) {
+                        foreach (string marker in NonGamePathMarkers) {
+                            if (normalizedPath.Contains(marker)) {
+                                isExcluded = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (!isExcluded) {
+                        foreach (string marker in GameInstallMarkers) {
+                            if (normalizedPath.Contains(marker)) {
+                                isGame = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        } catch {}
+
+        cachedPid = processId;
+        cachedIsGame = isGame;
+        cachedIsExcluded = isExcluded;
+        cachedPathDenied = pathDenied;
+    }
 
     public static void TrimMemory() {
         try {
@@ -170,42 +288,24 @@ public static class WinWindowHelper {
     }
 
     static bool IsKnownGameProcess(uint processId) {
-        try {
-            using (Process process = Process.GetProcessById((int)processId)) {
-                string executablePath = process.MainModule.FileName;
-                string normalizedPath = executablePath.Replace('/', '\\').ToLowerInvariant();
-                string processName = Path.GetFileNameWithoutExtension(executablePath).ToLowerInvariant();
-                string[] nonGameProcesses = {
-                    "chrome", "chromium", "chrome_proxy", "msedge", "msedgewebview2", "firefox",
-                    "brave", "opera", "opera_gx", "vivaldi", "arc", "librewolf", "waterfox",
-                    "thorium", "yandex", "duckduckgo", "zen", "browser", "applicationframehost",
-                    "vlc", "mpc-hc", "mpc-hc64", "mpc-be", "potplayer", "wmplayer", "moviesandtv",
-                    "netflix", "spotify", "steam", "epicgameslauncher", "battle.net"
-                };
-                foreach (string excluded in nonGameProcesses) {
-                    if (processName == excluded) return false;
-                }
+        bool isGame, isExcluded, pathDenied;
+        ClassifyProcess(processId, out isGame, out isExcluded, out pathDenied);
+        return isGame && !isExcluded;
+    }
 
-                string[] nonGamePathMarkers = {
-                    "\\google\\chrome\\", "\\microsoft\\edge\\", "\\mozilla firefox\\",
-                    "\\bravesoftware\\brave-browser\\", "\\opera software\\",
-                    "\\videolan\\vlc\\", "\\windows media player\\"
-                };
-                foreach (string marker in nonGamePathMarkers) {
-                    if (normalizedPath.Contains(marker)) return false;
-                }
-
-                string[] gameInstallMarkers = {
-                    "\\steamapps\\common\\", "\\epic games\\", "\\xboxgames\\",
-                    "\\gog games\\", "\\riot games\\", "\\ubisoft game launcher\\games\\",
-                    "\\ea games\\", "\\origin games\\", "\\games\\"
-                };
-                foreach (string marker in gameInstallMarkers) {
-                    if (normalizedPath.Contains(marker)) return true;
-                }
-            }
-        } catch {}
-        return false;
+    static bool IsWindowCoveringMonitor(IntPtr hwnd) {
+        RECT windowRect;
+        if (!GetWindowRect(hwnd, out windowRect)) return false;
+        IntPtr monitor = MonitorFromWindow(hwnd, 2);
+        if (monitor == IntPtr.Zero) return false;
+        MONITORINFO info = new MONITORINFO();
+        info.cbSize = Marshal.SizeOf(typeof(MONITORINFO));
+        if (!GetMonitorInfo(monitor, ref info)) return false;
+        const int edgeTolerance = 8;
+        return Math.Abs(windowRect.Left - info.rcMonitor.Left) <= edgeTolerance &&
+            Math.Abs(windowRect.Top - info.rcMonitor.Top) <= edgeTolerance &&
+            Math.Abs(windowRect.Right - info.rcMonitor.Right) <= edgeTolerance &&
+            Math.Abs(windowRect.Bottom - info.rcMonitor.Bottom) <= edgeTolerance;
     }
 
     public static bool IsFullscreenGame(int excludedPid) {
@@ -214,19 +314,21 @@ public static class WinWindowHelper {
             if (hwnd == IntPtr.Zero || !IsWindowVisible(hwnd)) return false;
             uint processId;
             GetWindowThreadProcessId(hwnd, out processId);
-            if (processId == (uint)excludedPid || !IsKnownGameProcess(processId)) return false;
-            RECT windowRect;
-            if (!GetWindowRect(hwnd, out windowRect)) return false;
-            IntPtr monitor = MonitorFromWindow(hwnd, 2);
-            if (monitor == IntPtr.Zero) return false;
-            MONITORINFO info = new MONITORINFO();
-            info.cbSize = Marshal.SizeOf(typeof(MONITORINFO));
-            if (!GetMonitorInfo(monitor, ref info)) return false;
-            const int edgeTolerance = 8;
-            return Math.Abs(windowRect.Left - info.rcMonitor.Left) <= edgeTolerance &&
-                Math.Abs(windowRect.Top - info.rcMonitor.Top) <= edgeTolerance &&
-                Math.Abs(windowRect.Right - info.rcMonitor.Right) <= edgeTolerance &&
-                Math.Abs(windowRect.Bottom - info.rcMonitor.Bottom) <= edgeTolerance;
+            if (processId == 0 || processId == (uint)excludedPid) return false;
+
+            bool isGame, isExcluded, pathDenied;
+            ClassifyProcess(processId, out isGame, out isExcluded, out pathDenied);
+            if (isExcluded) return false;
+
+            // Fast D3D exclusive fullscreen check (works even with strict kernel anti-cheat)
+            int quns = 0;
+            if (SHQueryUserNotificationState(out quns) == 0 && quns == QUNS_RUNNING_D3D_FULL_SCREEN) {
+                return true;
+            }
+
+            // Borderless/windowed fullscreen: match known game paths OR anti-cheat protected processes (Access Denied)
+            if (!isGame && !pathDenied) return false;
+            return IsWindowCoveringMonitor(hwnd);
         } catch { return false; }
     }
 }
@@ -522,7 +624,8 @@ while ($true) {
         }
 
         # Fast in-process SMTC media session/playback detector (zero PowerShell spawn)
-        if ($null -ne $mediaManager -and ($now - $lastMediaPoll).TotalMilliseconds -ge 250) {
+        # Skip during fullscreen game mode (island suppresses media bar during games anyway)
+        if (-not $gameModeActive -and $null -ne $mediaManager -and ($now - $lastMediaPoll).TotalMilliseconds -ge 250) {
             $lastMediaPoll = $now
             try {
                 $curSess = $null
@@ -577,9 +680,11 @@ while ($true) {
             }
         }
 
-        # Sample brightness at 10 Hz using cached WMI ManagementObject for instant HUD updates
-        # even when pressing brightness keys repeatedly or when WmiMonitorBrightnessEvent lags.
-        if (-not $wmiBrightnessUnsupported -and ($lastBrightness -lt 0 -or ($now - $lastBrightnessPoll).TotalMilliseconds -ge 100)) {
+        # Sample brightness at 10 Hz on desktop; in game mode rely on event-driven WmiMonitorBrightnessEvent
+        # (or low-rate 600ms fallback) to eliminate continuous WmiPrvSE CPU overhead.
+        $skipBrightnessPoll = $gameModeActive -and ($null -ne $brightnessEventSubscription) -and ($lastBrightness -ge 0)
+        $brightnessPollMs = if ($gameModeActive) { 600 } else { 100 }
+        if (-not $wmiBrightnessUnsupported -and -not $skipBrightnessPoll -and ($lastBrightness -lt 0 -or ($now - $lastBrightnessPoll).TotalMilliseconds -ge $brightnessPollMs)) {
             $lastBrightnessPoll = $now
             $bri = -1
             try { $bri = [WinBrightnessHelper]::GetBrightness() } catch {}
@@ -600,7 +705,8 @@ while ($true) {
                 $lastBrightness = $bri
             }
         }
-        if ($null -ne $brightnessEventSubscription -and ($now - $lastBrightnessJobPoll).TotalMilliseconds -ge 500) {
+        $brightnessJobPollMs = if ($gameModeActive) { 150 } else { 500 }
+        if ($null -ne $brightnessEventSubscription -and ($now - $lastBrightnessJobPoll).TotalMilliseconds -ge $brightnessJobPollMs) {
             $lastBrightnessJobPoll = $now
             $bEvent = Receive-Job -Job $brightnessEventSubscription -ErrorAction SilentlyContinue | Select-Object -Last 1
             if ($null -ne $bEvent) {
@@ -614,11 +720,12 @@ while ($true) {
             }
         }
 
-        # Keep the toast query asynchronous and throttled (~350ms) so its wait cannot delay brightness events or churn WinRT allocations.
+        # Keep the toast query asynchronous and throttled so its wait cannot delay brightness events or churn WinRT allocations.
+        $notifPollMs = if ($gameModeActive) { 550 } else { 350 }
         if ($notifSupported -and $null -ne $listener) {
             $notifs = $null
             if ($null -eq $notificationTask) {
-                if (($now - $lastNotifPoll).TotalMilliseconds -ge 350) {
+                if (($now - $lastNotifPoll).TotalMilliseconds -ge $notifPollMs) {
                     $lastNotifPoll = $now
                     $notificationTask = Start-AsyncOp ($listener.GetNotificationsAsync([Windows.UI.Notifications.NotificationKinds]::Toast)) $notificationListType
                 }
@@ -708,12 +815,12 @@ while ($true) {
         $initialized = $true
     } catch {}
 
-    # Periodic garbage collection + working-set trim to keep PowerShell RAM minimal
-    if (-not $initialized -or ($now - $lastGcPoll).TotalSeconds -ge 25) {
+    # Periodic garbage collection + working-set trim to keep PowerShell RAM minimal (skip during fullscreen games)
+    if (-not $initialized -or (-not $gameModeActive -and ($now - $lastGcPoll).TotalSeconds -ge 25)) {
         $lastGcPoll = $now
         [WinWindowHelper]::TrimMemory()
     }
 
     if ($ghelperBridgeLoaded) { Invoke-GHelperNotificationMessagePump }
-    Start-Sleep -Milliseconds 120
+    Start-Sleep -Milliseconds $(if ($gameModeActive) { 150 } else { 120 })
 }

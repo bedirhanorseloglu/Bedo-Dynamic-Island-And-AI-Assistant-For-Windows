@@ -1008,6 +1008,13 @@ export default function App() {
   }, []);
   const shouldRenderExpanded = islandMode === 'expanded' || expandedWarm;
   const [gameModeActive, setGameModeActive] = useState(false);
+  useEffect(() => {
+    const isGameIdle = Boolean(gameModeActive && islandMode === 'idle');
+    document.body.classList.toggle('game-mode-idle', isGameIdle);
+    return () => {
+      document.body.classList.remove('game-mode-idle');
+    };
+  }, [gameModeActive, islandMode]);
   // Right-click thin progress bar toggle
   const [isMiniProgressBar, setIsMiniProgressBar] = useState(false);
   const [activeTab, setActiveTab] = useState('home');

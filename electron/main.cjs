@@ -1850,6 +1850,7 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       spellcheck: false,
+      backgroundThrottling: false,
     },
   });
 
@@ -1951,9 +1952,31 @@ let systemWatcherProc = null;
 let gameModeActive = false;
 let isSystemLockedOrSuspended = false;
 let gameModeSettingsWasVisible = false;
+let gameModeHideTimer = null;
 let agentHistoryPollTimer = null;
 let mediaPollTimeout = null;
 let clipboardPollTimer = null;
+
+function showWindowForGameModeOverlay() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (gameModeHideTimer) {
+    clearTimeout(gameModeHideTimer);
+    gameModeHideTimer = null;
+  }
+  try {
+    if (!mainWindow.isVisible()) {
+      mainWindow.showInactive();
+    }
+    updateWindowMouseIgnore(true);
+  } catch {}
+}
+
+function scheduleGameModeHide() {
+  if (gameModeHideTimer) {
+    clearTimeout(gameModeHideTimer);
+    gameModeHideTimer = null;
+  }
+}
 
 function scheduleNextMediaPoll(customDelay) {
   if (gameModeActive || isSystemLockedOrSuspended) return;
@@ -2077,10 +2100,19 @@ function setGameModeActive(active) {
     return;
   }
 
+  if (gameModeHideTimer) {
+    clearTimeout(gameModeHideTimer);
+    gameModeHideTimer = null;
+  }
   startBackgroundPolling();
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.setAlwaysOnTop(true, 'screen-saver');
-    mainWindow.moveTop();
+    try {
+      if (!mainWindow.isVisible()) {
+        mainWindow.showInactive();
+      }
+      mainWindow.setAlwaysOnTop(true, 'screen-saver');
+      mainWindow.moveTop();
+    } catch {}
     mainWindow.webContents.send('game-mode-change', false);
   }
   if (gameModeSettingsWasVisible && settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.showInactive();
@@ -2137,6 +2169,7 @@ function startSystemWatcher() {
               continue;
             }
             if (mainWindow && !mainWindow.isDestroyed()) {
+              if (gameModeActive) showWindowForGameModeOverlay();
               mainWindow.webContents.send('system-hud', {
                 type: 'ghelper',
                 value: 0,
@@ -2165,6 +2198,7 @@ function startSystemWatcher() {
             });
           } else if (ev.event === 'volume') {
             if (!isStartupGrace) {
+              if (gameModeActive) showWindowForGameModeOverlay();
               mainWindow.webContents.send('system-hud', {
                 type: 'volume',
                 value: ev.value,
@@ -2174,6 +2208,7 @@ function startSystemWatcher() {
             }
           } else if (ev.event === 'brightness') {
             if (!isStartupGrace) {
+              if (gameModeActive) showWindowForGameModeOverlay();
               mainWindow.webContents.send('system-hud', {
                 type: 'brightness',
                 value: ev.value,
@@ -2198,6 +2233,7 @@ function startSystemWatcher() {
               ].slice(0, 10);
               mainWindow.webContents.send('google-data-update', localGoogleState);
             }
+            if (gameModeActive) showWindowForGameModeOverlay();
             mainWindow.webContents.send('windows-notification', {
               id: ev.id,
               app: isEmail ? 'Gmail' : ev.app || 'Windows',
@@ -2242,6 +2278,10 @@ function stopLiveActivityWatchers() {
 }
 
 app.on('will-quit', () => {
+  if (gameModeHideTimer) {
+    clearTimeout(gameModeHideTimer);
+    gameModeHideTimer = null;
+  }
   stopBackgroundPolling();
   stopLiveActivityWatchers();
   perfMonitor.stop();
@@ -2307,6 +2347,7 @@ ipcMain.handle('get-python-bootstrap-status', () => getPythonBootstrapStatus());
     ghelperBridgeClient = new GHelperBridgeClient({
       onToast: (toast) => {
         if (!mainWindow || mainWindow.isDestroyed()) return;
+        if (gameModeActive) showWindowForGameModeOverlay();
         mainWindow.webContents.send('system-hud', {
           type: 'ghelper',
           value: 0,
