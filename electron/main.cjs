@@ -65,6 +65,7 @@ function getBedoService() {
 }
 
 app.commandLine.appendSwitch('no-sandbox');
+app.commandLine.appendSwitch('force_low_power_gpu');
 app.commandLine.appendSwitch('js-flags', '--expose-gc --max-old-space-size=192');
 app.commandLine.appendSwitch('disable-breakpad');
 app.commandLine.appendSwitch('disable-component-update');
@@ -149,7 +150,7 @@ async function fetchAlbumCover(title, artist, album) {
     }
     const kickCover = await fetchKickStreamerCover(title, artist, album);
     if (kickCover) {
-      setBoundedCache(coverCacheMap, kickCacheKey, kickCover, 100);
+      setBoundedCache(coverCacheMap, kickCacheKey, kickCover, 40);
     }
     return kickCover;
   }
@@ -683,7 +684,31 @@ function readLastBytesSync(filePath, maxBytes = 49152) {
   }
 }
 
-function loadLocalAiHistory() {
+let lastAiHistorySignature = '';
+
+function computeAiHistorySignature() {
+  const parts = [];
+  const checkFile = (p) => {
+    try {
+      const st = fs.statSync(p);
+      parts.push(`${p}:${st.mtimeMs}:${st.size}`);
+    } catch {
+      parts.push(`${p}:0`);
+    }
+  };
+  checkFile(path.join(os.homedir(), '.codex', '.codex-global-state.json'));
+  checkFile(path.join(os.homedir(), '.codex', 'session_index.jsonl'));
+  checkFile(path.join(os.homedir(), '.claude', 'history.jsonl'));
+  return parts.join('|');
+}
+
+function loadLocalAiHistory({ force = false } = {}) {
+  const sig = computeAiHistorySignature();
+  if (!force && sig === lastAiHistorySignature && localAgentHistory.jobsToday > 0) {
+    return localAgentHistory;
+  }
+  lastAiHistorySignature = sig;
+
   const codexJobs = [];
   const claudeJobs = [];
   const geminiJobs = [];
