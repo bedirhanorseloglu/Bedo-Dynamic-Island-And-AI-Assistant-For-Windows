@@ -372,6 +372,8 @@ export default function SettingsApp() {
   const [installedApps, setInstalledApps] = useState([]);
   const [installedAppsLoading, setInstalledAppsLoading] = useState(false);
   const [installedAppsQuery, setInstalledAppsQuery] = useState('');
+  const [fgAppQuery, setFgAppQuery] = useState('');
+  const [pythonBootstrap, setPythonBootstrap] = useState({ state: 'idle', detail: '' });
 
   const loadInstalledApps = async (forceRefresh = false) => {
     if (!window.twocode?.getInstalledApps) return;
@@ -387,7 +389,7 @@ export default function SettingsApp() {
   };
 
   useEffect(() => {
-    if (activePage === 'apps' && installedApps.length === 0 && !installedAppsLoading) {
+    if ((activePage === 'apps' || activePage === 'focusguard') && installedApps.length === 0 && !installedAppsLoading) {
       loadInstalledApps(false);
     }
   }, [activePage]);
@@ -522,12 +524,42 @@ export default function SettingsApp() {
       if (st) setBedoStatus(st);
     });
 
+    window.twocode.getPythonBootstrapStatus?.().then((st) => {
+      if (st) setPythonBootstrap(st);
+    });
+
+    const unsubPyBoot = window.twocode.onPythonBootstrapStatus?.((st) => {
+      if (st) {
+        setPythonBootstrap(st);
+        if (st.state === 'ready') {
+          window.twocode.bedoGetStatus?.().then((bs) => {
+            if (bs) setBedoStatus(bs);
+          });
+        }
+      }
+    });
+
+    const onStorageSync = (ev) => {
+      if (ev.key === 'twocode_focus_guard_stats') {
+        try {
+          const todayKey = new Date().toISOString().slice(0, 10);
+          const raw = JSON.parse(ev.newValue || '{}');
+          if (raw.date === todayKey) {
+            setFgStats({ turnedBack: Number(raw.turnedBack || 0), openedAnyway: Number(raw.openedAnyway || 0) });
+          }
+        } catch {}
+      }
+    };
+    window.addEventListener('storage', onStorageSync);
+
     return () => {
       if (unsubSettings) unsubSettings();
       if (unsubNavigate) unsubNavigate();
       if (unsubAi) unsubAi();
       if (unsubMedia) unsubMedia();
       if (unsubBedo) unsubBedo();
+      if (unsubPyBoot) unsubPyBoot();
+      window.removeEventListener('storage', onStorageSync);
     };
   }, []);
 
@@ -1766,8 +1798,11 @@ export default function SettingsApp() {
             { id: 'Zephyr', tr: 'Hafif • Akıcı', en: 'Light • Fluid' },
           ];
           const bedoIsReady = Boolean(bedoStatus.running && !bedoStatus.paused);
+          const isBootstrappingPython = pythonBootstrap.state === 'downloading-python' || pythonBootstrap.state === 'installing-deps';
           const bedoPillLabel = !bedoStatus.available
-            ? (langCode === 'tr' ? 'Köprü bulunamadı' : 'Bridge missing')
+            ? isBootstrappingPython
+              ? (langCode === 'tr' ? 'Arka planda hazırlanıyor…' : 'Preparing runtime…')
+              : (langCode === 'tr' ? 'Köprü bulunamadı' : 'Bridge missing')
             : !bedoStatus.running
               ? (langCode === 'tr' ? 'Çevrimdışı' : 'Offline')
               : bedoStatus.paused
@@ -3339,6 +3374,7 @@ export default function SettingsApp() {
                   </button>
                 </div>
 
+                {(ghelperStatus.ghelperInstalled || ghelperStatus.running || ghelperStatus.installed) && (
                 <div className="settings-row no-border">
                   <div className="row-text-col">
                     <div className="notif-lg-bridge-title">
@@ -3373,6 +3409,7 @@ export default function SettingsApp() {
                       : (ghelperBusy ? 'Working…' : ghelperStatus.running ? 'Reinstall' : ghelperStatus.installed ? 'Start' : 'Connect')}
                   </button>
                 </div>
+                )}
               </section>
 
               {/* Duration, Sound, Privacy */}
@@ -3938,6 +3975,71 @@ export default function SettingsApp() {
                       </button>
                     );
                   })}
+                </div>
+              </div>
+
+              <div className="settings-row align-top">
+                <div className="row-text-col">
+                  <strong>{langCode === 'tr' ? 'Bilgisayardaki uygulamalar' : 'Apps on this PC'}</strong>
+                  <span>
+                    {installedAppsLoading
+                      ? langCode === 'tr'
+                        ? 'Yüklü uygulamalar taranıyor…'
+                        : 'Scanning installed apps…'
+                      : langCode === 'tr'
+                      ? 'PC’nizde algılanan programları da tek tıkla odak korumasına ekleyin'
+                      : 'Add detected apps on your PC to Focus Guard in one click'}
+                  </span>
+                  <div className="fg-lg-local-tools">
+                    <input
+                      type="text"
+                      className="settings-input apps-lg-installed-search"
+                      placeholder={langCode === 'tr' ? 'Program ara…' : 'Search apps…'}
+                      value={fgAppQuery}
+                      onChange={(e) => setFgAppQuery(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="apps-lg-mini-btn"
+                      disabled={installedAppsLoading}
+                      onClick={() => loadInstalledApps(true)}
+                      title={langCode === 'tr' ? 'Listeyi yenile' : 'Refresh list'}
+                    >
+                      <RefreshCw size={13} className={installedAppsLoading ? 'spin-icon' : ''} />
+                    </button>
+                  </div>
+                </div>
+                <div className="fg-lg-site-grid fg-lg-local-grid">
+                  {installedApps
+                    .filter((item) =>
+                      !fgAppQuery.trim()
+                        ? true
+                        : item.name.toLowerCase().includes(fgAppQuery.trim().toLowerCase())
+                    )
+                    .slice(0, 15)
+                    .map((item) => {
+                      const active = (settings.focusGuardApps || []).includes(item.name);
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          className={`fg-lg-site-chip ${active ? 'active' : ''}`}
+                          onClick={() => {
+                            const curr = settings.focusGuardApps || [];
+                            const next = active ? curr.filter((x) => x !== item.name) : [...curr, item.name];
+                            updateSetting({ focusGuardApps: next });
+                          }}
+                          title={item.name}
+                        >
+                          {item.iconDataUrl ? (
+                            <img src={item.iconDataUrl} alt="" className="fg-lg-site-logo" />
+                          ) : (
+                            <span className="fg-lg-site-mono">{item.name.slice(0, 1).toUpperCase()}</span>
+                          )}
+                          <span className="fg-lg-site-name">{item.name}</span>
+                        </button>
+                      );
+                    })}
                 </div>
               </div>
 

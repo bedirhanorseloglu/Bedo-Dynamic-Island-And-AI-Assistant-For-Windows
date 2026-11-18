@@ -3,18 +3,46 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
+function findSystemPythonExe() {
+  const pathEnv = process.env.PATH || process.env.Path || '';
+  for (const dir of pathEnv.split(path.delimiter)) {
+    if (!dir) continue;
+    const candidate = path.join(dir.trim(), 'python.exe');
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return '';
+}
+
 function resolveBedoPaths(customProjectDir) {
+  const candidateDirs = [
+    customProjectDir,
+    process.env.BEDO_PROJECT_DIR,
+    process.resourcesPath ? path.join(process.resourcesPath, 'bedo-runtime') : '',
+    path.join(__dirname, 'bedo-runtime'),
+    path.resolve(__dirname, '..', '..', 'JARVIS'),
+  ].filter(Boolean);
+
   const projectDir =
-    customProjectDir ||
-    process.env.BEDO_PROJECT_DIR ||
-    path.resolve(__dirname, '..', '..', 'JARVIS');
-  const pythonExe = path.join(projectDir, 'venv', 'Scripts', 'python.exe');
+    candidateDirs.find((d) => fs.existsSync(path.join(d, 'bedo_bridge.py'))) ||
+    candidateDirs[0];
+
+  const candidatePythons = [
+    path.join(projectDir, 'venv', 'Scripts', 'python.exe'),
+    path.join(__dirname, 'bedo-runtime', 'venv', 'Scripts', 'python.exe'),
+    path.resolve(__dirname, '..', '..', 'JARVIS', 'venv', 'Scripts', 'python.exe'),
+    process.env.BEDO_BOOTSTRAP_PYTHON || '',
+  ].filter(Boolean);
+
+  const pythonExe =
+    candidatePythons.find((p) => fs.existsSync(p)) ||
+    findSystemPythonExe();
+
   const bridgeScript = path.join(projectDir, 'bedo_bridge.py');
   return {
     projectDir,
     pythonExe,
     bridgeScript,
-    available: fs.existsSync(pythonExe) && fs.existsSync(bridgeScript),
+    available: Boolean(pythonExe && fs.existsSync(pythonExe) && fs.existsSync(bridgeScript)),
   };
 }
 

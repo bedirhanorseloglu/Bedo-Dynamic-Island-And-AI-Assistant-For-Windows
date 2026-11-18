@@ -200,6 +200,12 @@ contextBridge.exposeInMainWorld('twocode', {
   bedoStart: (opts) => ipcRenderer.invoke('bedo:start', opts),
   bedoStop: () => ipcRenderer.invoke('bedo:stop'),
   bedoGetStatus: () => ipcRenderer.invoke('bedo:status'),
+  getPythonBootstrapStatus: () => ipcRenderer.invoke('get-python-bootstrap-status'),
+  onPythonBootstrapStatus: (cb) => {
+    const listener = (_event, status) => cb(status);
+    ipcRenderer.on('python-bootstrap-status', listener);
+    return () => ipcRenderer.removeListener('python-bootstrap-status', listener);
+  },
   bedoSendText: (text) => ipcRenderer.invoke('bedo:send-text', text),
   bedoSetMuted: (muted) => ipcRenderer.invoke('bedo:set-muted', muted),
   bedoSetSystemMicMuted: (muted) => ipcRenderer.invoke('bedo:set-system-mic-muted', muted),

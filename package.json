@@ -9,7 +9,42 @@
     "dev:electron": "electron .",
     "dev": "node start-dev.cjs",
     "build": "vite build",
-    "start": "electron ."
+    "start": "electron .",
+    "dist": "npm run build && electron-builder --win"
+  },
+  "build": {
+    "appId": "com.bedo.assistant",
+    "productName": "Bedo",
+    "asar": true,
+    "asarUnpack": [
+      "electron/*.ps1"
+    ],
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "!electron/bedo-runtime/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "electron/bedo-runtime",
+        "to": "bedo-runtime",
+        "filter": [
+          "**/*",
+          "!venv/**",
+          "!**/__pycache__/**"
+        ]
+      }
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        "zip"
+      ]
+    },
+    "directories": {
+      "output": "release"
+    }
   },
   "dependencies": {
     "lucide-react": "^1.16.0",
@@ -20,6 +55,7 @@
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
     "electron": "^35.0.0",
+    "electron-builder": "^26.18.0",
     "vite": "^6.2.0"
   }
 }

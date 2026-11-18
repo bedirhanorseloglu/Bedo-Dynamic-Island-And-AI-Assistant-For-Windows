@@ -2208,6 +2208,7 @@ export default function App() {
   const [appContext, setAppContext] = useState({ app: '', category: 'desktop' });
   const [liveActivity, setLiveActivity] = useState(null);
   const [focusGuardPrompt, setFocusGuardPrompt] = useState(null);
+  const [showIslandWelcome, setShowIslandWelcome] = useState(false);
   const focusGuardCooldownRef = useRef({});
   const focusGuardLastAppRef = useRef('');
 
@@ -2949,6 +2950,11 @@ export default function App() {
         if (saved.language) {
           try { localStorage.setItem('twocode_lang', normalizeLanguage(saved.language)); } catch {}
         }
+        if (saved.onboardingCompleted === false) {
+          setShowIslandWelcome(true);
+          suppressHoverCollapseUntilRef.current = Date.now() + 600000;
+          setIslandMode('expanded');
+        }
       }
     });
 
@@ -2960,6 +2966,10 @@ export default function App() {
         setIslandSettings((prev) => ({ ...prev, ...updated }));
         if (updated.language) {
           try { localStorage.setItem('twocode_lang', normalizeLanguage(updated.language)); } catch {}
+        }
+        if (updated.onboardingCompleted === true) {
+          setShowIslandWelcome(false);
+          suppressHoverCollapseUntilRef.current = 0;
         }
       }
     });
@@ -4666,6 +4676,7 @@ export default function App() {
             <div className="topbar-right">
               {activeTab === 'home' && !islandOverlay && (
                 <>
+                  {(ghelperStatus.ghelperInstalled !== false) && (
                   <div className="topbar-ghelper-group" role="group" aria-label={t('topbar.ghelperGroup')}>
                     {(() => {
                       const perfMeta = GHELPER_PERF_MODES[ghelperStatus.performanceMode] || GHELPER_PERF_MODES[0];
@@ -4710,6 +4721,7 @@ export default function App() {
                       );
                     })()}
                   </div>
+                  )}
                   <button
                     type="button"
                     className="topbar-mode-btn"
@@ -5087,6 +5099,98 @@ export default function App() {
                   {langCode === 'tr'
                     ? `Yine de aç (${Number(islandSettingsRef.current?.focusGuardLeaveMin) || 5} dk)`
                     : `Open anyway (${Number(islandSettingsRef.current?.focusGuardLeaveMin) || 5}m)`}
+                </button>
+              </div>
+            </div>
+          ) : showIslandWelcome ? (
+            <div className="island-welcome-screen">
+              <div className="island-welcome-glow" aria-hidden="true" />
+              <div className="island-welcome-top">
+                <div className="island-welcome-avatar">
+                  <RoboEyes
+                    mood="happy"
+                    reaction="happy"
+                    active={documentVisible}
+                    trackCursor={true}
+                    blinkingEnabled={true}
+                    outfit={islandSettings.outfit || 'Best'}
+                    seasonalOutfits={false}
+                    size="normal"
+                  />
+                </div>
+                <div className="island-welcome-copy">
+                  <span className="island-welcome-badge">
+                    {langCode === 'tr' ? 'BEDO’YA HOŞ GELDİN' : 'WELCOME TO BEDO'}
+                  </span>
+                  <h3>
+                    {langCode === 'tr'
+                      ? 'Dinamik Adan Hazır'
+                      : 'Your Dynamic Island Is Ready'}
+                  </h3>
+                  <p>
+                    {langCode === 'tr'
+                      ? 'Yapay zeka asistanın, odak sayacın, akıllı bildirimlerin ve kısayolların tek yerde.'
+                      : 'Your AI companion, focus timer, smart notifications, and app shortcuts in one place.'}
+                  </p>
+                </div>
+                <div className="island-welcome-lang">
+                  {['Turkish', 'English'].map((lng) => (
+                    <button
+                      key={lng}
+                      type="button"
+                      className={islandSettings.language === lng ? 'active' : ''}
+                      onClick={() => {
+                        setIslandSettings((prev) => ({ ...prev, language: lng }));
+                        window.twocode?.saveSettings?.({ language: lng });
+                      }}
+                    >
+                      {lng === 'Turkish' ? 'TR' : 'EN'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="island-welcome-pills">
+                <div className="island-welcome-pill" style={{ animationDelay: '0.06s' }}>
+                  <strong>Ctrl+Alt+T</strong>
+                  <span>{langCode === 'tr' ? 'Adayı Aç / Kapat' : 'Toggle Island'}</span>
+                </div>
+                <div className="island-welcome-pill" style={{ animationDelay: '0.14s' }}>
+                  <strong>Ctrl+Alt+Space</strong>
+                  <span>{langCode === 'tr' ? 'Bedo ile Konuş' : 'Talk to Bedo'}</span>
+                </div>
+                <div className="island-welcome-pill" style={{ animationDelay: '0.22s' }}>
+                  <strong>{langCode === 'tr' ? 'Akıllı Odak' : 'Smart Focus'}</strong>
+                  <span>{langCode === 'tr' ? 'Sayaç & Koruma' : 'Timer & Guard'}</span>
+                </div>
+              </div>
+
+              <div className="island-welcome-actions">
+                <button
+                  type="button"
+                  className="island-welcome-btn primary"
+                  onClick={() => {
+                    playRoboSound('happy', islandSettingsRef.current?.soundEffects !== false);
+                    suppressHoverCollapseUntilRef.current = 0;
+                    setShowIslandWelcome(false);
+                    window.twocode?.saveSettings?.({ onboardingCompleted: true });
+                    setIslandMode(resolvedCollapsedMode);
+                  }}
+                >
+                  {langCode === 'tr' ? 'Hadi Başlayalım' : 'Get Started'}
+                </button>
+                <button
+                  type="button"
+                  className="island-welcome-btn ghost"
+                  onClick={() => {
+                    suppressHoverCollapseUntilRef.current = 0;
+                    setShowIslandWelcome(false);
+                    window.twocode?.saveSettings?.({ onboardingCompleted: true });
+                    window.twocode?.openSettingsWindow?.('home');
+                    setIslandMode(resolvedCollapsedMode);
+                  }}
+                >
+                  {langCode === 'tr' ? 'Ayarları Aç' : 'Open Settings'}
                 </button>
               </div>
             </div>

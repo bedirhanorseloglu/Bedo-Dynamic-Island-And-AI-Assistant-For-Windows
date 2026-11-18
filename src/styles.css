@@ -16627,3 +16627,201 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+/* ============================================================
+   FIRST-LAUNCH ANIMATED ISLAND WELCOME SCREEN
+   ============================================================ */
+.island-welcome-screen {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 100%;
+  padding: 20px 24px 18px;
+  animation: islandWelcomeFade 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes islandWelcomeFade {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.island-welcome-glow {
+  position: absolute;
+  inset: -60px auto auto -30px;
+  width: 240px;
+  height: 240px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.14) 0%, rgba(16, 185, 129, 0.08) 45%, transparent 72%);
+  pointer-events: none;
+  animation: welcomeOrbPulse 4.5s ease-in-out infinite;
+}
+
+@keyframes welcomeOrbPulse {
+  0%, 100% { transform: scale(0.95); opacity: 0.75; }
+  50% { transform: scale(1.08); opacity: 1; }
+}
+
+.island-welcome-top {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.island-welcome-avatar {
+  width: 62px;
+  height: 62px;
+  border-radius: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(155deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.03));
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 10px 24px rgba(0, 0, 0, 0.35);
+  flex-shrink: 0;
+  animation: welcomeAvatarFloat 3.4s ease-in-out infinite;
+}
+
+@keyframes welcomeAvatarFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+.island-welcome-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+
+.island-welcome-badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: rgba(167, 243, 208, 0.92);
+}
+
+.island-welcome-copy h3 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #f8fafc;
+}
+
+.island-welcome-copy p {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: rgba(203, 213, 225, 0.8);
+}
+
+.island-welcome-lang {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  gap: 2px;
+  flex-shrink: 0;
+  align-self: flex-start;
+}
+
+.island-welcome-lang button {
+  padding: 4px 9px;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: rgba(203, 213, 225, 0.78);
+  font-size: 10.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.island-welcome-lang button.active {
+  background: #f8fafc;
+  color: #090d16;
+}
+
+.island-welcome-pills {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.island-welcome-pill {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 12px;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  animation: welcomePillRise 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes welcomePillRise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.island-welcome-pill strong {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.island-welcome-pill span {
+  font-size: 10.5px;
+  color: rgba(203, 213, 225, 0.72);
+}
+
+.island-welcome-actions {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.island-welcome-btn {
+  padding: 8px 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.18s ease, background 0.18s ease;
+}
+
+.island-welcome-btn:hover {
+  transform: translateY(-1px);
+}
+
+.island-welcome-btn.primary {
+  background: #f8fafc;
+  color: #090d16;
+  border-color: #f8fafc;
+  box-shadow: 0 6px 18px rgba(255, 255, 255, 0.16);
+}
+
+.island-welcome-btn.ghost {
+  background: rgba(255, 255, 255, 0.08);
+  color: #f8fafc;
+}

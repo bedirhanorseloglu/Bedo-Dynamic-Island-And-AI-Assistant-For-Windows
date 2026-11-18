@@ -35,6 +35,7 @@ const {
 const { createLiveActivityWatcher } = require('./live-activity-watcher.cjs');
 const { createPerfMonitor } = require('./perf-monitor.cjs');
 const { BedoService } = require('./bedo-service.cjs');
+const { ensurePythonRuntimeBackground, getAvailablePythonExe, getPythonBootstrapStatus } = require('./python-bootstrap.cjs');
 const { isKickStream, fetchKickStreamerCover } = require('./kick-cover.cjs');
 const perfMonitor = createPerfMonitor();
 let bedoService = null;
@@ -85,6 +86,23 @@ app.commandLine.appendSwitch(
   'disable-features',
   'SpareRendererForSitePerProcess,CalculateNativeWinOcclusion,InterestFeedContentSuggestions,AutofillServerCommunication,CertificateTransparencyComponentUpdater,MetricsReporting,OptimizationHints,MediaRouter'
 );
+
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show();
+      mainWindow.webContents.send('notch-hover-change', true);
+    }
+    if (settingsWindow && !settingsWindow.isDestroyed()) {
+      if (settingsWindow.isMinimized()) settingsWindow.restore();
+      settingsWindow.show();
+      settingsWindow.focus();
+    }
+  });
+}
 
 function trimWorkingSetAndGC({ trimWorkingSet = false } = {}) {
   try {
@@ -269,9 +287,18 @@ function isBrowserMediaSource(sourceApp) {
   );
 }
 
+function resolveScriptPath(filename) {
+  const unpackedDir = __dirname.replace(/app\.asar([\\/]|$)/i, 'app.asar.unpacked$1');
+  const unpacked = path.join(unpackedDir, filename);
+  if (unpacked !== path.join(__dirname, filename) && fs.existsSync(unpacked)) {
+    return unpacked;
+  }
+  return path.join(__dirname, filename);
+}
+
 function checkBrowserMediaTabExists(sourceApp, title, artist) {
   return new Promise((resolve) => {
-    const scriptPath = path.join(__dirname, 'win-focus-media.ps1');
+    const scriptPath = resolveScriptPath('win-focus-media.ps1');
     execFile(
       'powershell.exe',
       [
@@ -474,6 +501,16 @@ function restoreApiKeysFromDisk(settings) {
   return restored;
 }
 
+function writeFileAtomicSync(targetPath, content) {
+  const dir = path.dirname(targetPath);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  const tmpPath = `${targetPath}.tmp`;
+  fs.writeFileSync(tmpPath, content, 'utf8');
+  fs.renameSync(tmpPath, targetPath);
+}
+
 function loadSettingsFromDisk() {
   try {
     const p = getSettingsFilePath();
@@ -495,7 +532,7 @@ function loadSettingsFromDisk() {
           });
       }
       userSettings = { ...userSettings, ...parsed };
-      fs.writeFileSync(p, JSON.stringify(settingsForDisk(userSettings), null, 2), 'utf8');
+      writeFileAtomicSync(p, JSON.stringify(settingsForDisk(userSettings), null, 2));
     }
   } catch {}
   return userSettings;
@@ -540,10 +577,9 @@ function saveSettingsToDisk(nextSettings) {
     }).catch(() => {});
   }
   try {
-    fs.writeFileSync(
+    writeFileAtomicSync(
       getSettingsFilePath(),
-      JSON.stringify(settingsForDisk(userSettings), null, 2),
-      'utf8'
+      JSON.stringify(settingsForDisk(userSettings), null, 2)
     );
   } catch {}
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -1105,7 +1141,7 @@ function pollWindowsMedia(action = 'status', value = null) {
       return resolve(lastMediaState);
     }
     isPollingMedia = true;
-    const scriptPath = path.join(__dirname, 'win-media.ps1');
+    const scriptPath = resolveScriptPath('win-media.ps1');
     const args = [
       '-WindowStyle',
       'Hidden',
@@ -1420,6 +1456,14 @@ function stopLocalAgentServers() {
   localAgentServers = [];
 }
 
+function getAppWindowIcon() {
+  const candidates = [
+    path.join(__dirname, '..', 'build', 'icon.ico'),
+    path.join(__dirname, '..', 'build', 'icon.png'),
+  ];
+  return candidates.find((p) => fs.existsSync(p));
+}
+
 function openOrFocusSettingsWindow(tabId = 'home') {
   if (settingsWindow && !settingsWindow.isDestroyed()) {
     settingsWindow.show();
@@ -1440,6 +1484,7 @@ function openOrFocusSettingsWindow(tabId = 'home') {
     frame: false,
     transparent: true,
     backgroundColor: '#00000000',
+    icon: getAppWindowIcon(),
     title: 'Bedo Settings',
     skipTaskbar: true,
     webPreferences: {
@@ -1787,6 +1832,7 @@ function createWindow() {
     y: 0,
     show: false,
     frame: false,
+    icon: getAppWindowIcon(),
     thickFrame: false,
     transparent: true,
     backgroundColor: '#00000000',
@@ -2043,7 +2089,7 @@ function setGameModeActive(active) {
 
 function startSystemWatcher() {
   try {
-    const watcherScript = path.join(__dirname, 'win-system-watcher.ps1');
+    const watcherScript = resolveScriptPath('win-system-watcher.ps1');
     systemWatcherProc = spawn(
       'powershell.exe',
       ['-WindowStyle', 'Hidden', '-NoProfile', '-STA', '-ExecutionPolicy', 'Bypass', '-File', watcherScript, '-ElectronPid', String(process.pid)],
@@ -2215,6 +2261,10 @@ app.on('will-quit', () => {
   if (bedoService) {
     try { bedoService.stop(); } catch {}
   }
+  if (speechWorkerProc) {
+    try { speechWorkerProc.kill(); } catch {}
+    speechWorkerProc = null;
+  }
   if (gmailPollTimer) clearInterval(gmailPollTimer);
 });
 
@@ -2236,12 +2286,24 @@ app.whenReady().then(() => {
   }
   const agentStatus = getAgentIntegrationStatus();
   if (agentStatus.codexConnected || agentStatus.antigravityConnected) startLocalAgentServers();
+  setTimeout(() => {
+    ensurePythonRuntimeBackground(app.getPath('userData'), (status) => {
+      if (settingsWindow && !settingsWindow.isDestroyed()) {
+        settingsWindow.webContents.send('python-bootstrap-status', status);
+      }
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('python-bootstrap-status', status);
+      }
+    }).catch(() => {});
+  }, 4500);
+
+ipcMain.handle('get-python-bootstrap-status', () => getPythonBootstrapStatus());
   startCursorHoverWatcher();
   startSystemWatcher();
   startLiveActivityWatchers();
 
-  // Start elevated GHelper bridge pipe listener
-  try {
+  // Start elevated GHelper bridge pipe listener only if G-Helper is installed on this PC
+  if (isGHelperInstalled()) try {
     ghelperBridgeClient = new GHelperBridgeClient({
       onToast: (toast) => {
         if (!mainWindow || mainWindow.isDestroyed()) return;
@@ -2351,11 +2413,17 @@ ipcMain.on('set-island-mode', (_event, mode, customWidth) => {
 });
 
 ipcMain.handle('get-ghelper-bridge-status', async () => {
-  return await checkGHelperTaskStatus();
+  const installed = isGHelperInstalled();
+  if (!installed) {
+    return { installed: false, running: false, ghelperInstalled: false };
+  }
+  const status = await checkGHelperTaskStatus();
+  return { ...status, ghelperInstalled: true };
 });
 
 ipcMain.handle('get-ghelper-status', () => {
-  return ghelperBridgeClient?.getGHelperStatus() || readGHelperStatus();
+  const status = ghelperBridgeClient?.getGHelperStatus() || readGHelperStatus();
+  return { ...status, ghelperInstalled: isGHelperInstalled() };
 });
 
 ipcMain.handle('install-ghelper-bridge', async () => {
@@ -2495,14 +2563,25 @@ ipcMain.handle('media-control', async (_event, action, value) => {
   return res;
 });
 
-async function openGHelper() {
-  const candidatePaths = [
+function getGHelperCandidatePaths() {
+  return [
     path.join(os.homedir(), 'OneDrive', 'Masaüstü', 'GHelper.exe'),
     path.join(os.homedir(), 'Desktop', 'GHelper.exe'),
     path.join(os.homedir(), 'OneDrive', 'Desktop', 'GHelper.exe'),
     path.join(process.env.LOCALAPPDATA || '', 'Programs', 'GHelper', 'GHelper.exe'),
     'C:\\Program Files\\GHelper\\GHelper.exe',
   ];
+}
+
+function isGHelperInstalled() {
+  const exeExists = getGHelperCandidatePaths().some((p) => p && fs.existsSync(p));
+  if (exeExists) return true;
+  const cfgPath = path.join(process.env.APPDATA || '', 'GHelper', 'config.json');
+  return Boolean(cfgPath && fs.existsSync(cfgPath));
+}
+
+async function openGHelper() {
+  const candidatePaths = getGHelperCandidatePaths();
 
   const targetPath = candidatePaths.find((p) => p && fs.existsSync(p));
   if (!targetPath) {
@@ -2712,7 +2791,8 @@ function transcribeWithWarmPythonWorker(wavPath, lang) {
         '        print(json.dumps({"ok": False, "error": str(e)}), flush=True)',
       ].join('\n');
 
-      speechWorkerProc = spawn('python', ['-u', '-c', workerCode], {
+      const pythonCmd = getAvailablePythonExe(app.getPath('userData')) || 'python';
+      speechWorkerProc = spawn(pythonCmd, ['-u', '-c', workerCode], {
         windowsHide: true,
         stdio: ['pipe', 'pipe', 'ignore'],
       });
@@ -2730,6 +2810,13 @@ function transcribeWithWarmPythonWorker(wavPath, lang) {
           } catch {
             item.resolve({ ok: false, error: 'Ses yazıya dökülemedi.' });
           }
+        }
+      });
+      speechWorkerProc.on('error', () => {
+        speechWorkerProc = null;
+        while (speechWorkerQueue.length) {
+          const item = speechWorkerQueue.shift();
+          item?.resolve({ ok: false, error: 'Sesli dikte için sistemde Python bulunamadı.' });
         }
       });
       speechWorkerProc.on('exit', () => {
@@ -2866,16 +2953,21 @@ function collectStartMenuLinks(dir, depth = 0, out = []) {
 
 function getUwpStartApps() {
   return new Promise((resolve) => {
+    const ps = [
+      '[Console]::OutputEncoding=[System.Text.Encoding]::UTF8;',
+      '$pkgMap = @{};',
+      'Get-AppxPackage | ForEach-Object { if ($_.PackageFamilyName -and $_.InstallLocation) { $pkgMap[$_.PackageFamilyName] = $_.InstallLocation } };',
+      'Get-StartApps | ForEach-Object {',
+      '  $aid = [string]$_.AppID;',
+      '  $loc = "";',
+      '  if ($aid -match "^([^!]+)!") { $loc = $pkgMap[$matches[1]] };',
+      '  [PSCustomObject]@{ Name = $_.Name; AppID = $aid; InstallLocation = $loc }',
+      '} | ConvertTo-Json -Compress',
+    ].join(' ');
     execFile(
       'powershell.exe',
-      [
-        '-WindowStyle', 'Hidden',
-        '-NoProfile',
-        '-NonInteractive',
-        '-Command',
-        '[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; Get-StartApps | Select-Object Name,AppID | ConvertTo-Json -Compress',
-      ],
-      { timeout: 4500, maxBuffer: 1024 * 1024 * 2, windowsHide: true },
+      ['-WindowStyle', 'Hidden', '-NoProfile', '-NonInteractive', '-Command', ps],
+      { timeout: 5500, maxBuffer: 1024 * 1024 * 4, windowsHide: true },
       (err, stdout) => {
         if (err || !stdout) return resolve([]);
         try {
@@ -2888,6 +2980,41 @@ function getUwpStartApps() {
       }
     );
   });
+}
+
+function resolveUwpIconDataUrl(installLocation) {
+  if (!installLocation || !fs.existsSync(installLocation)) return '';
+  try {
+    const manifestPath = path.join(installLocation, 'AppxManifest.xml');
+    if (!fs.existsSync(manifestPath)) return '';
+    const xml = fs.readFileSync(manifestPath, 'utf8');
+    const match =
+      xml.match(/Square44x44Logo="([^"]+)"/i) ||
+      xml.match(/<Logo>([^<]+)<\/Logo>/i) ||
+      xml.match(/Square150x150Logo="([^"]+)"/i);
+    if (!match?.[1]) return '';
+    const rel = match[1].replace(/\//g, path.sep);
+    const direct = path.join(installLocation, rel);
+    let chosen = fs.existsSync(direct) ? direct : '';
+    if (!chosen) {
+      const dir = path.dirname(direct);
+      const ext = path.extname(direct) || '.png';
+      const base = path.basename(direct, ext);
+      if (fs.existsSync(dir)) {
+        const files = fs.readdirSync(dir);
+        const hit =
+          files.find((f) => f.startsWith(base) && /targetsize-48|scale-200|scale-150|scale-100/i.test(f) && /\.(png|ico)$/i.test(f)) ||
+          files.find((f) => f.startsWith(base) && /\.(png|ico)$/i.test(f));
+        if (hit) chosen = path.join(dir, hit);
+      }
+    }
+    if (!chosen || !fs.existsSync(chosen)) return '';
+    const buf = fs.readFileSync(chosen);
+    if (!buf.length) return '';
+    return `data:image/${chosen.toLowerCase().endsWith('.ico') ? 'x-icon' : 'png'};base64,${buf.toString('base64')}`;
+  } catch {
+    return '';
+  }
 }
 
 async function scanInstalledApps(forceRefresh = false) {
@@ -2925,7 +3052,16 @@ async function scanInstalledApps(forceRefresh = false) {
     await Promise.all(
       slice.map(async (item) => {
         try {
-          const img = await app.getFileIcon(item.path, { size: 'normal' });
+          let iconSource = item.path;
+          try {
+            const sc = shell.readShortcutLink(item.path);
+            if (sc?.icon && fs.existsSync(sc.icon)) {
+              iconSource = sc.icon;
+            } else if (sc?.target && fs.existsSync(sc.target)) {
+              iconSource = sc.target;
+            }
+          } catch {}
+          const img = await app.getFileIcon(iconSource, { size: 'normal' });
           if (img && !img.isEmpty()) {
             item.iconDataUrl = img.toDataURL();
           }
@@ -2949,7 +3085,7 @@ async function scanInstalledApps(forceRefresh = false) {
         type: 'uwp-app',
         aumid,
         source: 'store',
-        iconDataUrl: '',
+        iconDataUrl: resolveUwpIconDataUrl(uwp.InstallLocation),
       });
     }
   }
@@ -3010,7 +3146,7 @@ ipcMain.handle('focus-media-source', async (_event, media = {}) => {
     const title = typeof media.title === 'string' ? media.title.trim() : '';
     const artist = typeof media.artist === 'string' ? media.artist.trim() : '';
 
-    const scriptPath = path.join(__dirname, 'win-focus-media.ps1');
+    const scriptPath = resolveScriptPath('win-focus-media.ps1');
     const result = await new Promise((resolve) => {
       execFile(
         'powershell.exe',
@@ -3149,7 +3285,7 @@ ipcMain.handle('get-system-stats', async () => {
 ipcMain.handle('get-perf-metrics', async () => perfMonitor.getSnapshot());
 
 ipcMain.handle('open-taskmgr-perf', async (_event, section = 'cpu') => {
-  const scriptPath = path.join(__dirname, 'open-taskmgr-perf.ps1');
+  const scriptPath = resolveScriptPath('open-taskmgr-perf.ps1');
   execFile(
     'powershell.exe',
     ['-WindowStyle', 'Hidden', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath, '-Section', String(section || 'cpu')],
@@ -3163,7 +3299,7 @@ ipcMain.handle('focus-agent-window', async (_event, payload = {}) => {
   const agent = String(payload?.agent || '');
   const file = String(payload?.file || '');
   const title = String(payload?.title || '');
-  const scriptPath = path.join(__dirname, 'win-focus-agent.ps1');
+  const scriptPath = resolveScriptPath('win-focus-agent.ps1');
   return new Promise((resolve) => {
     execFile(
       'powershell.exe',
@@ -3411,7 +3547,7 @@ ipcMain.handle('toggle-radio', async (_event, kind) => {
     return { success: false, error: 'Unknown radio type.' };
   }
   return new Promise((resolve) => {
-    const scriptPath = path.join(__dirname, 'win-radio.ps1');
+    const scriptPath = resolveScriptPath('win-radio.ps1');
     execFile(
       'powershell.exe',
       ['-WindowStyle', 'Hidden', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath, '-Action', 'Toggle', '-Kind', kind],
@@ -3431,7 +3567,7 @@ ipcMain.handle('toggle-radio', async (_event, kind) => {
 
 ipcMain.handle('get-radio-states', async () => {
   return new Promise((resolve) => {
-    const scriptPath = path.join(__dirname, 'win-radio.ps1');
+    const scriptPath = resolveScriptPath('win-radio.ps1');
     const readState = (kind) => new Promise((done) => {
       execFile(
         'powershell.exe',
@@ -3457,7 +3593,7 @@ ipcMain.handle('scan-wifi-networks', async () => {
   return new Promise((resolve) => {
     execFile(
       'powershell.exe',
-      ['-WindowStyle', 'Hidden', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'win-wifi-scan.ps1'), '-Action', 'Scan'],
+      ['-WindowStyle', 'Hidden', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', resolveScriptPath('win-wifi-scan.ps1'), '-Action', 'Scan'],
       { windowsHide: true, timeout: 12000 },
       (err, stdout) => {
         try {
@@ -3481,7 +3617,7 @@ ipcMain.handle('scan-bluetooth-devices', async () => {
   return new Promise((resolve) => {
     execFile(
       'powershell.exe',
-      ['-WindowStyle', 'Hidden', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'win-bluetooth.ps1'), '-Action', 'Scan'],
+      ['-WindowStyle', 'Hidden', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', resolveScriptPath('win-bluetooth.ps1'), '-Action', 'Scan'],
       { windowsHide: true, timeout: 15000 },
       (err, stdout) => {
         try {
@@ -3503,7 +3639,7 @@ ipcMain.handle('pair-bluetooth-device', async (_event, deviceId) => {
   return new Promise((resolve) => {
     execFile(
       'powershell.exe',
-      ['-WindowStyle', 'Hidden', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'win-bluetooth.ps1'), '-Action', 'Pair', '-DeviceId', deviceId],
+      ['-WindowStyle', 'Hidden', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', resolveScriptPath('win-bluetooth.ps1'), '-Action', 'Pair', '-DeviceId', deviceId],
       { windowsHide: true, timeout: 16000 },
       (err, stdout) => {
         try {

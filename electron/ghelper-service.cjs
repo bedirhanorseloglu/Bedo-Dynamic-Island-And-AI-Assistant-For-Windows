@@ -939,7 +939,11 @@ function checkScheduledTaskStatus() {
 }
 
 function installScheduledTask() {
-  const installScriptPath = path.join(__dirname, 'install-bridge-task.ps1');
+  const unpackedDir = __dirname.replace(/app\.asar([\\/]|$)/i, 'app.asar.unpacked$1');
+  const unpackedScriptPath = path.join(unpackedDir, 'install-bridge-task.ps1');
+  const installScriptPath = unpackedScriptPath !== path.join(__dirname, 'install-bridge-task.ps1') && fs.existsSync(unpackedScriptPath)
+    ? unpackedScriptPath
+    : path.join(__dirname, 'install-bridge-task.ps1');
 
   return new Promise((resolve) => {
     execFile(
