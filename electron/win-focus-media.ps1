@@ -22,13 +22,22 @@ public static class WinFocusHelper {
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern void SwitchToThisWindow(IntPtr hWnd, bool fAltTab);
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] public static extern IntPtr GetWindow(IntPtr hWnd, uint uCmd);
+    [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
     [DllImport("user32.dll")] public static extern int GetWindowTextLength(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern int GetWindowLong(IntPtr hWnd, int nIndex);
-    [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
-    [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct RECT {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
 
     public class WinInfo {
         public IntPtr Hwnd;
@@ -36,7 +45,11 @@ public static class WinFocusHelper {
         public string Title;
         public bool IsTopmost;
         public bool IsToolWindow;
+        public bool IsNoActivate;
+        public bool HasOwner;
         public bool IsMinimized;
+        public int Width;
+        public int Height;
     }
 
     public static List<WinInfo> GetVisibleWindows() {
@@ -45,18 +58,31 @@ public static class WinFocusHelper {
             if (!IsWindowVisible(hWnd)) return true;
             int len = GetWindowTextLength(hWnd);
             if (len <= 0) return true;
+            bool isMin = IsIconic(hWnd);
+            RECT rect;
+            int w = 0, h = 0;
+            if (GetWindowRect(hWnd, out rect)) {
+                w = rect.Right - rect.Left;
+                h = rect.Bottom - rect.Top;
+            }
+            if (!isMin && (w < 120 || h < 80)) return true;
             var sb = new StringBuilder(len + 1);
             GetWindowText(hWnd, sb, sb.Capacity);
             uint pid;
             GetWindowThreadProcessId(hWnd, out pid);
             int exStyle = GetWindowLong(hWnd, -20);
+            IntPtr owner = GetWindow(hWnd, 4); // GW_OWNER
             list.Add(new WinInfo {
                 Hwnd = hWnd,
                 Pid = pid,
                 Title = sb.ToString(),
                 IsTopmost = (exStyle & 0x00000008) != 0,
                 IsToolWindow = (exStyle & 0x00000080) != 0,
-                IsMinimized = IsIconic(hWnd)
+                IsNoActivate = (exStyle & 0x08000000) != 0,
+                HasOwner = owner != IntPtr.Zero,
+                IsMinimized = isMin,
+                Width = w,
+                Height = h
             });
             return true;
         }, IntPtr.Zero);
@@ -65,7 +91,7 @@ public static class WinFocusHelper {
 
     public static IntPtr GetTopNormalWindow(List<WinInfo> windows) {
         foreach (var w in windows) {
-            if (!w.IsTopmost && !w.IsToolWindow && !w.IsMinimized) {
+            if (!w.IsTopmost && !w.IsToolWindow && !w.IsNoActivate && !w.HasOwner && !w.IsMinimized) {
                 return w.Hwnd;
             }
         }
@@ -76,21 +102,12 @@ public static class WinFocusHelper {
         if (hWnd == IntPtr.Zero) return false;
         if (IsIconic(hWnd)) {
             ShowWindow(hWnd, 9); // SW_RESTORE
-        } else {
-            ShowWindow(hWnd, 5); // SW_SHOW
-        }
-        IntPtr fg = GetForegroundWindow();
-        uint fgPid;
-        uint fgThread = fg != IntPtr.Zero ? GetWindowThreadProcessId(fg, out fgPid) : 0;
-        uint curThread = GetCurrentThreadId();
-        bool attached = false;
-        if (fgThread != 0 && fgThread != curThread) {
-            attached = AttachThreadInput(curThread, fgThread, true);
         }
         BringWindowToTop(hWnd);
         bool ok = SetForegroundWindow(hWnd);
-        if (attached) {
-            AttachThreadInput(curThread, fgThread, false);
+        if (!ok) {
+            SwitchToThisWindow(hWnd, true);
+            ok = GetForegroundWindow() == hWnd;
         }
         return ok;
     }
@@ -174,7 +191,13 @@ foreach ($procName in $candidateNames) {
     } catch {}
 }
 
-$appWindows = @($allWindows | Where-Object { $targetPids.Contains($_.Pid) -and -not $_.IsToolWindow })
+$appWindows = @($allWindows | Where-Object { $targetPids.Contains($_.Pid) -and -not $_.IsToolWindow -and -not $_.IsNoActivate -and -not $_.HasOwner })
+if ($appWindows.Count -eq 0) {
+    $appWindows = @($allWindows | Where-Object { $targetPids.Contains($_.Pid) -and -not $_.IsToolWindow -and -not $_.IsNoActivate })
+}
+if ($appWindows.Count -eq 0) {
+    $appWindows = @($allWindows | Where-Object { $targetPids.Contains($_.Pid) -and -not $_.IsToolWindow })
+}
 if ($appWindows.Count -eq 0) {
     $appWindows = @($allWindows | Where-Object { $targetPids.Contains($_.Pid) })
 }

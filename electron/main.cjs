@@ -35,6 +35,7 @@ const {
 const { createLiveActivityWatcher } = require('./live-activity-watcher.cjs');
 const { createPerfMonitor } = require('./perf-monitor.cjs');
 const { BedoService } = require('./bedo-service.cjs');
+const { isKickStream, fetchKickStreamerCover } = require('./kick-cover.cjs');
 const perfMonitor = createPerfMonitor();
 let bedoService = null;
 
@@ -126,6 +127,7 @@ let lastMediaTitle = '';
 let lastMediaArtist = '';
 let lastMediaSourceApp = '';
 let cachedThumbnail = '';
+let cachedThumbnailIsKick = false;
 let cachedLyrics = [];
 let lyricsCacheMap = new Map();
 let lyricsRequestId = 0;
@@ -138,8 +140,20 @@ function setBoundedCache(cache, key, value, limit) {
   while (cache.size > limit) cache.delete(cache.keys().next().value);
 }
 
-async function fetchAlbumCover(title, artist) {
+async function fetchAlbumCover(title, artist, album) {
   if (!title) return '';
+  if (isKickStream(title, artist, album)) {
+    const kickCacheKey = `kick__${artist || ''}__${title}`.toLowerCase();
+    if (coverCacheMap.has(kickCacheKey)) {
+      return coverCacheMap.get(kickCacheKey);
+    }
+    const kickCover = await fetchKickStreamerCover(title, artist, album);
+    if (kickCover) {
+      setBoundedCache(coverCacheMap, kickCacheKey, kickCover, 100);
+    }
+    return kickCover;
+  }
+
   const cleanTitle = (title || '')
     .replace(/\(.*?\)|\[.*?\]/g, ' ')
     .replace(/\b(official|music|video|audio|lyric|lyrics|live|performance|hd|4k|klip|akustik)\b/gi, ' ')
@@ -982,7 +996,7 @@ function queryLrclibSearch(q, expectedTitle, expectedArtist) {
 }
 
 async function fetchLyricsFromLrclib(title, artist) {
-  if (!title) return [];
+  if (!title || isKickStream(title, artist)) return [];
   const cleanTitle = (title || '')
     .replace(/\(.*?\)|\[.*?\]/g, ' ')
     .replace(/\b(official|music|video|audio|lyric|lyrics|live|performance|hd|4k|klip|akustik)\b/gi, ' ')
@@ -1112,17 +1126,49 @@ function pollWindowsMedia(action = 'status', value = null) {
             lastMediaTitle = data.title;
             lastMediaArtist = data.artist || '';
             cachedThumbnail = '';
+            cachedThumbnailIsKick = false;
             cachedLyrics = [];
             lyricsLookupKey = `${data.artist || ''}__${data.title || ''}`.toLowerCase();
             lyricsRequestId += 1;
             lastMediaState = { ...lastMediaState, lyrics: [] };
           }
 
-          // 1. Resolve Cover Art (Windows SMTC or iTunes/Deezer fallback)
-          if (data.thumbnail && data.thumbnail.startsWith('data:image/')) {
+          // 1. Resolve Cover Art (Kick streamer avatar takes priority over browser SMTC icon; otherwise SMTC or iTunes/Deezer)
+          const kickStream = isKickStream(data.title, data.artist, data.album);
+          if (kickStream) {
+            if (!cachedThumbnailIsKick) {
+              const requestedTitle = data.title;
+              const requestedArtist = data.artist || '';
+              fetchAlbumCover(requestedTitle, requestedArtist, data.album).then((coverUrl) => {
+                if (
+                  requestedTitle !== lastMediaTitle ||
+                  requestedArtist !== lastMediaArtist
+                ) return;
+                if (coverUrl) {
+                  cachedThumbnail = coverUrl;
+                  cachedThumbnailIsKick = true;
+                  if (lastMediaState.thumbnail !== coverUrl) {
+                    lastMediaState.thumbnail = coverUrl;
+                    if (mainWindow && !mainWindow.isDestroyed()) {
+                      mainWindow.webContents.send('media-update', lastMediaState);
+                    }
+                    if (settingsWindow && !settingsWindow.isDestroyed()) {
+                      settingsWindow.webContents.send('media-update', lastMediaState);
+                    }
+                  }
+                }
+              });
+            }
+          } else if (data.thumbnail && data.thumbnail.startsWith('data:image/')) {
             cachedThumbnail = data.thumbnail;
           } else if (titleChanged || !cachedThumbnail) {
-            fetchAlbumCover(data.title, data.artist).then((coverUrl) => {
+            const requestedTitle = data.title;
+            const requestedArtist = data.artist || '';
+            fetchAlbumCover(requestedTitle, requestedArtist, data.album).then((coverUrl) => {
+              if (
+                requestedTitle !== lastMediaTitle ||
+                requestedArtist !== lastMediaArtist
+              ) return;
               if (coverUrl && (!lastMediaState.thumbnail || lastMediaState.thumbnail !== coverUrl)) {
                 cachedThumbnail = coverUrl;
                 lastMediaState.thumbnail = coverUrl;
@@ -1160,7 +1206,7 @@ function pollWindowsMedia(action = 'status', value = null) {
 
           lastMediaState = {
             ...data,
-            thumbnail: cachedThumbnail || data.thumbnail || '',
+            thumbnail: kickStream ? (cachedThumbnail || '') : (cachedThumbnail || data.thumbnail || ''),
             lyrics: cachedLyrics,
           };
         } else {
@@ -1168,6 +1214,7 @@ function pollWindowsMedia(action = 'status', value = null) {
           lastMediaArtist = '';
           lastMediaSourceApp = '';
           cachedThumbnail = '';
+          cachedThumbnailIsKick = false;
           cachedLyrics = [];
           lyricsLookupKey = '';
           lastMediaState = { ...EMPTY_MEDIA_STATE };
