@@ -39,8 +39,8 @@ const SETUP_PROVIDERS = {
   gemini: {
     id: 'gemini',
     label: 'Gemini',
-    placeholderTr: 'Gemini API anahtarı (AIzaSy...)',
-    placeholderEn: 'Gemini API key (AIzaSy...)',
+    placeholderTr: 'Gemini API anahtarı (AIzaSy... / AQ....)',
+    placeholderEn: 'Gemini API key (AIzaSy... / AQ....)',
     descTr: 'Tüm özellikler için Gemini API önerilir.',
     descEn: 'Gemini API is recommended for all features.',
     url: 'https://aistudio.google.com/apikey',

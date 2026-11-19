@@ -2617,7 +2617,7 @@ function setupAutoUpdater() {
   ipcMain.handle('app:install-update', () => {
     if (!app.isPackaged || !autoUpdaterInstance) return { ok: false };
     try {
-      autoUpdaterInstance.quitAndInstall(false, true);
+      autoUpdaterInstance.quitAndInstall(true, true);
       return { ok: true };
     } catch (err) {
       return { ok: false, error: err?.message || String(err) };
@@ -4904,9 +4904,8 @@ function translateTextMyMemory(text, from = 'tr', to = 'en') {
 // Google Gemini API query
 function callGeminiApi(apiKey, prompt) {
   return (async () => {
-    // Try the alias used by the app's documented/tested request first, then
-    // progressively fall back to fast stable models if a model is busy.
-    const models = ['gemini-flash-latest', 'gemini-3.5-flash-lite', 'gemini-3.8-flash'];
+    const cleanKey = String(apiKey || '').trim();
+    const models = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash'];
     const payload = JSON.stringify({
       contents: [
         {
@@ -4930,7 +4929,7 @@ function callGeminiApi(apiKey, prompt) {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${models[index]}:generateContent`;
         const response = await net.fetch(url, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': cleanKey },
           body: payload,
           signal: controller.signal,
         });
@@ -5195,10 +5194,11 @@ ipcMain.handle('validate-api-key', async (_event, payload = {}) => {
         signal: AbortSignal.timeout(8000),
       });
     } else {
-      res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models?pageSize=1&key=${encodeURIComponent(key)}`,
+      res = await net.fetch(
+        'https://generativelanguage.googleapis.com/v1beta/models?pageSize=1',
         {
           method: 'GET',
+          headers: { 'x-goog-api-key': key },
           signal: AbortSignal.timeout(8000),
         }
       );
