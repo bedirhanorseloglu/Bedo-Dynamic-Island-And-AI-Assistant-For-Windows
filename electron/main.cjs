@@ -4905,7 +4905,7 @@ function translateTextMyMemory(text, from = 'tr', to = 'en') {
 function callGeminiApi(apiKey, prompt) {
   return (async () => {
     const cleanKey = String(apiKey || '').trim();
-    const models = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash'];
+    const models = ['gemini-flash-latest', 'gemini-3.5-flash-lite', 'gemini-2.5-flash'];
     const payload = JSON.stringify({
       contents: [
         {
