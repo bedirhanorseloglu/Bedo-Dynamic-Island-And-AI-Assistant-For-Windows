@@ -999,6 +999,17 @@ export default function App() {
   const [islandMode, setIslandMode] = useState('idle');
   const islandModeRef = useRef(islandMode);
   islandModeRef.current = islandMode;
+  const [isShellMorphing, setIsShellMorphing] = useState(false);
+  const hasMountedModeRef = useRef(false);
+  useEffect(() => {
+    if (!hasMountedModeRef.current) {
+      hasMountedModeRef.current = true;
+      return undefined;
+    }
+    setIsShellMorphing(true);
+    const timer = setTimeout(() => setIsShellMorphing(false), 240);
+    return () => clearTimeout(timer);
+  }, [islandMode]);
   const [expandedWarm, setExpandedWarm] = useState(false);
   useEffect(() => {
     const t = setTimeout(() => setExpandedWarm(true), 120);
@@ -1535,6 +1546,11 @@ export default function App() {
       } else if (ev.type === 'user_transcript') {
         const cleanUser = String(ev.text || '').trim();
         if (cleanUser) {
+          if (ev.new_turn) {
+            setRoboReply(null);
+            setBedoThinkingHint('');
+            setRoboLoading(false);
+          }
           setBedoUserTranscript(cleanUser);
         }
       } else if (ev.type === 'assistant_transcript') {
@@ -1549,9 +1565,11 @@ export default function App() {
           const cleanUser = String(ev.text || '').replace(/^Siz:\s*/i, '').trim();
           if (cleanUser) {
             setBedoUserTranscript(cleanUser);
-            setRoboReply(null);
-            setRoboLoading(true);
-            setRoboMood('curious');
+            if (ev.source !== 'voice') {
+              setRoboReply(null);
+              setRoboLoading(true);
+              setRoboMood('curious');
+            }
           }
         } else if (ev.role === 'assistant') {
           const clean = String(ev.text || '').replace(/^Bedo:\s*/i, '').trim();
@@ -1742,19 +1760,16 @@ export default function App() {
     const refresh = async () => {
       lastNetworkRefreshRef.current = Date.now();
       try {
-        const [network, radios] = await Promise.all([
-          window.twocode?.getNetworkInfo?.(),
-          window.twocode?.getRadioStates?.(),
-        ]);
-        if (!mounted) return;
-        setNetworkInfo((current) => ({ ...current, ...(network || {}), ...(radios || {}) }));
+        const network = await window.twocode?.getNetworkInfo?.();
+        if (!mounted || !network) return;
+        setNetworkInfo((current) => ({ ...current, ...network }));
       } catch { }
     };
     let initialTimer = null;
-    if (Date.now() - lastNetworkRefreshRef.current > 12000) {
-      initialTimer = setTimeout(refresh, 280);
+    if (Date.now() - lastNetworkRefreshRef.current > 45000) {
+      initialTimer = setTimeout(refresh, 450);
     }
-    const timer = setInterval(refresh, 12000);
+    const timer = setInterval(refresh, 45000);
     return () => {
       mounted = false;
       if (initialTimer) clearTimeout(initialTimer);
@@ -3814,7 +3829,7 @@ export default function App() {
     >
       <div
         ref={morphShellRef}
-        className={`notch-morph-shell state-${islandMode} mode-${activeTab} ${hasRestingSlots ? 'has-resting-slots' : ''} ${islandSettings.islandStyle === 'Floating' ? 'style-floating' : 'style-attached'} ${islandSettings.islandSize === 'Compact' ? 'size-compact' : islandSettings.islandSize === 'Large' ? 'size-large' : 'size-normal'} ${Number(islandSettings.islandSeeThrough ?? 4) > 0 ? 'is-see-through' : ''} ${batteryAlertKind === 'charging' ? 'is-charging' : ''} ${activeTab === 'home' && isCustomizingClock ? 'customizing-clock' : ''
+        className={`notch-morph-shell state-${islandMode} mode-${activeTab} ${isShellMorphing ? 'is-morphing' : ''} ${hasRestingSlots ? 'has-resting-slots' : ''} ${islandSettings.islandStyle === 'Floating' ? 'style-floating' : 'style-attached'} ${islandSettings.islandSize === 'Compact' ? 'size-compact' : islandSettings.islandSize === 'Large' ? 'size-large' : 'size-normal'} ${Number(islandSettings.islandSeeThrough ?? 4) >= 10 ? 'is-see-through' : ''} ${batteryAlertKind === 'charging' ? 'is-charging' : ''} ${activeTab === 'home' && isCustomizingClock ? 'customizing-clock' : ''
           } ${activeTab === 'robo' && !bedoStatus.paused && (roboLoading || bedoStatus.jarvisState === 'THINKING') ? 'is-bedo-thinking' : ''
           } ${musicAccent.hasColor ? 'has-cover-color' : ''} ${islandMode === 'hud' && hudOverlay.ghelper?.category === 'aura'
             ? `has-aura-hud effect-${hudOverlay.ghelper.effectType || 'static'}`

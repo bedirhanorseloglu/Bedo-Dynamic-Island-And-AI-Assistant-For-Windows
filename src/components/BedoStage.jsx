@@ -22,11 +22,20 @@ import RoboEyes from '../RoboEyes';
 import RoboMarkdown from '../RoboMarkdown';
 
 const STATE_LABELS = {
-  INITIALISING: 'Hazırlanıyor',
-  LISTENING: 'Dinliyor',
-  THINKING: 'Düşünüyor',
-  SPEAKING: 'Konuşuyor',
-  ERROR: 'Bağlantı Hatası',
+  tr: {
+    INITIALISING: 'Hazırlanıyor',
+    LISTENING: 'Dinliyor',
+    THINKING: 'Düşünüyor',
+    SPEAKING: 'Konuşuyor',
+    ERROR: 'Bağlantı Hatası',
+  },
+  en: {
+    INITIALISING: 'Initialising',
+    LISTENING: 'Listening',
+    THINKING: 'Thinking',
+    SPEAKING: 'Speaking',
+    ERROR: 'Connection Error',
+  },
 };
 
 const EQ_WEIGHTS = [0.42, 0.72, 0.94, 1, 0.94, 0.72, 0.42];
@@ -152,16 +161,17 @@ export default function BedoStage({
     prevPausedRef.current = paused;
   }, [paused]);
 
-  const hasContent = Boolean(webcamActive || loading || reply || userTranscript || question.trim());
+  const isThinking = Boolean(loading || (!paused && running && jarvisState === 'THINKING'));
+  const hasContent = Boolean(webcamActive || isThinking || reply || userTranscript || question.trim());
   const isTop = !paused || inputFocused || hasContent;
 
   const auraMode = paused
     ? 'sleeping'
     : jarvisState === 'SPEAKING'
       ? 'speaking'
-      : jarvisState === 'THINKING' || loading
+      : isThinking
         ? 'thinking'
-        : jarvisState === 'ERROR'
+        : jarvisState === 'ERROR' || (!running && status?.lastError)
           ? 'error'
           : 'listening';
 
@@ -171,19 +181,22 @@ export default function BedoStage({
     (pythonBootstrapStatus?.state === 'downloading-python' ||
       pythonBootstrapStatus?.state === 'installing-deps');
 
+  const localizedStates = STATE_LABELS[langCode === 'tr' ? 'tr' : 'en'];
   const statusText = !running
     ? isBootstrappingVoice
       ? (langCode === 'tr' ? 'Metin Hazır · Ses kuruluyor' : 'Text Ready · Setting up voice')
-      : activeProvider === 'gemini'
-        ? (langCode === 'tr' ? 'Gemini · Metin Modu' : 'Gemini · Text Mode')
-        : isTextOnlyMode
-          ? activeProvider === 'openai'
-            ? (langCode === 'tr' ? 'GPT · Metin Modu' : 'GPT · Text Mode')
-            : (langCode === 'tr' ? 'Claude · Metin Modu' : 'Claude · Text Mode')
-          : (langCode === 'tr' ? 'Çevrimdışı' : 'Offline')
+      : status?.lastError
+        ? (langCode === 'tr' ? 'Ses Bağlantı Hatası' : 'Voice Connection Error')
+        : activeProvider === 'gemini'
+          ? (langCode === 'tr' ? 'Gemini · Metin Modu' : 'Gemini · Text Mode')
+          : isTextOnlyMode
+            ? activeProvider === 'openai'
+              ? (langCode === 'tr' ? 'GPT · Metin Modu' : 'GPT · Text Mode')
+              : (langCode === 'tr' ? 'Claude · Metin Modu' : 'Claude · Text Mode')
+            : (langCode === 'tr' ? 'Çevrimdışı' : 'Offline')
     : paused
       ? (langCode === 'tr' ? 'Uyku Modu' : 'Sleep Mode')
-      : STATE_LABELS[jarvisState] || jarvisState;
+      : localizedStates[jarvisState] || jarvisState;
 
   const eyeMood = paused ? 'sleepy' : roboMood;
   const clampedMic = Math.min(1, Math.max(0, micLevel));
@@ -577,7 +590,7 @@ export default function BedoStage({
 
           {/* Orta Alan: Canlı Sohbet / Yanıt (Üst modda görünür) */}
           <AnimatePresence>
-            {isTop && (reply || userTranscript || loading) && (
+            {isTop && (reply || userTranscript || isThinking) && (
               <motion.div
                 key="v2-feed"
                 className="bedo-v2-feed"
@@ -588,29 +601,24 @@ export default function BedoStage({
               >
                 {userTranscript && (
                   <div className="bedo-v2-user-pill">
-                    <span>Siz</span>
+                    <span>{langCode === 'tr' ? 'Siz' : 'You'}</span>
                     <p>{userTranscript}</p>
                   </div>
                 )}
-                <div className="bedo-v2-reply-scroll">
-                  {loading && !reply ? (
-                    <div className="bedo-v2-thinking-line">
-                      <span className="bedo-v2-thinking-dots" aria-hidden="true">
-                        <i /><i /><i />
-                      </span>
-                      <span>Yanıt hazırlanıyor...</span>
-                    </div>
-                  ) : reply ? (
-                    <RoboMarkdown content={reply} />
-                  ) : (
-                    <div className="bedo-v2-thinking-line">
-                      <span className="bedo-v2-thinking-dots" aria-hidden="true">
-                        <i /><i /><i />
-                      </span>
-                      <span>Yanıt hazırlanıyor...</span>
-                    </div>
-                  )}
-                </div>
+                {(reply || isThinking) && (
+                  <div className="bedo-v2-reply-scroll">
+                    {reply ? (
+                      <RoboMarkdown content={reply} />
+                    ) : (
+                      <div className="bedo-v2-thinking-line">
+                        <span className="bedo-v2-thinking-dots" aria-hidden="true">
+                          <i /><i /><i />
+                        </span>
+                        <span>{langCode === 'tr' ? 'Yanıt hazırlanıyor...' : 'Preparing response...'}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
               </motion.div>
             )}
           </AnimatePresence>

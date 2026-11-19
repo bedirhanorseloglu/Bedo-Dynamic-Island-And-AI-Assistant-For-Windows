@@ -79,7 +79,7 @@ class BridgeUI:
         with self._state_lock:
             return self._state
 
-    def write_log(self, text: str) -> None:
+    def write_log(self, text: str, source: str | None = None) -> None:
         raw = str(text or "")
         if raw.startswith("JARVIS:"):
             raw = "Bedo:" + raw[len("JARVIS:") :]
@@ -97,7 +97,8 @@ class BridgeUI:
         elif raw.startswith("ERR:"):
             role = "error"
 
-        self.emit("log", text=raw, role=role)
+        extra = {"source": source} if source else {}
+        self.emit("log", text=raw, role=role, **extra)
 
     def write_debug(self, text: str, level: str = "INFO") -> None:
         self.emit("debug", text=str(text or ""), level=str(level or "INFO").upper())
@@ -127,11 +128,11 @@ class BridgeUI:
     def mark_user_activity(self, active: bool = True) -> None:
         self.emit("user_activity", active=bool(active))
 
-    def update_user_transcript(self, text: str, final: bool = False) -> None:
+    def update_user_transcript(self, text: str, final: bool = False, new_turn: bool = False) -> None:
         """Kullanıcının söylediklerini konuşma bitmesini beklemeden anlık olarak UI'a aktarır."""
         clean = str(text or "").strip()
         if clean:
-            self.emit("user_transcript", text=clean, final=bool(final))
+            self.emit("user_transcript", text=clean, final=bool(final), new_turn=bool(new_turn))
 
     def update_assistant_transcript(self, text: str, final: bool = False) -> None:
         """Bedo'nun söylediklerini konuşma sırasında anlık olarak UI'a aktarır."""

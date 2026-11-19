@@ -9,6 +9,7 @@ dönüldüğünde tekrar dinlemeye başlar (resume).
 from __future__ import annotations
 
 import audioop
+from collections import deque
 import gc
 import json
 import re
@@ -100,6 +101,11 @@ _WHISPER_WAKE_PHRASES = (
     "beydo",
     "bedu",
     "be do",
+    "bedoya",
+    "bedoyu",
+    "bedom",
+    "beto",
+    "vedo",
     "bedir",
     "bedirhan",
 )
@@ -331,6 +337,7 @@ class WakeWordListener:
         frame_bytes = 960  # 30ms @ 16kHz int16 mono
         min_speech_bytes = int(0.20 * SAMPLE_RATE * 2)
         early_peek_bytes = int(0.38 * SAMPLE_RATE * 2)
+        mid_peek_bytes = int(0.68 * SAMPLE_RATE * 2)
         max_speech_bytes = int(1.08 * SAMPLE_RATE * 2)
         overlap_bytes = int(0.38 * SAMPLE_RATE * 2)
         hangover_frames = 3  # 90ms sessizlik sonrası anında işle
@@ -368,10 +375,12 @@ class WakeWordListener:
                 _wake_log("Mic stream opened for wake-word")
                 residual = bytearray()
                 speech_buf = bytearray()
+                pre_roll: deque[bytes] = deque(maxlen=6)  # ~180ms ön tampon (ilk hece kesilmesin)
                 active_speech = False
                 silence_frames = 0
                 voiced_frames = 0
                 early_peeked = False
+                mid_peeked = False
                 logged_first_audio = False
 
                 while self._running and not self._paused.is_set():
@@ -383,21 +392,29 @@ class WakeWordListener:
                         logged_first_audio = True
                         _wake_log(f"First non-zero audio frame received (rms={rms_val})")
                     if whisper_model is not None and vad is not None:
-                        # Gürültü/klavye kapısı: önce RMS, ardından RNNoise insan sesi olasılığı
-                        if not active_speech and rms_val < 115:
-                            continue
                         residual.extend(data)
                         while len(residual) >= frame_bytes:
                             raw_frame = bytes(residual[:frame_bytes])
                             del residual[:frame_bytes]
+                            # Çok düşük enerjili ortam gürültüsünde RNNoise/Whisper çalıştırmadan pre-roll güncelle
+                            if not active_speech and rms_val < 90:
+                                pre_roll.append(raw_frame)
+                                continue
                             clean_frame = raw_frame
+                            speech_prob = 1.0
                             if denoiser is not None and denoiser.enabled:
                                 clean_frame, speech_prob = denoiser.process(raw_frame)
-                                if not active_speech and speech_prob < 0.30:
+                                if not active_speech and speech_prob < 0.28:
+                                    pre_roll.append(clean_frame if len(clean_frame) == frame_bytes else raw_frame)
                                     continue
-                            is_speech = vad.is_speech(raw_frame, SAMPLE_RATE)
+                            vad_frame = clean_frame if len(clean_frame) == frame_bytes else raw_frame
+                            is_speech = vad.is_speech(vad_frame, SAMPLE_RATE) or speech_prob >= 0.48
                             if is_speech:
-                                active_speech = True
+                                if not active_speech:
+                                    for pr in pre_roll:
+                                        speech_buf.extend(pr)
+                                    pre_roll.clear()
+                                    active_speech = True
                                 silence_frames = 0
                                 voiced_frames += 1
                                 speech_buf.extend(clean_frame)
@@ -414,8 +431,11 @@ class WakeWordListener:
                                     silence_frames = 0
                                     voiced_frames = 0
                                     early_peeked = False
+                                    mid_peeked = False
                                     if triggered:
                                         break
+                            else:
+                                pre_roll.append(clean_frame if len(clean_frame) == frame_bytes else raw_frame)
                             if not early_peeked and voiced_frames >= min_voiced_frames and len(speech_buf) >= early_peek_bytes:
                                 early_peeked = True
                                 text = self._transcribe_whisper(whisper_model, bytes(speech_buf))
@@ -425,6 +445,18 @@ class WakeWordListener:
                                     silence_frames = 0
                                     voiced_frames = 0
                                     early_peeked = False
+                                    mid_peeked = False
+                                    break
+                            if not mid_peeked and voiced_frames >= min_voiced_frames and len(speech_buf) >= mid_peek_bytes:
+                                mid_peeked = True
+                                text = self._transcribe_whisper(whisper_model, bytes(speech_buf))
+                                if self._maybe_trigger(text, strict_whisper=True):
+                                    speech_buf.clear()
+                                    active_speech = False
+                                    silence_frames = 0
+                                    voiced_frames = 0
+                                    early_peeked = False
+                                    mid_peeked = False
                                     break
                             if len(speech_buf) >= max_speech_bytes:
                                 triggered = False
@@ -437,6 +469,7 @@ class WakeWordListener:
                                     silence_frames = 0
                                     voiced_frames = 0
                                     early_peeked = False
+                                    mid_peeked = False
                                     break
                                 # Medya/sürekli ses akışında kelime sınırda bölünmesin diye son 0.38sn'yi koru
                                 if len(speech_buf) > overlap_bytes:
@@ -444,6 +477,7 @@ class WakeWordListener:
                                 silence_frames = 0
                                 voiced_frames = min_voiced_frames
                                 early_peeked = True
+                                mid_peeked = False
                     elif rec is not None:
                         if rec.AcceptWaveform(data):
                             res = json.loads(rec.Result() or "{}")

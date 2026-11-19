@@ -6,6 +6,7 @@ macOS surumunden tam ozellik paritesiyle portlanmistir.
 """
 
 import asyncio
+from collections import deque
 import datetime
 import math
 import struct
@@ -190,7 +191,7 @@ SEND_SAMPLE_RATE = 16000
 RECV_SAMPLE_RATE = 24000
 PLAYBACK_SPEED   = 1.15
 PLAYBACK_RATE    = RECV_SAMPLE_RATE
-CHUNK_SIZE       = 1024
+CHUNK_SIZE       = 960  # 60ms @ 16kHz (RNNoise 160-örnek ve WebRTC VAD 480-örnek ile tam hizalı)
 pya              = pyaudio.PyAudio()
 
 # ── Tool tanımları — paylaşılan modülden ────────────────────────────────────
@@ -764,7 +765,10 @@ class JarvisLive:
     async def _send_realtime(self):
         while True:
             msg = await self.out_queue.get()
-            await self.session.send_realtime_input(media=msg)
+            if isinstance(msg, dict) and msg.get("audio_stream_end"):
+                await self.session.send_realtime_input(audio_stream_end=True)
+            else:
+                await self.session.send_realtime_input(media=msg)
 
     async def _stream_webcam_frames(self):
         """
@@ -822,6 +826,8 @@ class JarvisLive:
         self._mic_released.clear()
         speech_hangover_until = 0.0
         frame_bytes = 960  # 30ms @ 16kHz 16-bit mono
+        pre_roll: deque[bytes] = deque(maxlen=2)  # ~120ms ön tampon (ilk hece/ünsüz kaybını önler)
+        was_sending_speech = False
         try:
             while not self._paused:
                 raw_data = await asyncio.to_thread(
@@ -844,10 +850,10 @@ class JarvisLive:
                             rms = math.sqrt(sum(s * s for s in shorts) / count)
                             self.ui.update_mic_level(min(1.0, rms / 2800.0))
 
-                    has_speech = rnnoise_prob >= 0.45
-                    if not has_speech and vad is not None and len(data) >= frame_bytes:
-                        for off in range(0, len(data) - frame_bytes + 1, frame_bytes):
-                            if vad.is_speech(data[off : off + frame_bytes], SEND_SAMPLE_RATE):
+                    has_speech = rnnoise_prob >= 0.38
+                    if not has_speech and vad is not None and len(raw_data) >= frame_bytes:
+                        for off in range(0, len(raw_data) - frame_bytes + 1, frame_bytes):
+                            if vad.is_speech(raw_data[off : off + frame_bytes], SEND_SAMPLE_RATE):
                                 has_speech = True
                                 break
                     elif not denoiser.enabled and vad is None:
@@ -855,15 +861,26 @@ class JarvisLive:
 
                     now_m = time.monotonic()
                     if has_speech:
-                        speech_hangover_until = now_m + 0.22
+                        speech_hangover_until = now_m + 0.34
                     elif now_m <= speech_hangover_until:
                         has_speech = True
 
                     if has_speech:
+                        if not was_sending_speech and pre_roll:
+                            for pr in pre_roll:
+                                await self.out_queue.put({"data": pr, "mime_type": "audio/pcm"})
+                            pre_roll.clear()
+                        was_sending_speech = True
                         await self.out_queue.put({"data": data, "mime_type": "audio/pcm"})
                     else:
+                        was_sending_speech = False
+                        pre_roll.append(data)
                         # Gemini Live sunucu VAD'sinin konuşma bitişini algılaması için saf dijital sessizlik gönder
                         await self.out_queue.put({"data": b"\x00" * len(data), "mime_type": "audio/pcm"})
+                elif was_sending_speech:
+                    was_sending_speech = False
+                    pre_roll.clear()
+                    await self.out_queue.put({"audio_stream_end": True})
         except Exception as e:
             print(f"[JARVIS] ❌ Mikrofon: {e}")
             raise
@@ -892,6 +909,20 @@ class JarvisLive:
                     if response.server_content:
                         sc = response.server_content
 
+                        if getattr(sc, "interrupted", False):
+                            if self.audio_in_queue:
+                                while not self.audio_in_queue.empty():
+                                    try:
+                                        self.audio_in_queue.get_nowait()
+                                    except Exception:
+                                        break
+                                self.audio_in_queue.put_nowait(None)
+                            out_buf = []
+                            in_buf = []
+                            output_noise = False
+                            output_noise_samples = []
+                            self.set_speaking(False)
+
                         if sc.output_transcription and sc.output_transcription.text:
                             self.set_speaking(True)
                             raw_txt = sc.output_transcription.text
@@ -913,12 +944,16 @@ class JarvisLive:
                             if raw_in:
                                 txt, _ = self._clean_transcript_text(raw_in, preserve_edges=True)
                                 if txt:
+                                    is_new_turn = len(in_buf) == 0
                                     in_buf.append(txt)
                                     self.ui.mark_user_activity(True)
                                     if hasattr(self.ui, "update_user_transcript"):
                                         live_in = re.sub(r"\s+", " ", "".join(in_buf)).strip()
                                         if live_in:
-                                            self.ui.update_user_transcript(live_in, final=False)
+                                            try:
+                                                self.ui.update_user_transcript(live_in, final=False, new_turn=is_new_turn)
+                                            except TypeError:
+                                                self.ui.update_user_transcript(live_in, final=False)
 
                         if sc.turn_complete:
                             # Sentinel: ses kuyrugundaki tum chunk'lar calindiktan
@@ -929,11 +964,16 @@ class JarvisLive:
                             if full_in:
                                 if hasattr(self.ui, "update_user_transcript"):
                                     self.ui.update_user_transcript(full_in, final=True)
-                                self.ui.write_log(f"Siz: {full_in}")
+                                try:
+                                    self.ui.write_log(f"Siz: {full_in}", source="voice")
+                                except TypeError:
+                                    self.ui.write_log(f"Siz: {full_in}")
                             in_buf = []
 
                             full_out = re.sub(r"\s+", " ", "".join(out_buf)).strip()
                             if full_out:
+                                if hasattr(self.ui, "update_assistant_transcript"):
+                                    self.ui.update_assistant_transcript(full_out, final=True)
                                 self.ui.write_log(f"JARVIS: {full_out}")
                                 if output_noise_samples:
                                     self.ui.write_debug(
