@@ -85,6 +85,7 @@ export default function BedoStage({
   langCode = 'tr',
   onQuestionChange,
   onSubmit,
+  onValidateApiKey,
   onSaveApiKey,
   onOpenApiKeyPage,
   onOpenSettings,
@@ -109,6 +110,7 @@ export default function BedoStage({
   const [apiKeyDraft, setApiKeyDraft] = useState('');
   const [showKeyPlain, setShowKeyPlain] = useState(false);
   const [activatingKey, setActivatingKey] = useState(false);
+  const [keyError, setKeyError] = useState('');
   const prevPausedRef = useRef(paused);
 
   const needsApiKey = !hasApiKey && !running;
@@ -118,12 +120,27 @@ export default function BedoStage({
     e?.preventDefault?.();
     const cleaned = apiKeyDraft.trim();
     if (!cleaned || activatingKey) return;
+    setKeyError('');
     setActivatingKey(true);
     try {
+      if (onValidateApiKey) {
+        const res = await onValidateApiKey(setupProvider, cleaned);
+        if (res && res.ok === false) {
+          setKeyError(
+            res.reason === 'network'
+              ? (langCode === 'tr' ? 'Bağlantı kurulamadı. İnternetinizi kontrol edin.' : 'Connection failed. Check your internet.')
+              : (langCode === 'tr' ? 'Geçersiz API anahtarı. Lütfen kontrol edin.' : 'Invalid API key. Please check and try again.')
+          );
+          setActivatingKey(false);
+          return;
+        }
+      }
       await onSaveApiKey?.(setupProvider, cleaned);
       setApiKeyDraft('');
-    } finally {
-      setTimeout(() => setActivatingKey(false), 600);
+      setTimeout(() => setActivatingKey(false), 500);
+    } catch {
+      setKeyError(langCode === 'tr' ? 'Doğrulama başarısız oldu.' : 'Verification failed.');
+      setActivatingKey(false);
     }
   };
 
@@ -232,6 +249,7 @@ export default function BedoStage({
                     onClick={() => {
                       setSetupProvider(p.id);
                       setApiKeyDraft('');
+                      setKeyError('');
                     }}
                   >
                     {p.label}
@@ -241,12 +259,13 @@ export default function BedoStage({
             </div>
 
             <motion.p
-              key={setupProvider}
+              key={keyError || setupProvider}
+              className={keyError ? 'bedo-setup-error' : ''}
               initial={{ opacity: 0, y: 3 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.2 }}
             >
-              {isTr ? providerCfg.descTr : providerCfg.descEn}
+              {keyError || (isTr ? providerCfg.descTr : providerCfg.descEn)}
             </motion.p>
           </div>
         </div>
@@ -259,11 +278,14 @@ export default function BedoStage({
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.14, duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
         >
-          <div className="bedo-setup-input-wrap">
+          <div className={`bedo-setup-input-wrap ${keyError ? 'is-error' : ''}`}>
             <input
               type={showKeyPlain ? 'text' : 'password'}
               value={apiKeyDraft}
-              onChange={(e) => setApiKeyDraft(e.target.value)}
+              onChange={(e) => {
+                setApiKeyDraft(e.target.value);
+                if (keyError) setKeyError('');
+              }}
               placeholder={isTr ? providerCfg.placeholderTr : providerCfg.placeholderEn}
               autoComplete="off"
               spellCheck={false}
@@ -285,7 +307,7 @@ export default function BedoStage({
               disabled={!canSubmit}
             >
               {activatingKey ? (
-                <Check size={13} strokeWidth={2.6} />
+                <span>{isTr ? 'Kontrol...' : 'Checking...'}</span>
               ) : (
                 <>
                   <span>{isTr ? 'Başlat' : 'Start'}</span>

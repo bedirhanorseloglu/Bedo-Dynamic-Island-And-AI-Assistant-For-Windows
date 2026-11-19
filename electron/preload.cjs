@@ -240,5 +240,14 @@ contextBridge.exposeInMainWorld('twocode', {
     ipcRenderer.on('live-activity', listener);
     return () => ipcRenderer.removeListener('live-activity', listener);
   },
+  getAppVersion: () => ipcRenderer.invoke('app:get-version'),
+  validateApiKey: (payload) => ipcRenderer.invoke('validate-api-key', payload),
+  checkForUpdates: () => ipcRenderer.invoke('app:check-for-updates'),
+  installUpdate: () => ipcRenderer.invoke('app:install-update'),
+  onUpdateStatus: (cb) => {
+    const listener = (_event, status) => cb(status);
+    ipcRenderer.on('update-status', listener);
+    return () => ipcRenderer.removeListener('update-status', listener);
+  },
   quitApp: () => ipcRenderer.send('quit-app'),
 });

@@ -1,7 +1,7 @@
 {
   "name": "bedo",
   "productName": "Bedo",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "author": "Bedirhan Orseloglu",
   "description": "Bedo - The Dynamic Island & AI Assistant for Windows",
   "main": "electron/main.cjs",
@@ -11,11 +11,20 @@
     "dev": "node start-dev.cjs",
     "build": "vite build",
     "start": "electron .",
-    "dist": "npm run build && node scripts/prepare-release.cjs && electron-builder --win"
+    "dist": "npm run build && node scripts/prepare-release.cjs && electron-builder --win",
+    "release": "node scripts/publish-release.cjs"
   },
   "build": {
     "appId": "com.bedo.assistant",
     "productName": "Bedo",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "bedirhanorseloglu",
+        "repo": "Bedo-Dynamic-Island-And-AI-Assistant-For-Windows",
+        "releaseType": "draft"
+      }
+    ],
     "asar": true,
     "asarUnpack": [
       "electron/*.ps1",
@@ -44,20 +53,25 @@
     "win": {
       "icon": "build/icon.ico",
       "target": [
-        "squirrel",
-        "zip"
+        "nsis"
       ]
     },
-    "squirrelWindows": {
-      "iconUrl": "https://raw.githubusercontent.com/bedirhanorseloglu/Bedo-Dynamic-Island-And-AI-Assistant-For-Windows/main/build/icon.ico",
-      "loadingGif": "build/installer-loading.gif",
-      "msi": false
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Bedo",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false
     },
     "directories": {
       "output": "release"
     }
   },
   "dependencies": {
+    "electron-updater": "^6.8.11",
     "lucide-react": "^1.16.0",
     "motion": "^14.14.0",
     "react": "^19.0.0",

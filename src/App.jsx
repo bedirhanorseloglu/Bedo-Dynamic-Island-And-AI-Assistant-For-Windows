@@ -2241,6 +2241,7 @@ export default function App() {
   const [appContext, setAppContext] = useState({ app: '', category: 'desktop' });
   const [focusGuardPrompt, setFocusGuardPrompt] = useState(null);
   const [showIslandWelcome, setShowIslandWelcome] = useState(false);
+  const [updateBanner, setUpdateBanner] = useState(null);
   const wasOnboardingIncompleteRef = useRef(false);
   const focusGuardCooldownRef = useRef({});
   const focusGuardLastAppRef = useRef('');
@@ -3006,6 +3007,12 @@ export default function App() {
             }, 3200);
           }
         }
+      }
+    });
+
+    const unsubUpdate = window.twocode.onUpdateStatus?.((status) => {
+      if (status?.state === 'downloaded' && status?.version) {
+        setUpdateBanner({ version: status.version });
       }
     });
 
@@ -5128,6 +5135,33 @@ export default function App() {
             </section>
           )}
 
+          {updateBanner && (
+            <div className="island-update-pill" role="status">
+              <span>
+                {langCode === 'tr'
+                  ? `Bedo v${updateBanner.version} hazır`
+                  : `Bedo v${updateBanner.version} is ready`}
+              </span>
+              <div className="island-update-actions">
+                <button
+                  type="button"
+                  className="island-update-btn"
+                  onClick={() => window.twocode?.installUpdate?.()}
+                >
+                  {langCode === 'tr' ? 'Güncelle' : 'Update'}
+                </button>
+                <button
+                  type="button"
+                  className="island-update-close"
+                  onClick={() => setUpdateBanner(null)}
+                  aria-label="Kapat"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* ============================================================
               OVERLAY 0: FILE DRAG-DROP 3-CARD TARGETS (Matches media_1794049683895_d176ec76.jpg)
               ============================================================ */}
@@ -6209,6 +6243,9 @@ export default function App() {
                         langCode={langCode}
                         onQuestionChange={setRoboQuestion}
                         onSubmit={() => submitRoboPrompt()}
+                        onValidateApiKey={(provider, apiKey) =>
+                          window.twocode?.validateApiKey?.({ provider, apiKey })
+                        }
                         onSaveApiKey={async (provider, key) => {
                           if (provider === 'openai') {
                             setIslandSettings((prev) => ({ ...prev, codexApiKey: key }));

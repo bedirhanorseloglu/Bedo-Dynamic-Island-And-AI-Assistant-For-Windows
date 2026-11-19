@@ -2511,6 +2511,81 @@ function ensureDesktopShortcutOnce() {
   }
 }
 
+let autoUpdaterInstance = null;
+let latestUpdateStatus = { state: 'idle', version: app.getVersion() };
+
+function broadcastUpdateStatus(next) {
+  latestUpdateStatus = { ...latestUpdateStatus, ...next };
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    try { mainWindow.webContents.send('update-status', latestUpdateStatus); } catch {}
+  }
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    try { settingsWindow.webContents.send('update-status', latestUpdateStatus); } catch {}
+  }
+}
+
+function setupAutoUpdater() {
+  ipcMain.handle('app:get-version', () => app.getVersion());
+  ipcMain.handle('app:check-for-updates', async () => {
+    if (!app.isPackaged || !autoUpdaterInstance) {
+      return { ok: false, status: latestUpdateStatus };
+    }
+    try {
+      await autoUpdaterInstance.checkForUpdates();
+      return { ok: true, status: latestUpdateStatus };
+    } catch (err) {
+      return { ok: false, error: err?.message || String(err), status: latestUpdateStatus };
+    }
+  });
+  ipcMain.handle('app:install-update', () => {
+    if (!app.isPackaged || !autoUpdaterInstance) return { ok: false };
+    try {
+      autoUpdaterInstance.quitAndInstall(false, true);
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err?.message || String(err) };
+    }
+  });
+
+  if (!app.isPackaged) return;
+  try {
+    const { autoUpdater } = require('electron-updater');
+    autoUpdaterInstance = autoUpdater;
+    autoUpdater.autoDownload = true;
+    autoUpdater.autoInstallOnAppQuit = true;
+    autoUpdater.allowPrerelease = false;
+
+    autoUpdater.on('checking-for-update', () => {
+      broadcastUpdateStatus({ state: 'checking' });
+    });
+    autoUpdater.on('update-available', (info) => {
+      broadcastUpdateStatus({ state: 'available', version: info?.version || '' });
+    });
+    autoUpdater.on('update-not-available', () => {
+      broadcastUpdateStatus({ state: 'up-to-date', version: app.getVersion() });
+    });
+    autoUpdater.on('download-progress', (p) => {
+      broadcastUpdateStatus({ state: 'downloading', percent: Math.round(p?.percent || 0) });
+    });
+    autoUpdater.on('update-downloaded', (info) => {
+      broadcastUpdateStatus({ state: 'downloaded', version: info?.version || '' });
+    });
+    autoUpdater.on('error', (err) => {
+      broadcastUpdateStatus({ state: 'error', message: err?.message || 'Update error' });
+    });
+
+    // Silent background check 12s after startup, then every 4 hours
+    setTimeout(() => {
+      autoUpdater.checkForUpdates().catch(() => {});
+    }, 12000);
+    setInterval(() => {
+      autoUpdater.checkForUpdates().catch(() => {});
+    }, 4 * 60 * 60 * 1000);
+  } catch (err) {
+    console.warn('[AutoUpdater] Init skipped:', err?.message || err);
+  }
+}
+
 app.whenReady().then(() => {
   try {
     session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
@@ -2519,6 +2594,7 @@ app.whenReady().then(() => {
   } catch {}
   loadSettingsFromDisk();
   ensureDesktopShortcutOnce();
+  setupAutoUpdater();
   applyStartWithWindows(userSettings.startWithWindows !== false);
   loadSavedGoogleSession();
   createWindow();
@@ -5001,6 +5077,52 @@ function getLocalSmartReply(q, mode) {
 
   return null;
 }
+
+ipcMain.handle('validate-api-key', async (_event, payload = {}) => {
+  const provider = String(payload?.provider || 'gemini').toLowerCase();
+  const key = String(payload?.apiKey || '').trim();
+  if (!key || key.length < 10) {
+    return { ok: false, reason: 'invalid' };
+  }
+  try {
+    let res;
+    if (provider === 'openai' || provider === 'codex') {
+      res = await fetch('https://api.openai.com/v1/models', {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${key}` },
+        signal: AbortSignal.timeout(8000),
+      });
+    } else if (provider === 'claude' || provider === 'anthropic') {
+      res = await fetch('https://api.anthropic.com/v1/models?limit=1', {
+        method: 'GET',
+        headers: {
+          'x-api-key': key,
+          'anthropic-version': '2023-06-01',
+        },
+        signal: AbortSignal.timeout(8000),
+      });
+    } else {
+      res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models?pageSize=1&key=${encodeURIComponent(key)}`,
+        {
+          method: 'GET',
+          signal: AbortSignal.timeout(8000),
+        }
+      );
+    }
+    if (res.ok) return { ok: true };
+    if (res.status === 400 || res.status === 401 || res.status === 403) {
+      return { ok: false, reason: 'invalid' };
+    }
+    if (res.status === 429) {
+      // Rate-limited still means the key authenticated
+      return { ok: true };
+    }
+    return { ok: false, reason: 'invalid' };
+  } catch {
+    return { ok: false, reason: 'network' };
+  }
+});
 
 ipcMain.handle('ask-robo', async (_event, payload = {}) => {
   const { question, provider, mode } = payload || {};
