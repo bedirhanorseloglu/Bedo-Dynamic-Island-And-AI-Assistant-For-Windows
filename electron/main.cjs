@@ -86,6 +86,49 @@ app.commandLine.appendSwitch(
   'SpareRendererForSitePerProcess,CalculateNativeWinOcclusion,InterestFeedContentSuggestions,AutofillServerCommunication,CertificateTransparencyComponentUpdater,MetricsReporting,OptimizationHints,MediaRouter'
 );
 
+// Handle Squirrel.Windows install / update / uninstall lifecycle events cleanly
+function handleSquirrelEvent() {
+  if (process.platform !== 'win32' || process.argv.length <= 1) return false;
+  const squirrelCmd = process.argv[1];
+  if (
+    squirrelCmd !== '--squirrel-install' &&
+    squirrelCmd !== '--squirrel-updated' &&
+    squirrelCmd !== '--squirrel-uninstall' &&
+    squirrelCmd !== '--squirrel-obsolete'
+  ) {
+    return false;
+  }
+  const appFolder = path.resolve(process.execPath, '..');
+  const rootAtomFolder = path.resolve(appFolder, '..');
+  const updateDotExe = path.resolve(path.join(rootAtomFolder, 'Update.exe'));
+  const exeName = path.basename(process.execPath);
+  const spawnUpdate = (args) => {
+    try {
+      const child = spawn(updateDotExe, args, { detached: true, stdio: 'ignore' });
+      child.on('error', () => {});
+    } catch {}
+  };
+  if (squirrelCmd === '--squirrel-install' || squirrelCmd === '--squirrel-updated') {
+    spawnUpdate(['--createShortcut', exeName]);
+    setTimeout(() => app.quit(), 400);
+    return true;
+  }
+  if (squirrelCmd === '--squirrel-uninstall') {
+    spawnUpdate(['--removeShortcut', exeName]);
+    setTimeout(() => app.quit(), 400);
+    return true;
+  }
+  if (squirrelCmd === '--squirrel-obsolete') {
+    app.quit();
+    return true;
+  }
+  return false;
+}
+
+if (handleSquirrelEvent()) {
+  process.exit(0);
+}
+
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 if (!gotSingleInstanceLock) {
   app.quit();
@@ -1560,6 +1603,7 @@ function openOrFocusSettingsWindow(tabId = 'home') {
       nodeIntegration: false,
       spellcheck: false,
       backgroundThrottling: true,
+      devTools: !app.isPackaged,
     },
   });
   settingsWindow.setSkipTaskbar(true);
@@ -1926,6 +1970,7 @@ function createWindow() {
       nodeIntegration: false,
       spellcheck: false,
       backgroundThrottling: false,
+      devTools: !app.isPackaged,
     },
   });
 

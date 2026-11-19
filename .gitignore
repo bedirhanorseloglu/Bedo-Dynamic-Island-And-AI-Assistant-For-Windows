@@ -1,6 +1,7 @@
 node_modules/
 dist/
 release/
+build/release-stage/
 .env
 .env.*
 !.env.example

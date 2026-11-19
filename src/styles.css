@@ -17210,8 +17210,8 @@ body .robo-eyes-wrap.thinking .robo-eye {
 
 .bedo-setup-orb-wrap {
   position: relative;
-  width: 78px;
-  height: 78px;
+  width: 66px;
+  height: 66px;
   flex-shrink: 0;
   border: none;
   padding: 0;
@@ -17222,44 +17222,20 @@ body .robo-eyes-wrap.thinking .robo-eye {
   cursor: pointer;
 }
 
-.bedo-setup-ring {
-  position: absolute;
-  inset: 0;
-  border-radius: 999px;
-  border: 1px solid rgba(125, 211, 252, 0.28);
-  pointer-events: none;
-}
-
-.bedo-setup-ring.ring-1 {
-  animation: bedoSetupRingPulse 3.4s cubic-bezier(0.22, 1, 0.36, 1) infinite;
-}
-
-.bedo-setup-ring.ring-2 {
-  border-color: rgba(110, 231, 183, 0.22);
-  animation: bedoSetupRingPulse 3.4s cubic-bezier(0.22, 1, 0.36, 1) 1.7s infinite;
-}
-
-@keyframes bedoSetupRingPulse {
-  0% { transform: scale(0.84); opacity: 0.72; }
-  75% { transform: scale(1.24); opacity: 0; }
-  100% { transform: scale(1.24); opacity: 0; }
-}
-
 .bedo-setup-orb {
   position: relative;
   z-index: 2;
-  width: 66px;
-  height: 66px;
-  border-radius: 22px;
+  width: 64px;
+  height: 64px;
+  border-radius: 20px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(155deg, rgba(255, 255, 255, 0.16) 0%, rgba(20, 26, 38, 0.85) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: linear-gradient(155deg, rgba(255, 255, 255, 0.14) 0%, rgba(18, 22, 32, 0.88) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.18);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.28),
-    0 12px 28px rgba(0, 0, 0, 0.45),
-    0 0 24px rgba(56, 189, 248, 0.18);
+    inset 0 1px 0 rgba(255, 255, 255, 0.24),
+    0 10px 24px rgba(0, 0, 0, 0.42);
   animation: bedoSetupFloat 3.6s ease-in-out infinite;
 }
 
@@ -17381,11 +17357,11 @@ body .robo-eyes-wrap.thinking .robo-eye {
   flex: 1;
   min-width: 0;
   height: 40px;
-  padding: 0 5px 0 12px;
+  padding: 0 5px 0 15px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.13);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
   display: flex;
   align-items: center;
   gap: 8px;

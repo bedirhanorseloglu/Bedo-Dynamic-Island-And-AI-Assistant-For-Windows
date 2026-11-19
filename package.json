@@ -1,7 +1,8 @@
 {
   "name": "bedo",
   "productName": "Bedo",
-  "version": "1.0.2",
+  "version": "1.0.3",
+  "author": "Bedirhan Orseloglu",
   "description": "Bedo - The Dynamic Island & AI Assistant for Windows",
   "main": "electron/main.cjs",
   "scripts": {
@@ -10,37 +11,47 @@
     "dev": "node start-dev.cjs",
     "build": "vite build",
     "start": "electron .",
-    "dist": "npm run build && electron-builder --win"
+    "dist": "npm run build && node scripts/prepare-release.cjs && electron-builder --win"
   },
   "build": {
     "appId": "com.bedo.assistant",
     "productName": "Bedo",
     "asar": true,
     "asarUnpack": [
-      "electron/*.ps1"
+      "electron/*.ps1",
+      "electron/*.psm1"
     ],
     "files": [
       "dist/**/*",
-      "electron/**/*",
-      "!electron/bedo-runtime/**/*",
+      {
+        "from": "build/release-stage/electron",
+        "to": "electron",
+        "filter": [
+          "**/*"
+        ]
+      },
       "package.json"
     ],
     "extraResources": [
       {
-        "from": "electron/bedo-runtime",
+        "from": "build/release-stage/bedo-runtime",
         "to": "bedo-runtime",
         "filter": [
-          "**/*",
-          "!venv/**",
-          "!**/__pycache__/**"
+          "**/*"
         ]
       }
     ],
     "win": {
       "icon": "build/icon.ico",
       "target": [
+        "squirrel",
         "zip"
       ]
+    },
+    "squirrelWindows": {
+      "iconUrl": "https://raw.githubusercontent.com/bedirhanorseloglu/Bedo-Dynamic-Island-And-AI-Assistant-For-Windows/main/build/icon.ico",
+      "loadingGif": "build/installer-loading.gif",
+      "msi": false
     },
     "directories": {
       "output": "release"

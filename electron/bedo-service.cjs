@@ -22,8 +22,12 @@ function resolveBedoPaths(customProjectDir) {
     path.resolve(__dirname, '..', '..', 'JARVIS'),
   ].filter(Boolean);
 
+  const hasBridge = (dir) =>
+    fs.existsSync(path.join(dir, 'bedo_bridge.py')) ||
+    fs.existsSync(path.join(dir, 'bedo_bridge.pyc'));
+
   const projectDir =
-    candidateDirs.find((d) => fs.existsSync(path.join(d, 'bedo_bridge.py'))) ||
+    candidateDirs.find((d) => hasBridge(d)) ||
     candidateDirs[0];
 
   const candidatePythons = [
@@ -37,7 +41,9 @@ function resolveBedoPaths(customProjectDir) {
     candidatePythons.find((p) => fs.existsSync(p)) ||
     findSystemPythonExe();
 
-  const bridgeScript = path.join(projectDir, 'bedo_bridge.py');
+  const bridgePy = path.join(projectDir, 'bedo_bridge.py');
+  const bridgePyc = path.join(projectDir, 'bedo_bridge.pyc');
+  const bridgeScript = fs.existsSync(bridgePy) ? bridgePy : bridgePyc;
   return {
     projectDir,
     pythonExe,
