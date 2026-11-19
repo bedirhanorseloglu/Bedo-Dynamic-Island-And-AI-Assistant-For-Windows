@@ -338,9 +338,38 @@ let trimGcTimer = null;
 // Current logical shape bounds for cursor hit-testing (visual morphing is GPU-composited in renderer)
 let currentShape = { ...MODE_DIMENSIONS.idle };
 
+function getDefaultUserName() {
+  try {
+    const raw = String(os.userInfo().username || '').trim();
+    if (!raw) return '';
+    const lower = raw.toLowerCase();
+    const genericOrSystem = new Set([
+      'wdagutilityaccount',
+      'administrator',
+      'admin',
+      'defaultaccount',
+      'guest',
+      'user',
+      'owner',
+      'system',
+      'localservice',
+      'networkservice',
+      'pc',
+      'default',
+      'defaultuser0',
+    ]);
+    if (genericOrSystem.has(lower) || /^(desktop|laptop|win)-[a-z0-9]+$/i.test(raw)) {
+      return '';
+    }
+    return raw;
+  } catch {
+    return '';
+  }
+}
+
 // Persistent settings state shared between Dynamic Island & TwoCode Settings window
 let userSettings = {
-  userName: os.userInfo().username || 'User',
+  userName: getDefaultUserName(),
   language: 'Turkish',
   onboardingCompleted: false,
   googleConnected: false,
@@ -565,6 +594,25 @@ function saveSettingsToDisk(nextSettings) {
       openaiApiKey: userSettings.codexApiKey || '',
       anthropicApiKey: userSettings.claudeApiKey || '',
     });
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(nextSettings || {}, 'geminiApiKey') &&
+    String(userSettings.geminiApiKey || '').trim()
+  ) {
+    try {
+      const svc = getBedoService();
+      if (!svc.getStatus().running) {
+        svc.start({
+          apiKey: userSettings.geminiApiKey,
+          openaiApiKey: userSettings.codexApiKey || process.env.OPENAI_API_KEY || '',
+          anthropicApiKey: userSettings.claudeApiKey || process.env.ANTHROPIC_API_KEY || '',
+          voice: userSettings.bedoVoice || 'Charon',
+          startPaused: false,
+          enableWake: userSettings.bedoEnableWake !== false,
+          enableClap: false,
+        }).catch(() => {});
+      }
+    } catch {}
   }
   if (
     (Object.prototype.hasOwnProperty.call(nextSettings || {}, 'bedoVoice') ||
@@ -1482,12 +1530,23 @@ function openOrFocusSettingsWindow(tabId = 'home') {
     return;
   }
 
+  const workArea = screen.getPrimaryDisplay().workArea;
+  const islandTopSafeArea = 48;
+  const maxWidth = Math.max(760, workArea.width - 32);
+  const maxHeight = Math.max(540, workArea.height - islandTopSafeArea - 16);
+  const winWidth = Math.min(1180, maxWidth);
+  const winHeight = Math.min(780, maxHeight);
+  const winX = Math.round(workArea.x + (workArea.width - winWidth) / 2);
+  const centeredY = Math.round(workArea.y + (workArea.height - winHeight) / 2);
+  const winY = Math.max(workArea.y + islandTopSafeArea, centeredY);
+
   settingsWindow = new BrowserWindow({
-    width: 1180,
-    height: 780,
-    minWidth: 940,
-    minHeight: 620,
-    center: true,
+    width: winWidth,
+    height: winHeight,
+    x: winX,
+    y: winY,
+    minWidth: Math.min(940, maxWidth),
+    minHeight: Math.min(620, maxHeight),
     show: true,
     frame: false,
     transparent: true,
@@ -2384,6 +2443,29 @@ app.on('will-quit', () => {
   if (gmailPollTimer) clearInterval(gmailPollTimer);
 });
 
+function ensureDesktopShortcutOnce() {
+  if (process.platform !== 'win32' || !app.isPackaged) return;
+  if (userSettings.desktopShortcutCreated) return;
+  try {
+    const desktopDir = app.getPath('desktop');
+    const shortcutPath = path.join(desktopDir, 'Bedo.lnk');
+    if (!fs.existsSync(shortcutPath)) {
+      const created = shell.writeShortcutLink(shortcutPath, 'create', {
+        target: process.execPath,
+        cwd: path.dirname(process.execPath),
+        icon: process.execPath,
+        iconIndex: 0,
+        description: 'Bedo — Dynamic Island & AI Assistant',
+        appUserModelId: 'com.bedo.assistant',
+      });
+      if (!created) return;
+    }
+    saveSettingsToDisk({ desktopShortcutCreated: true });
+  } catch (err) {
+    console.warn('[Shortcut] Desktop shortcut creation skipped:', err?.message || err);
+  }
+}
+
 app.whenReady().then(() => {
   try {
     session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
@@ -2391,6 +2473,7 @@ app.whenReady().then(() => {
     });
   } catch {}
   loadSettingsFromDisk();
+  ensureDesktopShortcutOnce();
   applyStartWithWindows(userSettings.startWithWindows !== false);
   loadSavedGoogleSession();
   createWindow();

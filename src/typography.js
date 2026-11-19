@@ -13,6 +13,8 @@ export const TEXT_FONT_OPTIONS = [
 ];
 
 export const CLOCK_FONT_FAMILIES = CLOCK_FONT_OPTIONS.map((option) => option.family);
+export const DEFAULT_TEXT_FONT_INDEX = 0; // Inter
+export const DEFAULT_CLOCK_FONT_INDEX = 1; // Oswald
 export const TYPOGRAPHY_STORAGE_KEY = 'twocode-typography-preferences';
 export const CLOCK_STORAGE_KEY = 'twocode-clock-preferences';
 export const CODE_FONT_FAMILY = "'JetBrains Mono', monospace";
@@ -25,16 +27,19 @@ export function normalizeFontIndex(value, count, fallback = 0) {
 export function readTypographyPreferences() {
   try {
     const stored = JSON.parse(localStorage.getItem(TYPOGRAPHY_STORAGE_KEY) || '{}');
-    return { textFontIndex: normalizeFontIndex(stored.textFontIndex, TEXT_FONT_OPTIONS.length, 0) };
+    return { textFontIndex: normalizeFontIndex(stored.textFontIndex, TEXT_FONT_OPTIONS.length, DEFAULT_TEXT_FONT_INDEX) };
   } catch {
-    return { textFontIndex: 0 };
+    return { textFontIndex: DEFAULT_TEXT_FONT_INDEX };
   }
 }
 
-export function applyTypographyTokens({ textFontIndex = 0, numberFontIndex = 3 } = {}) {
+export function applyTypographyTokens({
+  textFontIndex = DEFAULT_TEXT_FONT_INDEX,
+  numberFontIndex = DEFAULT_CLOCK_FONT_INDEX,
+} = {}) {
   if (typeof document === 'undefined') return;
-  const text = TEXT_FONT_OPTIONS[normalizeFontIndex(textFontIndex, TEXT_FONT_OPTIONS.length, 0)];
-  const number = CLOCK_FONT_OPTIONS[normalizeFontIndex(numberFontIndex, CLOCK_FONT_OPTIONS.length, 3)];
+  const text = TEXT_FONT_OPTIONS[normalizeFontIndex(textFontIndex, TEXT_FONT_OPTIONS.length, DEFAULT_TEXT_FONT_INDEX)];
+  const number = CLOCK_FONT_OPTIONS[normalizeFontIndex(numberFontIndex, CLOCK_FONT_OPTIONS.length, DEFAULT_CLOCK_FONT_INDEX)];
   const root = document.documentElement;
   root.style.setProperty('--font-family-ui', text.family);
   root.style.setProperty('--font-family-display', text.family);
@@ -74,9 +79,13 @@ export function loadTypographyFonts() {
 
 export function initializeTypography() {
   loadTypographyFonts();
-  let clockFontIndex = 3;
+  let clockFontIndex = DEFAULT_CLOCK_FONT_INDEX;
   try {
-    clockFontIndex = normalizeFontIndex(JSON.parse(localStorage.getItem(CLOCK_STORAGE_KEY) || '{}').fontIndex, CLOCK_FONT_OPTIONS.length, 3);
+    clockFontIndex = normalizeFontIndex(
+      JSON.parse(localStorage.getItem(CLOCK_STORAGE_KEY) || '{}').fontIndex,
+      CLOCK_FONT_OPTIONS.length,
+      DEFAULT_CLOCK_FONT_INDEX
+    );
   } catch { /* Keep the default numeric font. */ }
   applyTypographyTokens({ ...readTypographyPreferences(), numberFontIndex: clockFontIndex });
 }

@@ -1153,7 +1153,7 @@ export default function App() {
   const [isCustomizingClock, setIsCustomizingClock] = useState(false);
   const [clockFontIndex, setClockFontIndex] = useState(() => {
     const value = Number(readClockPreferences().fontIndex);
-    return Number.isInteger(value) && value >= 0 && value <= 4 ? value : 3;
+    return Number.isInteger(value) && value >= 0 && value < CLOCK_FONT_FAMILIES.length ? value : 1;
   });
   const [clockColor, setClockColor] = useState(() => readClockPreferences().color || '#ffffff');
   const [userPickedClockColor, setUserPickedClockColor] = useState(() => readClockPreferences().customColor === true);
@@ -2241,6 +2241,7 @@ export default function App() {
   const [appContext, setAppContext] = useState({ app: '', category: 'desktop' });
   const [focusGuardPrompt, setFocusGuardPrompt] = useState(null);
   const [showIslandWelcome, setShowIslandWelcome] = useState(false);
+  const wasOnboardingIncompleteRef = useRef(false);
   const focusGuardCooldownRef = useRef({});
   const focusGuardLastAppRef = useRef('');
 
@@ -2972,9 +2973,11 @@ export default function App() {
           try { localStorage.setItem('twocode_lang', normalizeLanguage(saved.language)); } catch {}
         }
         if (saved.onboardingCompleted === false) {
-          setShowIslandWelcome(true);
-          suppressHoverCollapseUntilRef.current = Date.now() + 600000;
-          setIslandMode('expanded');
+          // Keep the Dynamic Island calmly tucked in its compact pill while the
+          // dedicated Setup Assistant in the Settings window is active, preventing
+          // overlapping always-on-top welcome UIs.
+          wasOnboardingIncompleteRef.current = true;
+          setShowIslandWelcome(false);
         }
       }
     });
@@ -2991,6 +2994,17 @@ export default function App() {
         if (updated.onboardingCompleted === true) {
           setShowIslandWelcome(false);
           suppressHoverCollapseUntilRef.current = 0;
+          if (wasOnboardingIncompleteRef.current) {
+            wasOnboardingIncompleteRef.current = false;
+            clearTimeout(previewEmotionTimerRef.current);
+            setPreviewEmotion('happy');
+            setRoboMood('happy');
+            playRoboSound('happy', islandSettingsRef.current?.soundEffects !== false);
+            previewEmotionTimerRef.current = setTimeout(() => {
+              setPreviewEmotion('');
+              setRoboMood('normal');
+            }, 3200);
+          }
         }
       }
     });
@@ -3609,16 +3623,58 @@ export default function App() {
       setBedoUserTranscript(q);
       setRoboReply(null);
       setRoboLoading(true);
-      if (bedoStatus.paused) {
-        await window.twocode?.bedoSetPaused?.(false);
+      if (bedoStatus.running) {
+        if (bedoStatus.paused) {
+          await window.twocode?.bedoSetPaused?.(false);
+        }
+        const res = await window.twocode?.bedoSendText?.(q);
+        setRoboQuestion('');
+        if (!res?.ok) {
+          setRoboLoading(false);
+          setRoboMood('sad');
+          setRoboReply('Bedo şu anda hazır değil. Lütfen birkaç saniye sonra tekrar deneyin.');
+          setRoboReplyProvider('Bedo');
+        }
+        return;
       }
-      const res = await window.twocode?.bedoSendText?.(q);
-      setRoboQuestion('');
-      if (!res?.ok) {
+      // Fallback to text AI chat when Bedo Live voice isn't running (e.g. OpenAI GPT / Claude / Gemini text key)
+      const hasGemini = Boolean(islandSettings.geminiApiKey?.trim());
+      const hasOpenAi = Boolean((islandSettings.codexApiKey || islandSettings.openaiApiKey)?.trim());
+      const hasClaude = Boolean(islandSettings.claudeApiKey?.trim());
+      const fallbackProvider = hasGemini ? 'Gemini' : hasOpenAi ? 'OpenAI' : hasClaude ? 'Claude' : null;
+      if (!fallbackProvider) {
         setRoboLoading(false);
         setRoboMood('sad');
-        setRoboReply('Bedo şu anda hazır değil. Lütfen birkaç saniye sonra tekrar deneyin.');
+        setRoboReply(
+          langCode === 'tr'
+            ? 'Devam etmek için bir Gemini, OpenAI veya Claude API anahtarı girin.'
+            : 'Please enter a Gemini, OpenAI, or Claude API key to continue.'
+        );
         setRoboReplyProvider('Bedo');
+        return;
+      }
+      try {
+        const res = await window.twocode?.askRobo?.({
+          question: q,
+          provider: fallbackProvider,
+          mode: explicitMode,
+        });
+        if (!res) throw new Error('AI servisine ulaşılamadı.');
+        if (res.error) throw new Error(res.error);
+        setRoboLoading(false);
+        setRoboMood('happy');
+        triggerRoboReaction('success', 3, 1450);
+        playRoboSound('happy', islandSettings.soundEffects !== false);
+        setJobsToday((j) => j + 1);
+        setRoboReply(res?.text || 'Cevap hazırlandı.');
+        setRoboReplyProvider(res?.provider || fallbackProvider);
+        setRoboQuestion('');
+      } catch (err) {
+        setRoboLoading(false);
+        setRoboMood('sad');
+        triggerRoboReaction('error', 3, 1450);
+        setRoboReply(err?.message || 'Yanıt alınamadı.');
+        setRoboReplyProvider(fallbackProvider);
       }
       return;
     }
@@ -3850,7 +3906,7 @@ export default function App() {
     <LanguageProvider language={islandSettings.language}>
     <div
       className="notch-stage"
-      style={{ '--clock-number-font': CLOCK_FONT_FAMILIES[clockFontIndex] || CLOCK_FONT_FAMILIES[3] }}
+      style={{ '--clock-number-font': CLOCK_FONT_FAMILIES[clockFontIndex] || CLOCK_FONT_FAMILIES[1] }}
       onContextMenu={handleNotchContextMenu}
       onMouseMove={(e) => {
         if (isDraggingRuler && activeTab === 'timer') {
@@ -5713,13 +5769,23 @@ export default function App() {
                                 <div className="home-card-meta">
                                   <strong className="bedo-home-name">Bedo</strong>
                                   <span className="home-card-sub bedo-home-status">
-                                    {bedoStatus.paused
-                                      ? 'Uyku Modu'
-                                      : bedoStatus.jarvisState === 'SPEAKING'
-                                        ? 'Konuşuyor'
-                                        : bedoStatus.jarvisState === 'THINKING'
-                                          ? 'Düşünüyor'
-                                          : 'Dinliyor'}
+                                    {(() => {
+                                      const hasGem = Boolean(islandSettings.geminiApiKey?.trim());
+                                      const hasOai = Boolean((islandSettings.codexApiKey || islandSettings.openaiApiKey)?.trim());
+                                      const hasCl = Boolean(islandSettings.claudeApiKey?.trim());
+                                      if (!hasGem && !hasOai && !hasCl && !bedoStatus.running) {
+                                        return langCode === 'tr' ? 'API Anahtarı Gerekli' : 'API Key Needed';
+                                      }
+                                      if (!bedoStatus.running && !hasGem) {
+                                        if (hasOai) return langCode === 'tr' ? 'GPT · Metin' : 'GPT · Text';
+                                        if (hasCl) return langCode === 'tr' ? 'Claude · Metin' : 'Claude · Text';
+                                      }
+                                      if (bedoStatus.paused) return langCode === 'tr' ? 'Uyku Modu' : 'Sleep Mode';
+                                      if (!bedoStatus.running) return langCode === 'tr' ? 'Çevrimdışı' : 'Offline';
+                                      if (bedoStatus.jarvisState === 'SPEAKING') return langCode === 'tr' ? 'Konuşuyor' : 'Speaking';
+                                      if (bedoStatus.jarvisState === 'THINKING') return langCode === 'tr' ? 'Düşünüyor' : 'Thinking';
+                                      return langCode === 'tr' ? 'Dinliyor' : 'Listening';
+                                    })()}
                                   </span>
                                 </div>
                                 <span className="bedo-home-chevron" aria-hidden="true">
@@ -6125,8 +6191,45 @@ export default function App() {
                         reply={roboReply}
                         loading={roboLoading && !bedoStatus.paused}
                         question={roboQuestion}
+                        hasApiKey={Boolean(
+                          islandSettings.geminiApiKey?.trim() ||
+                          islandSettings.codexApiKey?.trim() ||
+                          islandSettings.openaiApiKey?.trim() ||
+                          islandSettings.claudeApiKey?.trim()
+                        )}
+                        activeProvider={
+                          islandSettings.geminiApiKey?.trim()
+                            ? 'gemini'
+                            : (islandSettings.codexApiKey || islandSettings.openaiApiKey)?.trim()
+                              ? 'openai'
+                              : islandSettings.claudeApiKey?.trim()
+                                ? 'claude'
+                                : null
+                        }
+                        langCode={langCode}
                         onQuestionChange={setRoboQuestion}
                         onSubmit={() => submitRoboPrompt()}
+                        onSaveApiKey={async (provider, key) => {
+                          if (provider === 'openai') {
+                            setIslandSettings((prev) => ({ ...prev, codexApiKey: key }));
+                            await window.twocode?.saveSettings?.({ codexApiKey: key });
+                          } else if (provider === 'claude') {
+                            setIslandSettings((prev) => ({ ...prev, claudeApiKey: key }));
+                            await window.twocode?.saveSettings?.({ claudeApiKey: key });
+                          } else {
+                            setIslandSettings((prev) => ({ ...prev, geminiApiKey: key }));
+                            await window.twocode?.saveSettings?.({ geminiApiKey: key });
+                            await window.twocode?.bedoStart?.({ apiKey: key, startPaused: false });
+                          }
+                          triggerRoboReaction('happy', 3, 1800);
+                          playRoboSound('happy', islandSettings.soundEffects !== false);
+                        }}
+                        onOpenApiKeyPage={(url) => {
+                          window.twocode?.openExternal?.(url || 'https://aistudio.google.com/apikey');
+                        }}
+                        onOpenSettings={() => {
+                          window.twocode?.openSettingsWindow?.('connections');
+                        }}
                         onToggleMute={() => window.twocode?.bedoSetMuted?.(!bedoStatus.muted)}
                         onTogglePause={() => window.twocode?.bedoSetPaused?.(!bedoStatus.paused)}
                         onToggleWebcam={() => window.twocode?.bedoSetWebcam?.(!bedoStatus.webcamActive)}

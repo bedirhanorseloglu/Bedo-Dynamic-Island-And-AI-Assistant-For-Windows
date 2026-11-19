@@ -6,7 +6,7 @@ export { CLOCK_FONT_FAMILIES } from './typography';
 export default function HeroClock({
   timeStr = '04:24',
   suffix = '',
-  fontIndex = 3,
+  fontIndex = 1,
   color = '#ffffff',
   scale = 1,
   onClick,
@@ -14,7 +14,7 @@ export default function HeroClock({
 }) {
   const { t } = useI18n();
   const chars = timeStr.split('');
-  const fontFamily = CLOCK_FONT_FAMILIES[fontIndex] || CLOCK_FONT_FAMILIES[3];
+  const fontFamily = CLOCK_FONT_FAMILIES[fontIndex] || CLOCK_FONT_FAMILIES[1];
   const isDottedMono = fontIndex === 3;
 
   return (

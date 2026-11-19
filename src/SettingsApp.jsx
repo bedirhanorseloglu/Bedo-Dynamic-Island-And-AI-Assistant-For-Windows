@@ -364,8 +364,8 @@ export default function SettingsApp() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [textFontIndex, setTextFontIndex] = useState(() => readTypographyPreferences().textFontIndex);
   const [numberFontIndex, setNumberFontIndex] = useState(() => {
-    try { return normalizeFontIndex(JSON.parse(localStorage.getItem(CLOCK_STORAGE_KEY) || '{}').fontIndex, CLOCK_FONT_OPTIONS.length, 3); }
-    catch { return 3; }
+    try { return normalizeFontIndex(JSON.parse(localStorage.getItem(CLOCK_STORAGE_KEY) || '{}').fontIndex, CLOCK_FONT_OPTIONS.length, 1); }
+    catch { return 1; }
   });
   const [now, setNow] = useState(new Date());
   const [fgCustomDraft, setFgCustomDraft] = useState('');
@@ -464,7 +464,7 @@ export default function SettingsApp() {
     const syncTypography = (event) => {
       if (event.key === TYPOGRAPHY_STORAGE_KEY) setTextFontIndex(readTypographyPreferences().textFontIndex);
       if (event.key === CLOCK_STORAGE_KEY && event.newValue) {
-        try { setNumberFontIndex(normalizeFontIndex(JSON.parse(event.newValue).fontIndex, CLOCK_FONT_OPTIONS.length, 3)); }
+        try { setNumberFontIndex(normalizeFontIndex(JSON.parse(event.newValue).fontIndex, CLOCK_FONT_OPTIONS.length, 1)); }
         catch { /* Ignore malformed storage updates. */ }
       }
     };
@@ -1065,7 +1065,9 @@ export default function SettingsApp() {
               <div className="home-lg-hero-glow" aria-hidden="true" />
               <div className="home-lg-hero-copy">
                 <h2 className="home-lg-greeting">
-                  {greetingTimeOfDay}, {settings.userName}
+                  {settings.userName?.trim()
+                    ? `${greetingTimeOfDay}, ${settings.userName.trim()}`
+                    : greetingTimeOfDay}
                 </h2>
                 <p className="home-lg-sub">
                   {t('settings.home.sub')}
@@ -3153,8 +3155,8 @@ export default function SettingsApp() {
 
         {activePage === 'typography' && (() => {
           const activeTextFont = TEXT_FONT_OPTIONS[textFontIndex] || TEXT_FONT_OPTIONS[0];
-          const activeNumFont = CLOCK_FONT_OPTIONS[numberFontIndex] || CLOCK_FONT_OPTIONS[3] || CLOCK_FONT_OPTIONS[0];
-          const isDefault = textFontIndex === 0 && numberFontIndex === 3;
+          const activeNumFont = CLOCK_FONT_OPTIONS[numberFontIndex] || CLOCK_FONT_OPTIONS[1] || CLOCK_FONT_OPTIONS[0];
+          const isDefault = textFontIndex === 0 && numberFontIndex === 1;
 
           return (
             <div className="settings-page-body typo-lg-page">
@@ -3186,7 +3188,7 @@ export default function SettingsApp() {
                     disabled={isDefault}
                     onClick={() => {
                       selectTextFont(0);
-                      selectNumberFont(3);
+                      selectNumberFont(1);
                     }}
                   >
                     <RefreshCw size={13} />
@@ -4557,15 +4559,18 @@ export default function SettingsApp() {
                 <div className="bedo-welcome-fields">
                   <div className="bedo-welcome-field">
                     <label>{langCode === 'tr' ? 'Dil / Language' : 'Language'}</label>
-                    <div className="seg-btn-group">
-                      {['Turkish', 'English'].map((lng) => (
+                    <div className="seg-btn-group bedo-welcome-seg">
+                      {[
+                        { value: 'Turkish', code: 'tr', label: 'Türkçe' },
+                        { value: 'English', code: 'en', label: 'English' },
+                      ].map((lng) => (
                         <button
-                          key={lng}
+                          key={lng.value}
                           type="button"
-                          className={`seg-choice-btn ${(settings.language || 'Turkish') === lng ? 'active' : ''}`}
-                          onClick={() => updateSetting({ language: lng })}
+                          className={`seg-choice-btn ${langCode === lng.code ? 'active' : ''}`}
+                          onClick={() => updateSetting({ language: lng.value })}
                         >
-                          {lng === 'Turkish' ? 'Türkçe' : 'English'}
+                          {lng.label}
                         </button>
                       ))}
                     </div>
@@ -4660,6 +4665,20 @@ export default function SettingsApp() {
                     ? 'Ekranın üstündeki Dynamic Island’a dokunun veya istediğiniz an "Bedo" diyerek asistanınızı uyandırın.'
                     : 'Tap the Dynamic Island at the top of your screen or say "Bedo" anytime to wake your assistant.'}
                 </p>
+                <div className="bedo-welcome-shortcuts">
+                  <div className="bedo-welcome-shortcut-card">
+                    <strong>Ctrl+Alt+T</strong>
+                    <span>{langCode === 'tr' ? 'Adayı Aç / Kapat' : 'Toggle Island'}</span>
+                  </div>
+                  <div className="bedo-welcome-shortcut-card">
+                    <strong>Ctrl+Alt+Space</strong>
+                    <span>{langCode === 'tr' ? 'Bedo ile Konuş' : 'Talk to Bedo'}</span>
+                  </div>
+                  <div className="bedo-welcome-shortcut-card">
+                    <strong>{langCode === 'tr' ? 'Akıllı Odak' : 'Smart Focus'}</strong>
+                    <span>{langCode === 'tr' ? 'Sayaç & Koruma' : 'Timer & Guard'}</span>
+                  </div>
+                </div>
               </motion.div>
             )}
             </AnimatePresence>

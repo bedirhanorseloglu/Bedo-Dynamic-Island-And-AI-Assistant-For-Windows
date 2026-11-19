@@ -5,7 +5,8 @@
   --font-family-support: var(--font-family-ui);
   --font-family-label: var(--font-family-ui);
   --font-family-code: 'JetBrains Mono', monospace;
-  --font-family-number: 'JetBrains Mono', monospace;
+  --font-family-number: 'Oswald', sans-serif;
+  --clock-number-font: 'Oswald', sans-serif;
   --type-size-display: clamp(3.25rem, 10vw, 8rem);
   --type-size-title: 2rem;
   --type-size-heading: 1.125rem;

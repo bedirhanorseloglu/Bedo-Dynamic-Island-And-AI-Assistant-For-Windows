@@ -1,13 +1,20 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
 import {
+  ArrowRight,
   ArrowUp,
   Check,
   Copy,
+  ExternalLink,
+  Eye,
+  EyeOff,
+  KeyRound,
   Mic,
   MicOff,
   Pause,
   Play,
+  Settings,
+  Sparkles,
   Video,
   VideoOff,
   X,
@@ -30,6 +37,45 @@ const EQ_THRESHOLDS = [0.1, 0.2, 0.35, 0.5, 0.35, 0.2, 0.1];
 const SPRING = { type: 'spring', stiffness: 420, damping: 32, mass: 0.82 };
 const LAYOUT_SPRING = { type: 'spring', stiffness: 360, damping: 32, mass: 0.88 };
 
+const SETUP_PROVIDERS = {
+  gemini: {
+    id: 'gemini',
+    label: 'Gemini',
+    recommended: true,
+    placeholderTr: 'Gemini API Anahtarı (AIzaSy...)',
+    placeholderEn: 'Gemini API Key (AIzaSy...)',
+    descTr: 'Önerilen · Canlı sesli sohbet, ekran/kamera görüşü ve tüm Bedo özelliklerini açmak için ücretsiz Gemini API anahtarı girin.',
+    descEn: 'Recommended · Enter a free Gemini API key to unlock live voice, vision, and all Bedo features.',
+    linkLabelTr: 'Ücretsiz Al',
+    linkLabelEn: 'Free Key',
+    url: 'https://aistudio.google.com/apikey',
+  },
+  openai: {
+    id: 'openai',
+    label: 'OpenAI',
+    recommended: false,
+    placeholderTr: 'OpenAI API Anahtarı (sk-...)',
+    placeholderEn: 'OpenAI API Key (sk-...)',
+    descTr: 'GPT ile metin sohbeti aktif olur. Sesli asistan ve tüm Bedo özellikleri için Gemini API önerilir.',
+    descEn: 'Enables GPT text chat. Gemini API is recommended for live voice and all Bedo features.',
+    linkLabelTr: 'Anahtar Al',
+    linkLabelEn: 'Get Key',
+    url: 'https://platform.openai.com/api-keys',
+  },
+  claude: {
+    id: 'claude',
+    label: 'Claude',
+    recommended: false,
+    placeholderTr: 'Anthropic API Anahtarı (sk-ant-...)',
+    placeholderEn: 'Anthropic API Key (sk-ant-...)',
+    descTr: 'Claude ile metin sohbeti aktif olur. Sesli asistan ve tüm Bedo özellikleri için Gemini API önerilir.',
+    descEn: 'Enables Claude text chat. Gemini API is recommended for live voice and all Bedo features.',
+    linkLabelTr: 'Anahtar Al',
+    linkLabelEn: 'Get Key',
+    url: 'https://console.anthropic.com/settings/keys',
+  },
+};
+
 export default function BedoStage({
   status,
   systemMicMuted = false,
@@ -45,8 +91,14 @@ export default function BedoStage({
   reply,
   loading,
   question,
+  hasApiKey = true,
+  activeProvider = null,
+  langCode = 'tr',
   onQuestionChange,
   onSubmit,
+  onSaveApiKey,
+  onOpenApiKeyPage,
+  onOpenSettings,
   onToggleMute,
   onTogglePause,
   onToggleWebcam,
@@ -64,7 +116,27 @@ export default function BedoStage({
   const [copied, setCopied] = useState(false);
   const [inputFocused, setInputFocused] = useState(false);
   const [wakeSeq, setWakeSeq] = useState(0);
+  const [setupProvider, setSetupProvider] = useState('gemini');
+  const [apiKeyDraft, setApiKeyDraft] = useState('');
+  const [showKeyPlain, setShowKeyPlain] = useState(false);
+  const [activatingKey, setActivatingKey] = useState(false);
   const prevPausedRef = useRef(paused);
+
+  const needsApiKey = !hasApiKey && !running;
+  const isTextOnlyMode = !running && (activeProvider === 'openai' || activeProvider === 'claude');
+
+  const handleActivateApiKey = async (e) => {
+    e?.preventDefault?.();
+    const cleaned = apiKeyDraft.trim();
+    if (!cleaned || activatingKey) return;
+    setActivatingKey(true);
+    try {
+      await onSaveApiKey?.(setupProvider, cleaned);
+      setApiKeyDraft('');
+    } finally {
+      setTimeout(() => setActivatingKey(false), 600);
+    }
+  };
 
   useEffect(() => {
     if (prevPausedRef.current && !paused) {
@@ -87,9 +159,13 @@ export default function BedoStage({
           : 'listening';
 
   const statusText = !running
-    ? 'Çevrimdışı'
+    ? isTextOnlyMode
+      ? activeProvider === 'openai'
+        ? (langCode === 'tr' ? 'GPT · Metin Modu' : 'GPT · Text Mode')
+        : (langCode === 'tr' ? 'Claude · Metin Modu' : 'Claude · Text Mode')
+      : (langCode === 'tr' ? 'Çevrimdışı' : 'Offline')
     : paused
-      ? 'Uyku Modu'
+      ? (langCode === 'tr' ? 'Uyku Modu' : 'Sleep Mode')
       : STATE_LABELS[jarvisState] || jarvisState;
 
   const eyeMood = paused ? 'sleepy' : roboMood;
@@ -100,6 +176,179 @@ export default function BedoStage({
     setCopied(true);
     setTimeout(() => setCopied(false), 1400);
   };
+
+  if (needsApiKey) {
+    const isTr = langCode === 'tr';
+    const providerCfg = SETUP_PROVIDERS[setupProvider] || SETUP_PROVIDERS.gemini;
+    const canSubmit = apiKeyDraft.trim().length >= 10 && !activatingKey;
+    return (
+      <motion.div
+        key="bedo-api-setup"
+        className="bedo-setup-screen"
+        initial={{ opacity: 0, scale: 0.97, y: 6 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.97, y: -6 }}
+        transition={SPRING}
+      >
+        {/* Ambient breathing aurora */}
+        <div className="bedo-setup-aurora" aria-hidden="true">
+          <span className="bedo-setup-blob blob-a" />
+          <span className="bedo-setup-blob blob-b" />
+        </div>
+
+        {/* Hero Row */}
+        <div className="bedo-setup-hero">
+          <motion.button
+            type="button"
+            className="bedo-setup-orb-wrap"
+            onClick={onPokeEyes}
+            whileHover={{ scale: 1.06 }}
+            whileTap={{ scale: 0.94 }}
+            transition={SPRING}
+            aria-label="Bedo"
+          >
+            <span className="bedo-setup-ring ring-1" aria-hidden="true" />
+            <span className="bedo-setup-ring ring-2" aria-hidden="true" />
+            <div className="bedo-setup-orb">
+              <RoboEyes
+                mood={roboMood === 'normal' ? 'happy' : roboMood}
+                reaction={roboReaction || 'happy'}
+                size="normal"
+                trackCursor={true}
+                showMouth={false}
+                outfit={outfit}
+                seasonalOutfits={seasonalOutfits}
+                blinkingEnabled={blinkingEnabled}
+                active={documentVisible}
+              />
+            </div>
+          </motion.button>
+
+          <div className="bedo-setup-copy">
+            <div className="bedo-setup-head-row">
+              <motion.div
+                className="bedo-setup-badge"
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.06, duration: 0.32 }}
+              >
+                <Sparkles size={10} strokeWidth={2.4} />
+                <span>{isTr ? 'BEDO AI ASİSTAN' : 'BEDO AI ASSISTANT'}</span>
+              </motion.div>
+
+              <div className="bedo-setup-providers" role="tablist" aria-label="AI Provider">
+                {Object.values(SETUP_PROVIDERS).map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={setupProvider === p.id}
+                    className={`bedo-setup-provider-btn ${setupProvider === p.id ? 'active' : ''}`}
+                    onClick={() => {
+                      setSetupProvider(p.id);
+                      setApiKeyDraft('');
+                    }}
+                  >
+                    <span>{p.label}</span>
+                    {p.recommended && (
+                      <em className="bedo-setup-rec-tag">
+                        {isTr ? 'Önerilen' : 'Best'}
+                      </em>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <motion.h3
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.12, duration: 0.36 }}
+            >
+              {isTr
+                ? 'Bedo’yu Uyandırmak İçin API Anahtarı Gerekli'
+                : 'Connect an API Key to Wake Bedo'}
+            </motion.h3>
+
+            <motion.p
+              key={setupProvider}
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.24 }}
+            >
+              {isTr ? providerCfg.descTr : providerCfg.descEn}
+            </motion.p>
+          </div>
+        </div>
+
+        {/* Bottom Interactive Action Dock */}
+        <motion.form
+          className="bedo-setup-dock"
+          onSubmit={handleActivateApiKey}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.22, duration: 0.38, ease: [0.22, 1, 0.36, 1] }}
+        >
+          <div className="bedo-setup-input-wrap">
+            <KeyRound size={13} strokeWidth={2.1} className="bedo-setup-input-icon" />
+            <input
+              type={showKeyPlain ? 'text' : 'password'}
+              value={apiKeyDraft}
+              onChange={(e) => setApiKeyDraft(e.target.value)}
+              placeholder={isTr ? providerCfg.placeholderTr : providerCfg.placeholderEn}
+              autoComplete="off"
+              spellCheck={false}
+              aria-label={`${providerCfg.label} API Key`}
+            />
+            {apiKeyDraft && (
+              <button
+                type="button"
+                className="bedo-setup-eye-btn"
+                onClick={() => setShowKeyPlain((v) => !v)}
+                aria-label={showKeyPlain ? 'Gizle' : 'Göster'}
+              >
+                {showKeyPlain ? <EyeOff size={12} /> : <Eye size={12} />}
+              </button>
+            )}
+            <button
+              type="submit"
+              className={`bedo-setup-submit ${canSubmit ? 'is-ready' : ''}`}
+              disabled={!canSubmit}
+            >
+              {activatingKey ? (
+                <Check size={13} strokeWidth={2.6} />
+              ) : (
+                <>
+                  <span>{isTr ? 'Etkinleştir' : 'Activate'}</span>
+                  <ArrowRight size={12} strokeWidth={2.4} />
+                </>
+              )}
+            </button>
+          </div>
+
+          <button
+            type="button"
+            className="bedo-setup-link-btn"
+            onClick={() => onOpenApiKeyPage?.(providerCfg.url)}
+            title={providerCfg.url}
+          >
+            <span>{isTr ? providerCfg.linkLabelTr : providerCfg.linkLabelEn}</span>
+            <ExternalLink size={11} strokeWidth={2.2} />
+          </button>
+
+          <button
+            type="button"
+            className="bedo-setup-icon-btn"
+            onClick={onOpenSettings}
+            title={isTr ? 'Bağlantı Ayarlarını Aç' : 'Open Connection Settings'}
+            aria-label={isTr ? 'Ayarlar' : 'Settings'}
+          >
+            <Settings size={13} strokeWidth={2} />
+          </button>
+        </motion.form>
+      </motion.div>
+    );
+  }
 
   return (
     <LayoutGroup id="bedo-stage-layout">
@@ -363,7 +612,15 @@ export default function BedoStage({
           >
             <input
               type="text"
-              placeholder={loading ? 'Bedo yanıtlıyor...' : "Bedo'ya konuş veya yaz..."}
+              placeholder={
+                loading
+                  ? (langCode === 'tr' ? 'Bedo yanıtlıyor...' : 'Bedo is replying...')
+                  : isTextOnlyMode
+                    ? activeProvider === 'openai'
+                      ? (langCode === 'tr' ? "GPT'ye yaz..." : 'Ask GPT...')
+                      : (langCode === 'tr' ? "Claude'a yaz..." : 'Ask Claude...')
+                    : (langCode === 'tr' ? "Bedo'ya konuş veya yaz..." : 'Talk or type to Bedo...')
+              }
               value={question}
               onFocus={() => {
                 setInputFocused(true);
