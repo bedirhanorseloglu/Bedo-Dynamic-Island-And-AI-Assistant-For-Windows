@@ -1,7 +1,7 @@
 {
   "name": "bedo",
   "productName": "Bedo",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "author": "Bedirhan Orseloglu",
   "description": "Bedo - The Dynamic Island & AI Assistant for Windows",
   "main": "electron/main.cjs",

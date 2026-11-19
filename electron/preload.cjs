@@ -249,5 +249,10 @@ contextBridge.exposeInMainWorld('twocode', {
     ipcRenderer.on('update-status', listener);
     return () => ipcRenderer.removeListener('update-status', listener);
   },
+  onIslandRevealed: (cb) => {
+    const listener = () => cb();
+    ipcRenderer.on('island-revealed', listener);
+    return () => ipcRenderer.removeListener('island-revealed', listener);
+  },
   quitApp: () => ipcRenderer.send('quit-app'),
 });

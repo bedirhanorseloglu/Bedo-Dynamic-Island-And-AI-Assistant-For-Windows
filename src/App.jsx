@@ -2660,12 +2660,25 @@ export default function App() {
     }
   }, [resolvedCollapsedMode]);
 
-  // Startup wave sound
+  // Startup wave sound — synchronized to the exact moment the Island becomes visible
   useEffect(() => {
-    const t = setTimeout(() => {
-      playRoboSound('wave', true);
-    }, 500);
-    return () => clearTimeout(t);
+    let played = false;
+    const playOnce = () => {
+      if (played) return;
+      played = true;
+      requestAnimationFrame(() => {
+        playRoboSound('wave', islandSettingsRef.current?.soundEffects !== false);
+      });
+    };
+    const unsub = window.twocode?.onIslandRevealed?.(playOnce);
+    // Fallback if window was already visible before listener attached
+    const fallbackTimer = setTimeout(() => {
+      if (!document.hidden) playOnce();
+    }, 900);
+    return () => {
+      clearTimeout(fallbackTimer);
+      unsub?.();
+    };
   }, []);
 
   // Listen for App-Aware Context & Live Activities (Steam / Downloads)

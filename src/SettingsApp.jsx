@@ -450,6 +450,39 @@ export default function SettingsApp() {
   const [showKeyClaude, setShowKeyClaude] = useState(false);
   const [showKeyCodex, setShowKeyCodex] = useState(false);
   const [showKeyGemini, setShowKeyGemini] = useState(false);
+  const [keyVerify, setKeyVerify] = useState({});
+
+  const verifyProviderKey = async (provider, rawKey) => {
+    const apiKey = String(rawKey || '').trim();
+    if (!apiKey) {
+      setKeyVerify((prev) => ({ ...prev, [provider]: null }));
+      return;
+    }
+    setKeyVerify((prev) => ({ ...prev, [provider]: { state: 'checking', detail: '' } }));
+    try {
+      const res = await window.twocode?.validateApiKey?.({ provider, apiKey });
+      if (res?.ok) {
+        setKeyVerify((prev) => ({ ...prev, [provider]: { state: 'ok', detail: '' } }));
+      } else {
+        setKeyVerify((prev) => ({
+          ...prev,
+          [provider]: {
+            state: 'error',
+            detail:
+              res?.detail ||
+              (res?.reason === 'network'
+                ? (langCode === 'tr' ? 'Ağ bağlantısı kurulamadı.' : 'Network connection failed.')
+                : (langCode === 'tr' ? 'Anahtar sağlayıcı tarafından reddedildi.' : 'Key was rejected by provider.')),
+          },
+        }));
+      }
+    } catch {
+      setKeyVerify((prev) => ({
+        ...prev,
+        [provider]: { state: 'error', detail: langCode === 'tr' ? 'Doğrulama başarısız.' : 'Verification failed.' },
+      }));
+    }
+  };
   const [showKeyAntigravity, setShowKeyAntigravity] = useState(false);
   const [bedoStatus, setBedoStatus] = useState({ running: false, ready: false, paused: true, available: true, jarvisState: 'INITIALISING', lastError: null });
   const [bedoBusy, setBedoBusy] = useState(false);
@@ -1690,7 +1723,10 @@ export default function SettingsApp() {
                           className="ai-api-key-input"
                           placeholder="sk-ant-api03-..."
                           value={settings.claudeApiKey || ''}
-                          onChange={(e) => updateSetting({ claudeApiKey: e.target.value.trim() })}
+                          onChange={(e) => {
+                            updateSetting({ claudeApiKey: e.target.value.trim() });
+                            setKeyVerify((prev) => ({ ...prev, claude: null }));
+                          }}
                         />
                         <button
                           type="button"
@@ -1702,9 +1738,25 @@ export default function SettingsApp() {
                         </button>
                       </div>
                       {settings.claudeApiKey ? (
-                        <span className="key-saved-pill">{langCode === 'tr' ? '✓ Kaydedildi' : '✓ Saved'}</span>
+                        <button
+                          type="button"
+                          className={`key-verify-btn ${keyVerify.claude?.state === 'ok' ? 'is-ok' : keyVerify.claude?.state === 'error' ? 'is-err' : ''}`}
+                          onClick={() => verifyProviderKey('claude', settings.claudeApiKey)}
+                          disabled={keyVerify.claude?.state === 'checking'}
+                        >
+                          {keyVerify.claude?.state === 'checking'
+                            ? (langCode === 'tr' ? 'Kontrol...' : 'Testing...')
+                            : keyVerify.claude?.state === 'ok'
+                              ? (langCode === 'tr' ? '✓ Bağlandı' : '✓ Connected')
+                              : keyVerify.claude?.state === 'error'
+                                ? (langCode === 'tr' ? '✕ Geçersiz' : '✕ Invalid')
+                                : (langCode === 'tr' ? 'Test Et' : 'Test')}
+                        </button>
                       ) : null}
                     </div>
+                    {keyVerify.claude?.state === 'error' && keyVerify.claude?.detail && (
+                      <div className="key-verify-error">{keyVerify.claude.detail}</div>
+                    )}
                   </div>
                 </div>
                 <div className="row-right-group">
@@ -1755,7 +1807,10 @@ export default function SettingsApp() {
                           className="ai-api-key-input"
                           placeholder="sk-proj-..."
                           value={settings.codexApiKey || ''}
-                          onChange={(e) => updateSetting({ codexApiKey: e.target.value.trim() })}
+                          onChange={(e) => {
+                            updateSetting({ codexApiKey: e.target.value.trim() });
+                            setKeyVerify((prev) => ({ ...prev, openai: null }));
+                          }}
                         />
                         <button
                           type="button"
@@ -1767,9 +1822,25 @@ export default function SettingsApp() {
                         </button>
                       </div>
                       {settings.codexApiKey ? (
-                        <span className="key-saved-pill">{langCode === 'tr' ? '✓ Kaydedildi' : '✓ Saved'}</span>
+                        <button
+                          type="button"
+                          className={`key-verify-btn ${keyVerify.openai?.state === 'ok' ? 'is-ok' : keyVerify.openai?.state === 'error' ? 'is-err' : ''}`}
+                          onClick={() => verifyProviderKey('openai', settings.codexApiKey)}
+                          disabled={keyVerify.openai?.state === 'checking'}
+                        >
+                          {keyVerify.openai?.state === 'checking'
+                            ? (langCode === 'tr' ? 'Kontrol...' : 'Testing...')
+                            : keyVerify.openai?.state === 'ok'
+                              ? (langCode === 'tr' ? '✓ Bağlandı' : '✓ Connected')
+                              : keyVerify.openai?.state === 'error'
+                                ? (langCode === 'tr' ? '✕ Geçersiz' : '✕ Invalid')
+                                : (langCode === 'tr' ? 'Test Et' : 'Test')}
+                        </button>
                       ) : null}
                     </div>
+                    {keyVerify.openai?.state === 'error' && keyVerify.openai?.detail && (
+                      <div className="key-verify-error">{keyVerify.openai.detail}</div>
+                    )}
                   </div>
                 </div>
                 <div className="row-right-group">
@@ -1816,9 +1887,12 @@ export default function SettingsApp() {
                         <input
                           type={showKeyGemini ? 'text' : 'password'}
                           className="ai-api-key-input"
-                          placeholder="AIzaSy..."
+                          placeholder="AIzaSy... / AQ...."
                           value={settings.geminiApiKey || ''}
-                          onChange={(e) => updateSetting({ geminiApiKey: e.target.value.trim() })}
+                          onChange={(e) => {
+                            updateSetting({ geminiApiKey: e.target.value.trim() });
+                            setKeyVerify((prev) => ({ ...prev, gemini: null }));
+                          }}
                         />
                         <button
                           type="button"
@@ -1830,9 +1904,25 @@ export default function SettingsApp() {
                         </button>
                       </div>
                       {settings.geminiApiKey ? (
-                        <span className="key-saved-pill">{langCode === 'tr' ? '✓ Kaydedildi' : '✓ Saved'}</span>
+                        <button
+                          type="button"
+                          className={`key-verify-btn ${keyVerify.gemini?.state === 'ok' ? 'is-ok' : keyVerify.gemini?.state === 'error' ? 'is-err' : ''}`}
+                          onClick={() => verifyProviderKey('gemini', settings.geminiApiKey)}
+                          disabled={keyVerify.gemini?.state === 'checking'}
+                        >
+                          {keyVerify.gemini?.state === 'checking'
+                            ? (langCode === 'tr' ? 'Kontrol...' : 'Testing...')
+                            : keyVerify.gemini?.state === 'ok'
+                              ? (langCode === 'tr' ? '✓ Bağlandı' : '✓ Connected')
+                              : keyVerify.gemini?.state === 'error'
+                                ? (langCode === 'tr' ? '✕ Geçersiz' : '✕ Invalid')
+                                : (langCode === 'tr' ? 'Test Et' : 'Test')}
+                        </button>
                       ) : null}
                     </div>
+                    {keyVerify.gemini?.state === 'error' && keyVerify.gemini?.detail && (
+                      <div className="key-verify-error">{keyVerify.gemini.detail}</div>
+                    )}
                   </div>
                 </div>
                 <div className="row-right-group">

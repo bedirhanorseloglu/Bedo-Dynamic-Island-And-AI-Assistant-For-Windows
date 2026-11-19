@@ -2073,10 +2073,21 @@ function createWindow() {
     setTimeout(ensureIslandOnTop, 60);
   });
 
-  mainWindow.webContents.on('did-finish-load', () => {
+  const revealIsland = () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
     mainWindow.setSkipTaskbar(true);
-    mainWindow.showInactive();
-    mainWindow.moveTop();
+    if (!mainWindow.isVisible()) {
+      mainWindow.showInactive();
+      mainWindow.moveTop();
+      try { mainWindow.webContents.send('island-revealed'); } catch {}
+    }
+  };
+
+  // Show on first painted frame — never wait for external Google Fonts / subresources
+  mainWindow.once('ready-to-show', revealIsland);
+
+  mainWindow.webContents.on('did-finish-load', () => {
+    revealIsland();
     mainWindow.webContents.send('ai-history-update', localAgentHistory);
     mainWindow.webContents.send('settings-updated', userSettings);
     mainWindow.webContents.send('game-mode-change', gameModeActive);
@@ -5203,17 +5214,22 @@ ipcMain.handle('validate-api-key', async (_event, payload = {}) => {
         }
       );
     }
-    if (res.ok) return { ok: true };
-    if (res.status === 400 || res.status === 401 || res.status === 403) {
-      return { ok: false, reason: 'invalid' };
-    }
+    if (res.ok) return { ok: true, status: res.status };
+    let detail = '';
+    try {
+      const json = await res.json();
+      detail = String(json?.error?.message || json?.message || '').trim();
+    } catch {}
     if (res.status === 429) {
       // Rate-limited still means the key authenticated
-      return { ok: true };
+      return { ok: true, status: res.status };
     }
-    return { ok: false, reason: 'invalid' };
-  } catch {
-    return { ok: false, reason: 'network' };
+    if (res.status === 400 || res.status === 401 || res.status === 403) {
+      return { ok: false, reason: 'invalid', status: res.status, detail };
+    }
+    return { ok: false, reason: 'invalid', status: res.status, detail };
+  } catch (err) {
+    return { ok: false, reason: 'network', detail: err?.message || '' };
   }
 });
 
@@ -5297,7 +5313,7 @@ ipcMain.handle('ask-robo', async (_event, payload = {}) => {
       : /^(429|500|502|503|504):/.test(err.message)
         ? trMain(lang, 'roboBusy', { provider: selectedProvider.label })
       : /401|403|API.?KEY.?INVALID|invalid API key|unauthorized/i.test(err.message)
-        ? trMain(lang, 'roboBadApiKey')
+        ? `${trMain(lang, 'roboBadApiKey')}${err.message ? ` (${err.message.slice(0, 140)})` : ''}`
         : trMain(lang, 'roboRequestFailed', { message: err.message });
     return { error: `${selectedProvider.label}: ${reason}` };
   }
