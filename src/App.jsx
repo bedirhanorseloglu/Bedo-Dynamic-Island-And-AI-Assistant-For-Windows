@@ -2243,6 +2243,7 @@ export default function App() {
   const [showIslandWelcome, setShowIslandWelcome] = useState(false);
   const [updateBanner, setUpdateBanner] = useState(null);
   const [updateState, setUpdateState] = useState({ state: 'idle', version: '', percent: 0 });
+  const [pythonBootstrapStatus, setPythonBootstrapStatus] = useState({ state: 'idle', detail: '' });
   const wasOnboardingIncompleteRef = useRef(false);
   const focusGuardCooldownRef = useRef({});
   const focusGuardLastAppRef = useRef('');
@@ -3009,6 +3010,13 @@ export default function App() {
           }
         }
       }
+    });
+
+    window.twocode.getPythonBootstrapStatus?.().then((st) => {
+      if (st && typeof st === 'object') setPythonBootstrapStatus(st);
+    }).catch(() => {});
+    const unsubPythonBootstrap = window.twocode.onPythonBootstrapStatus?.((st) => {
+      if (st && typeof st === 'object') setPythonBootstrapStatus(st);
     });
 
     const unsubUpdate = window.twocode.onUpdateStatus?.((status) => {
@@ -5855,6 +5863,12 @@ export default function App() {
                                       if (!hasGem && !hasOai && !hasCl && !bedoStatus.running) {
                                         return langCode === 'tr' ? 'API Anahtarı Gerekli' : 'API Key Needed';
                                       }
+                                      if (!bedoStatus.running && hasGem) {
+                                        if (pythonBootstrapStatus.state === 'downloading-python' || pythonBootstrapStatus.state === 'installing-deps') {
+                                          return langCode === 'tr' ? 'Ses Kuruluyor...' : 'Setting Up Voice...';
+                                        }
+                                        return langCode === 'tr' ? 'Gemini · Metin' : 'Gemini · Text';
+                                      }
                                       if (!bedoStatus.running && !hasGem) {
                                         if (hasOai) return langCode === 'tr' ? 'GPT · Metin' : 'GPT · Text';
                                         if (hasCl) return langCode === 'tr' ? 'Claude · Metin' : 'Claude · Text';
@@ -6285,6 +6299,7 @@ export default function App() {
                                 ? 'claude'
                                 : null
                         }
+                        pythonBootstrapStatus={pythonBootstrapStatus}
                         langCode={langCode}
                         onQuestionChange={setRoboQuestion}
                         onSubmit={() => submitRoboPrompt()}

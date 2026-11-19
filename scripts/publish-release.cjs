@@ -82,7 +82,7 @@ async function main() {
     if (!hasToken) {
       console.log(
         `\nHazir! release/ klasorunde yalnizca guncel surum var:\n` +
-        `  1) release/Bedo Setup ${nextVersion}.exe\n` +
+        `  1) release/Bedo-Setup-${nextVersion}.exe\n` +
         `  2) release/latest.yml\n` +
         `GitHub v${nextVersion} Release'ine yukleyip Publish ettiginde tum kullanicilar otomatik guncellenir.`
       );

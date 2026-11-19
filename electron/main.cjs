@@ -440,8 +440,61 @@ function getAgentIntegrationPaths() {
   return {
     codex: path.join(home, '.codex', 'hooks.json'),
     antigravity: path.join(home, '.gemini', 'config', 'hooks.json'),
+    claude: path.join(home, '.claude', 'settings.json'),
     hookScript: path.join(app.getPath('userData'), 'integrations', 'twocode-agent-hook.ps1'),
   };
+}
+
+function commandExistsOnPath(names) {
+  const pathEnv = process.env.PATH || process.env.Path || '';
+  const dirs = pathEnv.split(path.delimiter).map((d) => d.trim()).filter(Boolean);
+  for (const dir of dirs) {
+    for (const name of names) {
+      try {
+        if (fs.existsSync(path.join(dir, name))) return true;
+      } catch {}
+    }
+  }
+  return false;
+}
+
+function detectInstalledAgents() {
+  const home = os.homedir();
+  const localAppData = process.env.LOCALAPPDATA || '';
+  const appData = process.env.APPDATA || '';
+  const programFiles = process.env.ProgramFiles || 'C:\\Program Files';
+
+  const antigravityIdePath = userSettings.antigravityIdePath || '';
+  const detectedIde = [
+    antigravityIdePath,
+    path.join(localAppData, 'Programs', 'Antigravity', 'Antigravity.exe'),
+    path.join(localAppData, 'Programs', 'Google', 'Antigravity', 'Antigravity.exe'),
+    path.join(programFiles, 'Antigravity', 'Antigravity.exe'),
+  ].find((candidate) => candidate && fs.existsSync(candidate)) || '';
+
+  const codexInstalled = Boolean(
+    commandExistsOnPath(['codex.exe', 'codex.cmd', 'codex.ps1']) ||
+    fs.existsSync(path.join(appData, 'npm', 'codex.cmd')) ||
+    fs.existsSync(path.join(localAppData, 'Programs', 'Codex', 'Codex.exe')) ||
+    fs.existsSync(path.join(home, '.codex', 'config.toml')) ||
+    fs.existsSync(path.join(home, '.codex', 'auth.json'))
+  );
+
+  const antigravityInstalled = Boolean(
+    detectedIde ||
+    commandExistsOnPath(['agy.exe', 'agy.cmd', 'antigravity.exe', 'antigravity.cmd']) ||
+    fs.existsSync(path.join(home, '.gemini', 'antigravity'))
+  );
+
+  const claudeInstalled = Boolean(
+    commandExistsOnPath(['claude.exe', 'claude.cmd', 'claude.ps1']) ||
+    fs.existsSync(path.join(appData, 'npm', 'claude.cmd')) ||
+    fs.existsSync(path.join(home, '.local', 'bin', 'claude.exe')) ||
+    fs.existsSync(path.join(localAppData, 'Programs', 'claude-code', 'claude.exe')) ||
+    fs.existsSync(path.join(home, '.claude.json'))
+  );
+
+  return { codexInstalled, antigravityInstalled, claudeInstalled, detectedIde };
 }
 
 function readJsonFile(filePath) {
@@ -459,23 +512,24 @@ function readExistingJsonFile(filePath) {
 
 function getAgentIntegrationStatus() {
   const paths = getAgentIntegrationPaths();
+  const { codexInstalled, antigravityInstalled, claudeInstalled, detectedIde } = detectInstalledAgents();
   const codex = readJsonFile(paths.codex);
   const antigravity = readJsonFile(paths.antigravity);
-  const antigravityIdePath = userSettings.antigravityIdePath || '';
-  const detectedIde = [
-    antigravityIdePath,
-    path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Antigravity', 'Antigravity.exe'),
-    path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Google', 'Antigravity', 'Antigravity.exe'),
-    path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Antigravity', 'Antigravity.exe'),
-  ].find((candidate) => candidate && fs.existsSync(candidate)) || '';
+  const claude = readJsonFile(paths.claude);
   const hasCodexHook = (eventName) => Boolean(codex.hooks?.[eventName]?.some((entry) => entry.hooks?.some((hook) => hook.command?.includes('twocode-agent-hook.ps1'))));
+  const hasClaudeHook = (eventName) => Boolean(claude.hooks?.[eventName]?.some((entry) => entry.hooks?.some((hook) => hook.command?.includes('twocode-agent-hook.ps1'))));
   const antigravityMonitor = antigravity['twocode-agent-monitor'];
   return {
-    codexConnected: hasCodexHook('UserPromptSubmit') && hasCodexHook('Stop'),
-    antigravityConnected: Boolean(antigravityMonitor?.PreInvocation?.length && antigravityMonitor?.Stop?.length),
+    codexInstalled,
+    antigravityInstalled,
+    claudeInstalled,
+    codexConnected: codexInstalled && hasCodexHook('UserPromptSubmit') && hasCodexHook('Stop'),
+    antigravityConnected: antigravityInstalled && Boolean(antigravityMonitor?.PreInvocation?.length && antigravityMonitor?.Stop?.length),
+    claudeConnected: claudeInstalled && hasClaudeHook('UserPromptSubmit') && hasClaudeHook('Stop'),
     antigravityIdePath: detectedIde,
     codexConfigPath: paths.codex,
     antigravityConfigPath: paths.antigravity,
+    claudeConfigPath: paths.claude,
   };
 }
 
@@ -486,24 +540,23 @@ function createAgentHookCommand(agent) {
 
 async function connectAgentIntegrations() {
   const paths = getAgentIntegrationPaths();
-  const codexConfig = readExistingJsonFile(paths.codex);
-  const antigravityConfig = readExistingJsonFile(paths.antigravity);
-  if (codexConfig.hooks && (typeof codexConfig.hooks !== 'object' || Array.isArray(codexConfig.hooks))) {
-    throw new Error('Codex hooks settings have an unsupported format.');
+  const { codexInstalled, antigravityInstalled, claudeInstalled } = detectInstalledAgents();
+  if (!codexInstalled && !antigravityInstalled && !claudeInstalled) {
+    return getAgentIntegrationStatus();
   }
   const hookScript = [
-    'param([Parameter(Mandatory=$true)][ValidateSet("codex","antigravity")][string]$Agent)',
+    'param([Parameter(Mandatory=$true)][ValidateSet("codex","antigravity","claude")][string]$Agent)',
     '$ErrorActionPreference = "SilentlyContinue"',
     '$raw = [Console]::In.ReadToEnd()',
     'try { $event = $raw | ConvertFrom-Json } catch { exit 0 }',
     '$eventName = [string]$event.hook_event_name',
     'if (-not $eventName) { $eventName = [string]$event.event }',
-    'if ($Agent -eq "codex" -and $eventName -eq "UserPromptSubmit") { $type = "thinking" }',
+    'if (($Agent -eq "codex" -or $Agent -eq "claude") -and $eventName -eq "UserPromptSubmit") { $type = "thinking" }',
     'elseif ($Agent -eq "antigravity" -and $eventName -eq "PreInvocation") { if ($event.invocationNum -ne 0) { exit 0 }; $type = "thinking" }',
     'elseif ($eventName -eq "Stop") { if ($Agent -eq "antigravity" -and $event.fullyIdle -eq $false) { exit 0 }; $type = if ($event.error) { "error" } else { "done" } }',
     'elseif ($eventName -eq "Interrupt") { $type = "interrupted" }',
     'else { exit 0 }',
-    '$agentName = if ($Agent -eq "codex") { "Codex" } else { "Antigravity IDE" }',
+    '$agentName = if ($Agent -eq "codex") { "Codex" } elseif ($Agent -eq "claude") { "Claude Code" } else { "Antigravity IDE" }',
     '$title = if ($type -eq "thinking") { "Düşünüyor" } elseif ($type -eq "done") { "Yanıtladı" } elseif ($type -eq "error") { "Tamamlanamadı" } else { "Durduruldu" }',
     '$detail = if ($type -eq "thinking") { if ($event.prompt) { $event.prompt } else { $event.lastUserInput } } elseif ($type -eq "done") { if ($event.last_assistant_message) { $event.last_assistant_message } elseif ($event.prompt_response) { $event.prompt_response } else { "Yanıt hazır" } } else { [string]$event.error }',
     'if ($detail -and $detail.Length -gt 500) { $detail = $detail.Substring(0, 497) + "..." }',
@@ -515,25 +568,49 @@ async function connectAgentIntegrations() {
   fs.mkdirSync(path.dirname(paths.hookScript), { recursive: true });
   fs.writeFileSync(paths.hookScript, hookScript, 'utf8');
 
-  fs.mkdirSync(path.dirname(paths.codex), { recursive: true });
-  codexConfig.hooks ||= {};
-  for (const eventName of ['UserPromptSubmit', 'Stop', 'Interrupt']) {
-    const entries = (codexConfig.hooks[eventName] || []).filter((entry) => !entry.hooks?.some((hook) => hook.command?.includes('twocode-agent-hook.ps1')));
-    entries.push({
-      hooks: [{ type: 'command', command: createAgentHookCommand('codex'), commandWindows: createAgentHookCommand('codex'), async: true, timeout: 3 }],
-    });
-    codexConfig.hooks[eventName] = entries;
+  if (codexInstalled) {
+    const codexConfig = readExistingJsonFile(paths.codex);
+    if (codexConfig.hooks && (typeof codexConfig.hooks !== 'object' || Array.isArray(codexConfig.hooks))) {
+      throw new Error('Codex hooks settings have an unsupported format.');
+    }
+    fs.mkdirSync(path.dirname(paths.codex), { recursive: true });
+    codexConfig.hooks ||= {};
+    for (const eventName of ['UserPromptSubmit', 'Stop', 'Interrupt']) {
+      const entries = (codexConfig.hooks[eventName] || []).filter((entry) => !entry.hooks?.some((hook) => hook.command?.includes('twocode-agent-hook.ps1')));
+      entries.push({
+        hooks: [{ type: 'command', command: createAgentHookCommand('codex'), commandWindows: createAgentHookCommand('codex'), async: true, timeout: 3 }],
+      });
+      codexConfig.hooks[eventName] = entries;
+    }
+    fs.writeFileSync(paths.codex, JSON.stringify(codexConfig, null, 2), 'utf8');
   }
-  fs.writeFileSync(paths.codex, JSON.stringify(codexConfig, null, 2), 'utf8');
 
-  fs.mkdirSync(path.dirname(paths.antigravity), { recursive: true });
-  const antigravityMonitor = antigravityConfig['twocode-agent-monitor'] || {};
-  antigravityMonitor.enabled = true;
-  for (const eventName of ['PreInvocation', 'Stop']) {
-    antigravityMonitor[eventName] = [{ hooks: [{ type: 'command', command: createAgentHookCommand('antigravity'), timeout: 3 }] }];
+  if (antigravityInstalled) {
+    const antigravityConfig = readExistingJsonFile(paths.antigravity);
+    fs.mkdirSync(path.dirname(paths.antigravity), { recursive: true });
+    const antigravityMonitor = antigravityConfig['twocode-agent-monitor'] || {};
+    antigravityMonitor.enabled = true;
+    for (const eventName of ['PreInvocation', 'Stop']) {
+      antigravityMonitor[eventName] = [{ hooks: [{ type: 'command', command: createAgentHookCommand('antigravity'), timeout: 3 }] }];
+    }
+    antigravityConfig['twocode-agent-monitor'] = antigravityMonitor;
+    fs.writeFileSync(paths.antigravity, JSON.stringify(antigravityConfig, null, 2), 'utf8');
   }
-  antigravityConfig['twocode-agent-monitor'] = antigravityMonitor;
-  fs.writeFileSync(paths.antigravity, JSON.stringify(antigravityConfig, null, 2), 'utf8');
+
+  if (claudeInstalled) {
+    const claudeConfig = readExistingJsonFile(paths.claude);
+    fs.mkdirSync(path.dirname(paths.claude), { recursive: true });
+    claudeConfig.hooks ||= {};
+    for (const eventName of ['UserPromptSubmit', 'Stop']) {
+      const entries = (claudeConfig.hooks[eventName] || []).filter((entry) => !entry.hooks?.some((hook) => hook.command?.includes('twocode-agent-hook.ps1')));
+      entries.push({
+        hooks: [{ type: 'command', command: createAgentHookCommand('claude'), timeout: 3 }],
+      });
+      claudeConfig.hooks[eventName] = entries;
+    }
+    fs.writeFileSync(paths.claude, JSON.stringify(claudeConfig, null, 2), 'utf8');
+  }
+
   return getAgentIntegrationStatus();
 }
 
@@ -2605,7 +2682,7 @@ app.whenReady().then(() => {
     }, 650);
   }
   const agentStatus = getAgentIntegrationStatus();
-  if (agentStatus.codexConnected || agentStatus.antigravityConnected) startLocalAgentServers();
+  if (agentStatus.codexConnected || agentStatus.antigravityConnected || agentStatus.claudeConnected) startLocalAgentServers();
   setTimeout(() => {
     ensurePythonRuntimeBackground(app.getPath('userData'), (status) => {
       if (settingsWindow && !settingsWindow.isDestroyed()) {
@@ -2613,6 +2690,22 @@ app.whenReady().then(() => {
       }
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('python-bootstrap-status', status);
+      }
+      if (status?.state === 'ready' && String(userSettings.geminiApiKey || '').trim()) {
+        try {
+          const svc = getBedoService();
+          if (!svc.getStatus().running) {
+            svc.start({
+              apiKey: userSettings.geminiApiKey,
+              openaiApiKey: userSettings.codexApiKey || process.env.OPENAI_API_KEY || '',
+              anthropicApiKey: userSettings.claudeApiKey || process.env.ANTHROPIC_API_KEY || '',
+              voice: userSettings.bedoVoice || 'Charon',
+              startPaused: false,
+              enableWake: userSettings.bedoEnableWake !== false,
+              enableClap: false,
+            }).catch(() => {});
+          }
+        } catch {}
       }
     }).catch(() => {});
   }, 4500);

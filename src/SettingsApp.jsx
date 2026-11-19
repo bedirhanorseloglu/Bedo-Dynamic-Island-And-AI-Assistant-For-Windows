@@ -421,7 +421,15 @@ export default function SettingsApp() {
     claudeJobs: [],
     jobsToday: 0,
   });
-  const [agentIntegration, setAgentIntegration] = useState({ codexConnected: false, antigravityConnected: false, antigravityIdePath: '' });
+  const [agentIntegration, setAgentIntegration] = useState({
+    codexInstalled: false,
+    antigravityInstalled: false,
+    claudeInstalled: false,
+    codexConnected: false,
+    antigravityConnected: false,
+    claudeConnected: false,
+    antigravityIdePath: '',
+  });
   const [agentIntegrationBusy, setAgentIntegrationBusy] = useState(false);
   const [agentIntegrationMessage, setAgentIntegrationMessage] = useState('');
   const [ghelperStatus, setGhelperStatus] = useState({ installed: false, running: false });
@@ -606,8 +614,18 @@ export default function SettingsApp() {
     setAgentIntegrationMessage('');
     const result = await window.twocode?.connectAgentIntegrations?.();
     if (result?.ok) {
-      setAgentIntegration(result.status);
-      setAgentIntegrationMessage(t('settings.agents.installSuccess'));
+      const st = result.status || {};
+      setAgentIntegration(st);
+      const anyInstalled = Boolean(st.codexInstalled || st.antigravityInstalled || st.claudeInstalled);
+      if (!anyInstalled) {
+        setAgentIntegrationMessage(
+          langCode === 'tr'
+            ? 'Bu bilgisayarda kurulu Codex, Antigravity veya Claude Code bulunamadı.'
+            : 'No installed Codex, Antigravity, or Claude Code found on this PC.'
+        );
+      } else {
+        setAgentIntegrationMessage(t('settings.agents.installSuccess'));
+      }
     } else {
       setAgentIntegrationMessage(result?.error || t('settings.agents.installError'));
     }
@@ -1275,22 +1293,22 @@ export default function SettingsApp() {
               <div className="agents-lg-hero-copy">
                 <span className="agents-lg-eyebrow">{langCode === 'tr' ? 'YEREL AJAN MASANIZ' : 'YOUR LOCAL AGENT DESK'}</span>
                 <h2>{langCode === 'tr' ? (<>Tüm ajanların,<br /><span>tek sessiz sinyal.</span></>) : (<>All your agents,<br /><span>one quiet signal.</span></>)}</h2>
-                <p>{langCode === 'tr' ? 'Codex veya Antigravity düşünmeye başladığında ve yanıtı hazır olduğunda görün. Etkinlik bu PC’de kalır ve Ada’da görünür.' : 'See when Codex or Antigravity starts thinking and when its answer is ready. Activity stays on this PC and appears in the Island.'}</p>
+                <p>{langCode === 'tr' ? 'Codex, Antigravity veya Claude Code düşünmeye başladığında ve yanıtı hazır olduğunda görün. Etkinlik bu PC’de kalır ve Ada’da görünür.' : 'See when Codex, Antigravity, or Claude Code starts thinking and when its answer is ready. Activity stays on this PC and appears in the Island.'}</p>
               </div>
               <div className="agents-lg-hero-action">
-                <span className={`agents-lg-bridge-pill ${agentIntegration.codexConnected || agentIntegration.antigravityConnected ? 'is-ready' : ''}`}>
-                  {agentIntegration.codexConnected || agentIntegration.antigravityConnected ? <Check size={12} strokeWidth={2.5} /> : <Plug size={12} />}
-                  {agentIntegration.codexConnected || agentIntegration.antigravityConnected ? (langCode === 'tr' ? 'Köprü hazır' : 'Bridge ready') : (langCode === 'tr' ? 'Köprü bağlı değil' : 'Bridge not connected')}
+                <span className={`agents-lg-bridge-pill ${agentIntegration.codexConnected || agentIntegration.antigravityConnected || agentIntegration.claudeConnected ? 'is-ready' : ''}`}>
+                  {agentIntegration.codexConnected || agentIntegration.antigravityConnected || agentIntegration.claudeConnected ? <Check size={12} strokeWidth={2.5} /> : <Plug size={12} />}
+                  {agentIntegration.codexConnected || agentIntegration.antigravityConnected || agentIntegration.claudeConnected ? (langCode === 'tr' ? 'Köprü hazır' : 'Bridge ready') : (langCode === 'tr' ? 'Köprü bağlı değil' : 'Bridge not connected')}
                 </span>
                 <button type="button" className="agents-lg-connect-btn" onClick={connectAgentTools} disabled={agentIntegrationBusy}>
                   {agentIntegrationBusy ? <RefreshCw size={14} className="agent-spin-icon" /> : <Link2 size={14} />}
-                  {agentIntegrationBusy ? (langCode === 'tr' ? 'Bağlanıyor…' : 'Connecting…') : agentIntegration.codexConnected && agentIntegration.antigravityConnected ? (langCode === 'tr' ? 'Kurulumu yenile' : 'Refresh setup') : (langCode === 'tr' ? 'Ajanları bağla' : 'Connect agents')}
+                  {agentIntegrationBusy ? (langCode === 'tr' ? 'Bağlanıyor…' : 'Connecting…') : (agentIntegration.codexConnected || agentIntegration.antigravityConnected || agentIntegration.claudeConnected) ? (langCode === 'tr' ? 'Kurulumu yenile' : 'Refresh setup') : (langCode === 'tr' ? 'Ajanları bağla' : 'Connect agents')}
                 </button>
               </div>
             </motion.section>
 
             {agentIntegrationMessage && (
-              <div className={`agent-integration-message ${/could not|not responding|yanıt vermiyor|bulunamad|kurulamad|başarısız/i.test(agentIntegrationMessage) ? 'error' : 'success'}`} role="status">
+              <div className={`agent-integration-message ${/could not|not responding|yanıt vermiyor|bulunamad|kurulamad|başarısız|no installed/i.test(agentIntegrationMessage) ? 'error' : 'success'}`} role="status">
                 {agentIntegrationMessage}
               </div>
             )}
@@ -1301,7 +1319,7 @@ export default function SettingsApp() {
                   <Link2 size={15} />
                 </div>
                 <div className="home-lg-stat-meta">
-                  <strong>{Number(agentIntegration.codexConnected) + Number(agentIntegration.antigravityConnected)}<small> / 2</small></strong>
+                  <strong>{Number(Boolean(agentIntegration.codexConnected)) + Number(Boolean(agentIntegration.antigravityConnected)) + Number(Boolean(agentIntegration.claudeConnected))}<small> / 3</small></strong>
                   <span>{langCode === 'tr' ? 'kanca kurulu' : 'hooks installed'}</span>
                 </div>
               </div>
@@ -1337,7 +1355,11 @@ export default function SettingsApp() {
                   </div>
                   <span className={`agents-lg-status-pill ${agentIntegration.codexConnected ? 'is-ready' : ''}`}>
                     {agentIntegration.codexConnected && <Check size={11} strokeWidth={2.5} />}
-                    {agentIntegration.codexConnected ? (langCode === 'tr' ? 'Kanca hazır' : 'Hook ready') : (langCode === 'tr' ? 'Bağlı değil' : 'Not connected')}
+                    {agentIntegration.codexConnected
+                      ? (langCode === 'tr' ? 'Kanca hazır' : 'Hook ready')
+                      : agentIntegration.codexInstalled
+                        ? (langCode === 'tr' ? 'Bağlı değil' : 'Not connected')
+                        : (langCode === 'tr' ? 'Kurulu değil' : 'Not installed')}
                   </span>
                 </div>
                 <p className="agents-lg-card-desc">
@@ -1345,7 +1367,13 @@ export default function SettingsApp() {
                 </p>
                 <div className="agents-lg-card-detail">
                   <span>{langCode === 'tr' ? 'Yerel kanca' : 'Local hook'}</span>
-                  <code>{agentIntegration.codexConnected ? (langCode === 'tr' ? 'Kuruldu — Codex’i yeniden başlatın' : 'Installed — restart Codex') : '~/.codex/hooks.json'}</code>
+                  <code>
+                    {agentIntegration.codexConnected
+                      ? (langCode === 'tr' ? 'Kuruldu — Codex’i yeniden başlatın' : 'Installed — restart Codex')
+                      : agentIntegration.codexInstalled
+                        ? '~/.codex/hooks.json'
+                        : (langCode === 'tr' ? 'Bu PC’de Codex bulunamadı' : 'Codex not found on this PC')}
+                  </code>
                 </div>
               </section>
 
@@ -1358,7 +1386,11 @@ export default function SettingsApp() {
                   </div>
                   <span className={`agents-lg-status-pill ${agentIntegration.antigravityConnected ? 'is-ready' : ''}`}>
                     {agentIntegration.antigravityConnected && <Check size={11} strokeWidth={2.5} />}
-                    {agentIntegration.antigravityConnected ? (langCode === 'tr' ? 'Kanca hazır' : 'Hook ready') : (langCode === 'tr' ? 'Bağlı değil' : 'Not connected')}
+                    {agentIntegration.antigravityConnected
+                      ? (langCode === 'tr' ? 'Kanca hazır' : 'Hook ready')
+                      : agentIntegration.antigravityInstalled
+                        ? (langCode === 'tr' ? 'Bağlı değil' : 'Not connected')
+                        : (langCode === 'tr' ? 'Kurulu değil' : 'Not installed')}
                   </span>
                 </div>
                 <p className="agents-lg-card-desc">
@@ -1366,7 +1398,13 @@ export default function SettingsApp() {
                 </p>
                 <div className="agents-lg-card-detail">
                   <span>{langCode === 'tr' ? 'Genel kanca' : 'Global hook'}</span>
-                  <code>{agentIntegration.antigravityConnected ? (langCode === 'tr' ? 'Kuruldu — Antigravity’yi yeniden başlatın' : 'Installed — restart Antigravity') : '~/.gemini/config/hooks.json'}</code>
+                  <code>
+                    {agentIntegration.antigravityConnected
+                      ? (langCode === 'tr' ? 'Kuruldu — Antigravity’yi yeniden başlatın' : 'Installed — restart Antigravity')
+                      : agentIntegration.antigravityInstalled
+                        ? '~/.gemini/config/hooks.json'
+                        : (langCode === 'tr' ? 'Bu PC’de Antigravity bulunamadı' : 'Antigravity not found on this PC')}
+                  </code>
                 </div>
                 <div className="agents-lg-card-actions">
                   <button type="button" className="agents-lg-btn-primary" onClick={chooseAntigravityIde}>
@@ -1377,6 +1415,37 @@ export default function SettingsApp() {
                       <ExternalLink size={13} /> {langCode === 'tr' ? 'IDE’yi aç' : 'Open IDE'}
                     </button>
                   )}
+                </div>
+              </section>
+
+              <section className="agents-lg-card">
+                <div className="agents-lg-card-head">
+                  <span className="ai-badge-icon lg claude"><ProviderSymbol provider="claude" size={20} /></span>
+                  <div className="agents-lg-card-title">
+                    <strong>Claude Code</strong>
+                    <span>CLI / Terminal / IDE</span>
+                  </div>
+                  <span className={`agents-lg-status-pill ${agentIntegration.claudeConnected ? 'is-ready' : ''}`}>
+                    {agentIntegration.claudeConnected && <Check size={11} strokeWidth={2.5} />}
+                    {agentIntegration.claudeConnected
+                      ? (langCode === 'tr' ? 'Kanca hazır' : 'Hook ready')
+                      : agentIntegration.claudeInstalled
+                        ? (langCode === 'tr' ? 'Bağlı değil' : 'Not connected')
+                        : (langCode === 'tr' ? 'Kurulu değil' : 'Not installed')}
+                  </span>
+                </div>
+                <p className="agents-lg-card-desc">
+                  {langCode === 'tr' ? 'Claude Code düşünmeye başladığında ve yanıt verdiğinde Ada’dan anında haberdar olun.' : 'Get an instant Island signal when Claude Code starts thinking and replies.'}
+                </p>
+                <div className="agents-lg-card-detail">
+                  <span>{langCode === 'tr' ? 'Yerel kanca' : 'Local hook'}</span>
+                  <code>
+                    {agentIntegration.claudeConnected
+                      ? (langCode === 'tr' ? 'Kuruldu — Claude Code’u yeniden başlatın' : 'Installed — restart Claude Code')
+                      : agentIntegration.claudeInstalled
+                        ? '~/.claude/settings.json'
+                        : (langCode === 'tr' ? 'Bu PC’de Claude Code bulunamadı' : 'Claude Code not found on this PC')}
+                  </code>
                 </div>
               </section>
             </div>
@@ -1433,6 +1502,7 @@ export default function SettingsApp() {
               )}
             </section>
 
+            {/* Google hesabı (BAĞLI HESAPLAR) geçici olarak yorum satırına alındı
             <span className="section-eyebrow">{langCode === 'tr' ? 'BAĞLI HESAPLAR' : 'LINKED'}</span>
             <div className="home-lg-glass-card settings-card">
               <div className="settings-row">
@@ -1577,6 +1647,7 @@ export default function SettingsApp() {
                 </button>
               </div>
             </div>
+            */}
 
             <span className="section-eyebrow" style={{ marginTop: 22 }}>
               {langCode === 'tr' ? 'KODLAMA YAPAY ZEKASI' : 'CODING AI'}

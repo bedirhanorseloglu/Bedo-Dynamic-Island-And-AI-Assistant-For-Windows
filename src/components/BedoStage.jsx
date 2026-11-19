@@ -82,6 +82,7 @@ export default function BedoStage({
   question,
   hasApiKey = true,
   activeProvider = null,
+  pythonBootstrapStatus = null,
   langCode = 'tr',
   onQuestionChange,
   onSubmit,
@@ -164,12 +165,22 @@ export default function BedoStage({
           ? 'error'
           : 'listening';
 
+  const isBootstrappingVoice =
+    !running &&
+    activeProvider === 'gemini' &&
+    (pythonBootstrapStatus?.state === 'downloading-python' ||
+      pythonBootstrapStatus?.state === 'installing-deps');
+
   const statusText = !running
-    ? isTextOnlyMode
-      ? activeProvider === 'openai'
-        ? (langCode === 'tr' ? 'GPT · Metin Modu' : 'GPT · Text Mode')
-        : (langCode === 'tr' ? 'Claude · Metin Modu' : 'Claude · Text Mode')
-      : (langCode === 'tr' ? 'Çevrimdışı' : 'Offline')
+    ? isBootstrappingVoice
+      ? (langCode === 'tr' ? 'Metin Hazır · Ses kuruluyor' : 'Text Ready · Setting up voice')
+      : activeProvider === 'gemini'
+        ? (langCode === 'tr' ? 'Gemini · Metin Modu' : 'Gemini · Text Mode')
+        : isTextOnlyMode
+          ? activeProvider === 'openai'
+            ? (langCode === 'tr' ? 'GPT · Metin Modu' : 'GPT · Text Mode')
+            : (langCode === 'tr' ? 'Claude · Metin Modu' : 'Claude · Text Mode')
+          : (langCode === 'tr' ? 'Çevrimdışı' : 'Offline')
     : paused
       ? (langCode === 'tr' ? 'Uyku Modu' : 'Sleep Mode')
       : STATE_LABELS[jarvisState] || jarvisState;

@@ -146,11 +146,34 @@ async function ensurePythonRuntimeBackground(userDataDir, onStatus) {
       await runHidden(pythonExe, [getPipPath, '--no-warn-script-location'], { timeout: 180000 });
       try { fs.unlinkSync(getPipPath); } catch {}
 
-      await runHidden(pythonExe, ['-m', 'pip', 'install', '--no-warn-script-location', 'SpeechRecognition'], { timeout: 180000 });
+      const corePkgs = [
+        'google-genai',
+        'pyaudio',
+        'psutil',
+        'Pillow',
+        'requests',
+        'mss',
+        'pyperclip',
+        'pyautogui',
+        'vosk',
+        'webrtcvad-wheels',
+      ];
+      await runHidden(
+        pythonExe,
+        ['-m', 'pip', 'install', '--prefer-binary', '--no-warn-script-location', ...corePkgs],
+        { timeout: 420000 }
+      );
 
-      const reqPath = resolveRequirementsPath();
-      if (reqPath) {
-        await runHidden(pythonExe, ['-m', 'pip', 'install', '--no-warn-script-location', '-r', reqPath], { timeout: 600000 });
+      // Optional extras (webcam/noise-cancel/whisper) — never block core voice startup if one fails
+      const optionalPkgs = ['opencv-python', 'SpeechRecognition', 'pyrnnoise', 'faster-whisper'];
+      for (const pkg of optionalPkgs) {
+        try {
+          await runHidden(
+            pythonExe,
+            ['-m', 'pip', 'install', '--prefer-binary', '--no-warn-script-location', pkg],
+            { timeout: 180000 }
+          );
+        } catch {}
       }
 
       fs.writeFileSync(markerFile, JSON.stringify({ version: 1, pythonExe, installedAt: new Date().toISOString() }, null, 2), 'utf8');
