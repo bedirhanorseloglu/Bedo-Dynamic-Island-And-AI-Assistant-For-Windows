@@ -2242,6 +2242,7 @@ export default function App() {
   const [focusGuardPrompt, setFocusGuardPrompt] = useState(null);
   const [showIslandWelcome, setShowIslandWelcome] = useState(false);
   const [updateBanner, setUpdateBanner] = useState(null);
+  const [updateState, setUpdateState] = useState({ state: 'idle', version: '', percent: 0 });
   const wasOnboardingIncompleteRef = useRef(false);
   const focusGuardCooldownRef = useRef({});
   const focusGuardLastAppRef = useRef('');
@@ -3011,8 +3012,15 @@ export default function App() {
     });
 
     const unsubUpdate = window.twocode.onUpdateStatus?.((status) => {
-      if (status?.state === 'downloaded' && status?.version) {
+      if (!status || typeof status !== 'object') return;
+      setUpdateState((prev) => ({ ...prev, ...status }));
+      if (status.state === 'downloaded' && status.version) {
         setUpdateBanner({ version: status.version });
+      }
+      if (status.state === 'up-to-date') {
+        setTimeout(() => {
+          setUpdateState((prev) => (prev.state === 'up-to-date' ? { ...prev, state: 'idle' } : prev));
+        }, 3500);
       }
     });
 
@@ -4948,16 +4956,53 @@ export default function App() {
 
                     <button
                       type="button"
-                      className="popover-tile-btn"
-                      onClick={(e) => {
+                      className={`popover-tile-btn update-tile ${
+                        updateState.state === 'downloaded'
+                          ? 'is-update-ready'
+                          : updateState.state === 'checking' || updateState.state === 'downloading'
+                            ? 'is-update-busy'
+                            : ''
+                      }`}
+                      onClick={async (e) => {
                         e.stopPropagation();
                         playRoboSound('tap', islandSettings.soundEffects !== false);
-                        window.twocode?.openSettingsWindow?.('news');
-                        setShowMenu(false);
+                        if (updateState.state === 'downloaded') {
+                          window.twocode?.installUpdate?.();
+                          return;
+                        }
+                        if (updateState.state === 'checking' || updateState.state === 'downloading') {
+                          return;
+                        }
+                        setUpdateState((prev) => ({ ...prev, state: 'checking' }));
+                        const res = await window.twocode?.checkForUpdates?.();
+                        if (!res?.ok) {
+                          setUpdateState((prev) => ({ ...prev, state: 'up-to-date' }));
+                          setTimeout(() => {
+                            setUpdateState((prev) => (prev.state === 'up-to-date' ? { ...prev, state: 'idle' } : prev));
+                          }, 3000);
+                        }
                       }}
                     >
-                      <RotateCw size={17} strokeWidth={2} />
-                      <span>{t('menu.updates')}</span>
+                      <RotateCw
+                        size={17}
+                        strokeWidth={2}
+                        className={
+                          updateState.state === 'checking' || updateState.state === 'downloading'
+                            ? 'spin-icon'
+                            : ''
+                        }
+                      />
+                      <span>
+                        {updateState.state === 'downloaded'
+                          ? (langCode === 'tr' ? `v${updateState.version} Kur` : `Install v${updateState.version}`)
+                          : updateState.state === 'downloading'
+                            ? `%${updateState.percent || 0}`
+                            : updateState.state === 'checking'
+                              ? (langCode === 'tr' ? 'Kontrol...' : 'Checking...')
+                              : updateState.state === 'up-to-date'
+                                ? (langCode === 'tr' ? 'Güncel' : 'Up to date')
+                                : t('menu.updates')}
+                      </span>
                     </button>
 
                     <button

@@ -17499,6 +17499,21 @@ body .robo-eyes-wrap.thinking .robo-eye {
   transform: translateY(-1px);
 }
 
+.popover-tile-btn.update-tile.is-update-ready {
+  background: rgba(56, 189, 248, 0.18);
+  border-color: rgba(125, 211, 252, 0.45);
+  color: #e0f2fe;
+}
+
+.popover-tile-btn.update-tile .spin-icon {
+  animation: updateTileSpin 1s linear infinite;
+}
+
+@keyframes updateTileSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 .island-update-pill {
   position: absolute;
   top: 10px;
