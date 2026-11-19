@@ -3284,7 +3284,7 @@ ipcMain.handle('transcribe-audio', async (_event, payload = {}) => {
 
   const geminiKey = userSettings.geminiApiKey || process.env.GEMINI_API_KEY;
   if (geminiKey) {
-    for (const modelId of ['gemini-2.5-flash', 'gemini-flash-latest']) {
+    for (const modelId of ['gemini-3.8-flash', 'gemini-flash-latest']) {
       try {
         const resp = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent`,
