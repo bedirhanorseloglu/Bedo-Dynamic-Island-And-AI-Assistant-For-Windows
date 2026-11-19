@@ -1,0 +1,3197 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bedo — Windows için Liquid Glass Dynamic Island</title>
+  <link rel="icon" type="image/png" href="icon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700;800&family=Oswald:wght@600;700&display=swap"
+    rel="stylesheet"
+  />
+  <style>
+    /* ==========================================================================
+       MONOCHROME BLACK-TO-WHITE LIQUID GLASS × HALO ARCHITECTURE
+       - Background: Deep Obsidian (#030305) with Luminous Silver-White Gradients
+       - Surfaces: True Apple Liquid Glass (backdrop-filter blur + specular rim)
+       - Physics: Emil Kowalski EASE_OUT_PUNCH cubic-bezier(0.16, 1, 0.3, 1)
+       - Zero sparkles, zero decorative dots
+       ========================================================================== */
+    :root {
+      /* EXACT BEDO APP TOKENS (src/styles.css, src/settings.css, src/typography.css) */
+      --font-family-ui: 'Inter', 'Segoe UI', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      --font-family-number: 'Oswald', sans-serif;
+      --font-family-code: 'JetBrains Mono', monospace;
+      --ease-out-punch: cubic-bezier(0.16, 1, 0.3, 1);
+      --ease-in-out-move: cubic-bezier(0.77, 0, 0.175, 1);
+      --bg-black: #05070b;
+      --ink-white: #ffffff;
+      --ink-silver: rgba(255, 255, 255, 0.64);
+      --ink-muted: rgba(255, 255, 255, 0.42);
+      --bedo-blue: #89b4ff;
+      --bedo-green: #75ffb0;
+      --bedo-gold: #ffd479;
+      --glass-surface:
+        linear-gradient(172deg, rgba(255, 255, 255, 0.055) 0%, rgba(255, 255, 255, 0.015) 26%, transparent 52%),
+        linear-gradient(180deg, rgba(10, 13, 20, 0.88) 0%, rgba(7, 9, 15, 0.94) 100%);
+      --glass-border: rgba(255, 255, 255, 0.14);
+      --glass-highlight:
+        inset 0 1px 0 rgba(255, 255, 255, 0.18),
+        inset 0 -1px 0 rgba(255, 255, 255, 0.05);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: geometricPrecision;
+    }
+
+    html {
+      scroll-behavior: smooth;
+      background: var(--bg-black);
+      color: var(--ink-white);
+      font-family: var(--font-family-ui);
+    }
+
+    body {
+      /* Rich Multi-Layered Obsidian Liquid Glass Depth Canvas */
+      background:
+        radial-gradient(ellipse 80% 48% at 50% -4%, rgba(168, 198, 255, 0.14) 0%, rgba(110, 145, 220, 0.045) 48%, transparent 74%),
+        radial-gradient(circle at 18% 28%, rgba(148, 163, 184, 0.06) 0%, transparent 44%),
+        radial-gradient(circle at 82% 58%, rgba(120, 155, 235, 0.065) 0%, transparent 46%),
+        radial-gradient(ellipse 70% 50% at 50% 102%, rgba(255, 255, 255, 0.04) 0%, transparent 65%),
+        linear-gradient(180deg, #04060a 0%, #090d16 32%, #060910 68%, #030407 100%);
+      min-height: 100vh;
+      overflow-x: hidden;
+      position: relative;
+    }
+
+    /* Atmospheric Volumetric Glow + Subtle Film Grain for True Glass Refraction */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: -15%;
+      z-index: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(42% 36% at 24% 22%, rgba(180, 205, 255, 0.085), transparent 70%),
+        radial-gradient(38% 34% at 76% 62%, rgba(139, 92, 246, 0.065), transparent 72%),
+        radial-gradient(45% 32% at 50% 88%, rgba(255, 255, 255, 0.04), transparent 70%);
+      filter: blur(60px);
+      animation: ambientDepthDrift 22s ease-in-out infinite alternate;
+    }
+
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      pointer-events: none;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.032'/%3E%3C/svg%3E");
+      box-shadow: inset 0 0 160px rgba(0, 0, 0, 0.72);
+    }
+
+    @keyframes ambientDepthDrift {
+      0%   { transform: translate3d(0, 0, 0) scale(1); }
+      100% { transform: translate3d(-2.5%, 2%, 0) scale(1.06); }
+    }
+
+    /* Architectural Depth Hairlines, Perspective Rings & Studio Light Beams */
+    .bg-depth-lines {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      overflow: hidden;
+    }
+    .bg-depth-lines::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(to right, rgba(255, 255, 255, 0.038) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.038) 1px, transparent 1px),
+        linear-gradient(118deg, transparent 34%, rgba(185, 210, 255, 0.035) 48%, rgba(255, 255, 255, 0.025) 50%, transparent 64%);
+      background-size: 72px 72px, 72px 72px, 100% 100%;
+      -webkit-mask-image: radial-gradient(ellipse 82% 68% at 50% 24%, #000 18%, rgba(0, 0, 0, 0.45) 54%, transparent 86%);
+      mask-image: radial-gradient(ellipse 82% 68% at 50% 24%, #000 18%, rgba(0, 0, 0, 0.45) 54%, transparent 86%);
+    }
+    .bg-depth-lines::after {
+      content: '';
+      position: absolute;
+      top: -220px;
+      left: 50%;
+      width: 1180px;
+      height: 1180px;
+      transform: translateX(-50%);
+      border-radius: 50%;
+      background:
+        repeating-radial-gradient(
+          circle at center,
+          transparent 0px,
+          transparent 158px,
+          rgba(255, 255, 255, 0.032) 159px,
+          transparent 160px
+        );
+      -webkit-mask-image: radial-gradient(circle at center, #000 20%, transparent 72%);
+      mask-image: radial-gradient(circle at center, #000 20%, transparent 72%);
+    }
+
+    button,
+    .pressable {
+      cursor: pointer;
+      user-select: none;
+      transition:
+        transform 140ms var(--ease-out-punch),
+        background 180ms var(--ease-out-punch),
+        border-color 180ms var(--ease-out-punch),
+        box-shadow 200ms var(--ease-out-punch),
+        opacity 180ms var(--ease-out-punch);
+    }
+    button:active,
+    .pressable:active {
+      transform: scale(0.965) !important;
+    }
+
+    .container {
+      position: relative;
+      z-index: 2;
+      max-width: 1140px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* Silver-White Monochrome Gradient Text */
+    .silver-gradient-text {
+      background: linear-gradient(180deg, #ffffff 0%, #e4e4e7 48%, #71717a 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    /* ==========================================================================
+       OFFICIAL BEDO SQUIRCLE LOGO (Matches build/icon.png)
+       ========================================================================== */
+    .bedo-logo-squircle {
+      position: relative;
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
+      background: linear-gradient(180deg, #272b33 0%, #101216 55%, #090a0d 100%);
+      border: 1px solid rgba(255, 255, 255, 0.24);
+      box-shadow:
+        inset 0 1px 1px rgba(255, 255, 255, 0.32),
+        0 4px 12px rgba(0, 0, 0, 0.65);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+    .bedo-logo-squircle::before {
+      content: '';
+      position: absolute;
+      top: -38%;
+      left: -15%;
+      right: -15%;
+      height: 82%;
+      border-radius: 50%;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.18) 0%, rgba(255, 255, 255, 0.04) 100%);
+      pointer-events: none;
+    }
+    .bedo-logo-visor {
+      position: relative;
+      z-index: 1;
+      width: 20px;
+      height: 11px;
+      border-radius: 999px;
+      background: #040507;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 3.5px;
+    }
+    .bedo-logo-eye {
+      width: 3px;
+      height: 5.5px;
+      border-radius: 999px;
+      background: #ffffff;
+      box-shadow: 0 0 6px rgba(255, 255, 255, 0.9);
+      transition: transform 80ms linear;
+    }
+    .bedo-logo-squircle.lg {
+      width: 54px;
+      height: 54px;
+      border-radius: 16px;
+    }
+    .bedo-logo-squircle.lg .bedo-logo-visor {
+      width: 31px;
+      height: 17px;
+      gap: 6px;
+    }
+    .bedo-logo-squircle.lg .bedo-logo-eye {
+      width: 4.5px;
+      height: 8.5px;
+    }
+
+    /* ==========================================================================
+       FLOATING LIQUID GLASS PILL NAVBAR (Halo + 21st.dev)
+       ========================================================================== */
+    .navbar-fixed {
+      position: fixed;
+      top: 18px;
+      inset-inline: 0;
+      z-index: 100;
+      display: flex;
+      justify-content: center;
+      padding: 0 20px;
+    }
+
+    .navbar-shell {
+      position: relative;
+      width: 100%;
+      max-width: 1080px;
+      height: 56px;
+      padding: 0 10px 0 16px;
+      border-radius: 999px;
+      background: linear-gradient(
+        172deg,
+        rgba(255, 255, 255, 0.11) 0%,
+        rgba(255, 255, 255, 0.03) 40%,
+        rgba(10, 11, 15, 0.72) 100%
+      );
+      backdrop-filter: blur(32px) saturate(190%);
+      -webkit-backdrop-filter: blur(32px) saturate(190%);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      box-shadow:
+        var(--glass-highlight),
+        0 20px 50px rgba(0, 0, 0, 0.65);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .navbar-shell::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 42px;
+      right: 42px;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+      pointer-events: none;
+    }
+
+    .brand-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: #fff;
+    }
+    .brand-name {
+      font-size: 17px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+    }
+    .brand-ver {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10.5px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      color: rgba(255, 255, 255, 0.78);
+    }
+
+    .magnetic-nav {
+      position: relative;
+      display: flex;
+      align-items: center;
+      padding: 4px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.035);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .magnetic-bubble {
+      position: absolute;
+      top: 4px;
+      bottom: 4px;
+      left: 4px;
+      width: 0;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.14);
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28);
+      transition:
+        transform 240ms var(--ease-out-punch),
+        width 240ms var(--ease-out-punch),
+        opacity 180ms var(--ease-out-punch);
+      opacity: 0;
+      pointer-events: none;
+    }
+    .magnetic-link {
+      position: relative;
+      z-index: 1;
+      padding: 6px 15px;
+      font-size: 13px;
+      font-weight: 600;
+      color: rgba(255, 255, 255, 0.7);
+      text-decoration: none;
+      border-radius: 999px;
+      transition: color 160ms var(--ease-out-punch);
+    }
+    .magnetic-link:hover {
+      color: #ffffff;
+    }
+
+    .btn-white-shimmer {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 20px;
+      border-radius: 999px;
+      overflow: hidden;
+      background: linear-gradient(180deg, #ffffff 0%, #e4e4e7 100%);
+      color: #050507;
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: -0.015em;
+      text-decoration: none;
+      box-shadow:
+        inset 0 1px 0 #ffffff,
+        0 10px 28px rgba(255, 255, 255, 0.18);
+    }
+    .btn-white-shimmer .sheen {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(110deg, transparent 20%, rgba(255, 255, 255, 0.8) 50%, transparent 80%);
+      transform: translateX(-120%);
+      transition: transform 650ms var(--ease-out-punch);
+      pointer-events: none;
+    }
+    .btn-white-shimmer:hover .sheen {
+      transform: translateX(120%);
+    }
+
+    .btn-glass-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      padding: 13px 22px;
+      border-radius: 999px;
+      background: linear-gradient(170deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.03) 100%);
+      backdrop-filter: blur(24px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28);
+      color: #ffffff;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 700;
+      text-decoration: none;
+    }
+    .btn-glass-pill:hover {
+      border-color: rgba(255, 255, 255, 0.36);
+      background: linear-gradient(170deg, rgba(255, 255, 255, 0.18) 0%, rgba(255, 255, 255, 0.05) 100%);
+    }
+
+    /* ==========================================================================
+       APPLE / AWWWARDS CENTERED HERO + LIVE LIQUID GLASS STAGE
+       ========================================================================== */
+    .hero-grid {
+      padding-top: 132px;
+      padding-bottom: 56px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      gap: 40px;
+      perspective: 1400px;
+    }
+
+    .hero-eyebrow-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 5px 14px 5px 6px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.06);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
+      font-size: 12.5px;
+      font-weight: 600;
+      color: rgba(255, 255, 255, 0.85);
+      text-decoration: none;
+      margin-bottom: 24px;
+    }
+    .hero-new-badge {
+      padding: 3px 9px;
+      border-radius: 999px;
+      background: #ffffff;
+      color: #050507;
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .hero-h1 {
+      font-size: clamp(46px, 6.2vw, 76px);
+      font-weight: 800;
+      letter-spacing: -0.048em;
+      line-height: 1.02;
+      color: #ffffff;
+      margin-bottom: 20px;
+    }
+    .hero-rotate-wrap {
+      position: relative;
+      display: inline-block;
+    }
+    .hero-rotate-word {
+      display: inline-block;
+      background: linear-gradient(180deg, #ffffff 0%, #d4d4d8 60%, #71717a 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      animation: wordBlurReveal 380ms var(--ease-out-punch) forwards;
+    }
+    @keyframes wordBlurReveal {
+      0% {
+        opacity: 0;
+        transform: translateY(10px) scale(0.97);
+        filter: blur(8px);
+      }
+      100% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+        filter: blur(0px);
+      }
+    }
+    .hero-swash {
+      display: block;
+      width: 100%;
+      height: 12px;
+      margin-top: 2px;
+    }
+
+    .hero-lead {
+      font-size: 18px;
+      line-height: 1.55;
+      color: var(--ink-silver);
+      max-width: 560px;
+      margin: 0 auto 28px;
+    }
+
+    .hero-actions {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 22px;
+    }
+
+    .hero-meta-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--ink-muted);
+    }
+
+    /* Bedo Native Obsidian Glass Frame */
+    .hero-stage-card {
+      --music-accent-rgb: 244, 63, 94;
+      --music-accent-hex: #f43f5e;
+      position: relative;
+      width: 100%;
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 24px 22px;
+      border-radius: 26px;
+      background:
+        linear-gradient(172deg, rgba(255, 255, 255, 0.055) 0%, rgba(255, 255, 255, 0.015) 26%, transparent 52%),
+        linear-gradient(180deg, rgba(10, 13, 20, 0.92) 0%, rgba(7, 9, 15, 0.96) 100%);
+      backdrop-filter: blur(22px) saturate(165%);
+      -webkit-backdrop-filter: blur(22px) saturate(165%);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.18),
+        inset 0 -1px 0 rgba(255, 255, 255, 0.05),
+        0 40px 100px rgba(0, 0, 0, 0.85);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      transform-style: preserve-3d;
+      will-change: transform;
+      transition: transform 140ms ease-out;
+    }
+    .hero-stage-glow {
+      position: absolute;
+      inset: -24px;
+      border-radius: 44px;
+      background: radial-gradient(circle at 50% 45%, rgba(137, 180, 255, 0.09), transparent 68%);
+      filter: blur(48px);
+      pointer-events: none;
+      z-index: -1;
+    }
+
+    /* Mode Switcher inside Hero Stage */
+    .stage-mode-bar {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+    }
+    .stage-mode-btn {
+      padding: 6px 12px;
+      border-radius: 999px;
+      border: none;
+      background: transparent;
+      color: rgba(255, 255, 255, 0.62);
+      font-family: inherit;
+      font-size: 11.5px;
+      font-weight: 700;
+    }
+    .stage-mode-btn.active {
+      background: rgba(255, 255, 255, 0.16);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      color: #ffffff;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3);
+    }
+
+    /* THE REAL BEDO DYNAMIC ISLAND (Exact src/styles.css Bottom-Edge Media Ambient Only!) */
+    .dynamic-island {
+      position: relative;
+      transform-origin: top center;
+      width: 100%;
+      max-width: 580px;
+      height: 278px;
+      border-radius: 26px;
+      background:
+        radial-gradient(
+          ellipse 86% 32% at 50% 106%,
+          rgba(var(--music-accent-rgb), 0.22) 0%,
+          rgba(var(--music-accent-rgb), 0.07) 48%,
+          transparent 74%
+        ),
+        linear-gradient(
+          172deg,
+          rgba(255, 255, 255, 0.085) 0%,
+          rgba(255, 255, 255, 0.02) 32%,
+          rgba(7, 8, 12, 0.94) 100%
+        );
+      backdrop-filter: blur(36px) saturate(195%);
+      -webkit-backdrop-filter: blur(36px) saturate(195%);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      box-shadow:
+        inset 0 1px 1.5px rgba(255, 255, 255, 0.28),
+        inset 0 -1px 10px rgba(var(--music-accent-rgb), 0.15),
+        0 28px 70px rgba(0, 0, 0, 0.85);
+      transition:
+        width 280ms var(--ease-out-punch),
+        height 280ms var(--ease-out-punch),
+        border-radius 280ms var(--ease-out-punch),
+        background 420ms ease,
+        box-shadow 420ms ease;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 12px 16px 8px;
+    }
+    .dynamic-island::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 10%;
+      right: 10%;
+      height: 1.5px;
+      background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(var(--music-accent-rgb), 0.85) 50%,
+        transparent 100%
+      );
+      pointer-events: none;
+      transition: background 420ms ease;
+    }
+    .dynamic-island.state-idle {
+      width: 164px;
+      height: 34px;
+      border-radius: 999px;
+      padding: 0 14px;
+      justify-content: center;
+      align-items: center;
+      cursor: pointer;
+    }
+    .dynamic-island.state-bedo-live {
+      width: 320px;
+      height: 44px;
+      border-radius: 999px;
+      padding: 0 16px;
+      justify-content: center;
+      cursor: pointer;
+    }
+    .dynamic-island.state-music-bar {
+      width: var(--karaoke-bar-w, 350px);
+      max-width: 100%;
+      height: 38px;
+      border-radius: 999px;
+      padding: 0 14px;
+      justify-content: center;
+      cursor: pointer;
+    }
+
+    .layer-compact {
+      display: none;
+      width: 100%;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .dynamic-island.state-idle .layer-idle-view,
+    .dynamic-island.state-bedo-live .layer-live-view,
+    .dynamic-island.state-music-bar .layer-karaoke-view {
+      display: flex;
+    }
+    .dynamic-island.state-idle .layer-expanded-view,
+    .dynamic-island.state-bedo-live .layer-expanded-view,
+    .dynamic-island.state-music-bar .layer-expanded-view {
+      display: none;
+    }
+
+    .layer-expanded-view {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      flex: 1 1 auto;
+      min-height: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Real Dome-Shaped RoboEyes Silhouette */
+    .robo-character {
+      position: relative;
+      width: 36px;
+      height: 20px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .robo-body {
+      width: 34px;
+      height: 18px;
+      border-radius: 15px 15px 8px 8px;
+      background: linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.24) 0%,
+        rgba(38, 42, 52, 0.72) 48%,
+        rgba(10, 13, 20, 0.92) 100%
+      );
+      border: 1.3px solid rgba(255, 255, 255, 0.36);
+      box-shadow:
+        inset 0 1.5px 2px rgba(255, 255, 255, 0.48),
+        0 4px 12px rgba(0, 0, 0, 0.55);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .robo-visor {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    .robo-eye {
+      width: 4.2px;
+      height: 8px;
+      border-radius: 999px;
+      background: #ffffff;
+      box-shadow: 0 0 8px rgba(255, 255, 255, 0.95);
+      transition: transform 80ms linear;
+    }
+
+    .island-topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 24px;
+    }
+    .topbar-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 10.5px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      color: rgba(255, 255, 255, 0.72);
+    }
+
+    .hero-clock-display {
+      font-family: 'Oswald', sans-serif;
+      font-size: 92px;
+      font-weight: 700;
+      line-height: 0.92;
+      letter-spacing: -0.02em;
+      color: #ffffff;
+      text-align: center;
+      margin: 2px 0 8px;
+    }
+
+    .home-cards-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+    .mini-glass-card {
+      height: 54px;
+      padding: 8px 11px;
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      text-align: left;
+    }
+    .mini-glass-card:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.28);
+    }
+    .card-meta {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .card-meta strong {
+      font-size: 12px;
+      font-weight: 700;
+      color: #fff;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .card-meta span {
+      font-size: 10px;
+      font-weight: 600;
+      color: rgba(255, 255, 255, 0.6);
+      white-space: nowrap;
+    }
+    .round-btn {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      border: 1px solid rgba(255, 255, 255, 0.24);
+      background: rgba(255, 255, 255, 0.12);
+      color: #fff;
+      font-size: 10px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .tab-pane {
+      display: none;
+      animation: tabBlurEnter 240ms var(--ease-out-punch) forwards;
+    }
+    .tab-pane.active {
+      display: block;
+    }
+    @keyframes tabBlurEnter {
+      0% {
+        opacity: 0;
+        transform: translateX(12px) scale(0.96);
+        filter: blur(6px);
+      }
+      100% {
+        opacity: 1;
+        transform: translateX(0) scale(1);
+        filter: blur(0px);
+      }
+    }
+
+    .island-dock {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 32px;
+      margin-top: auto;
+      flex-shrink: 0;
+    }
+    .dock-plus-btn {
+      width: 28px;
+      height: 28px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .dock-nav {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 3px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.09);
+    }
+    .dock-tab {
+      padding: 4px 8px;
+      border-radius: 999px;
+      border: none;
+      background: transparent;
+      color: rgba(255, 255, 255, 0.56);
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+    }
+    .dock-tab.active {
+      padding: 4px 11px;
+      background: linear-gradient(155deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.08));
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28);
+      color: #fff;
+    }
+
+    /* 3 Halo-Style Floating Liquid Glass Notification Badges */
+    .floating-glass-badge {
+      position: absolute;
+      padding: 9px 14px;
+      border-radius: 16px;
+      background: linear-gradient(165deg, rgba(255, 255, 255, 0.16) 0%, rgba(15, 16, 22, 0.8) 100%);
+      backdrop-filter: blur(24px) saturate(190%);
+      -webkit-backdrop-filter: blur(24px) saturate(190%);
+      border: 1px solid rgba(255, 255, 255, 0.24);
+      box-shadow:
+        inset 0 1px 1px rgba(255, 255, 255, 0.36),
+        0 18px 40px rgba(0, 0, 0, 0.72);
+      font-size: 12px;
+      font-weight: 700;
+      color: #ffffff;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      pointer-events: none;
+      z-index: 10;
+      will-change: transform;
+    }
+    .badge-tl { top: -16px; left: -12px; animation: floatSlow 4.8s ease-in-out infinite alternate; }
+    .badge-mr { bottom: -16px; right: -12px; animation: floatSlow 5.4s ease-in-out infinite alternate-reverse; }
+    .badge-bl { bottom: -16px; left: -12px; animation: floatSlow 4.4s ease-in-out infinite alternate; }
+
+    .hero-clock-display {
+      font-family: 'Oswald', sans-serif;
+      font-size: 92px;
+      font-weight: 700;
+      line-height: 0.92;
+      letter-spacing: -0.02em;
+      color: #ffffff;
+      text-align: center;
+      margin: 2px 0 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+    }
+    .clock-colon {
+      display: inline-flex;
+      flex-direction: column;
+      gap: 15px;
+      margin: 0 3px;
+    }
+    .clock-colon i {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 30%, #ffffff 0%, #d4d4d8 65%, #71717a 100%);
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.45);
+      display: block;
+    }
+    @keyframes floatSlow {
+      0% { transform: translateY(0px); }
+      100% { transform: translateY(-7px); }
+    }
+
+    /* ==========================================================================
+       SCROLL-TRIGGERED REVEAL ANIMATIONS (Emil Kowalski scale 0.95 + blur)
+       ========================================================================== */
+    .reveal {
+      opacity: 0;
+      transform: translateY(28px) scale(0.95);
+      filter: blur(6px);
+      transition:
+        opacity 560ms var(--ease-out-punch),
+        transform 560ms var(--ease-out-punch),
+        filter 560ms var(--ease-out-punch);
+    }
+    .reveal.is-visible {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+      filter: blur(0px);
+    }
+    .reveal[data-delay="1"] { transition-delay: 70ms; }
+    .reveal[data-delay="2"] { transition-delay: 140ms; }
+    .reveal[data-delay="3"] { transition-delay: 210ms; }
+    .reveal[data-delay="4"] { transition-delay: 280ms; }
+
+    .eq-bars {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      height: 14px;
+    }
+    .eq-bars span {
+      width: 2.5px;
+      border-radius: 999px;
+      background: #ffffff;
+      animation: eqBounce 600ms ease-in-out infinite alternate;
+    }
+    .eq-bars span:nth-child(1) { height: 6px; animation-delay: 0s; }
+    .eq-bars span:nth-child(2) { height: 13px; animation-delay: 0.12s; }
+    .eq-bars span:nth-child(3) { height: 8px; animation-delay: 0.24s; }
+    .eq-bars span:nth-child(4) { height: 14px; animation-delay: 0.08s; }
+    .eq-bars span:nth-child(5) { height: 7px; animation-delay: 0.2s; }
+    @keyframes eqBounce {
+      0% { transform: scaleY(0.45); }
+      100% { transform: scaleY(1.15); }
+    }
+
+    /* Karaoke 10-Song Playlist Pills & Synced Lyric Highlight */
+    .karaoke-track-pill {
+      padding: 6px 11px;
+      border-radius: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: linear-gradient(165deg, rgba(255, 255, 255, 0.085) 0%, rgba(255, 255, 255, 0.02) 100%);
+      backdrop-filter: blur(18px) saturate(165%);
+      -webkit-backdrop-filter: blur(18px) saturate(165%);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.18),
+        0 6px 16px rgba(0, 0, 0, 0.28);
+      color: rgba(255, 255, 255, 0.78);
+      font-family: inherit;
+      font-size: 11.5px;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .karaoke-track-pill:hover {
+      border-color: rgba(255, 255, 255, 0.26);
+      background: linear-gradient(165deg, rgba(255, 255, 255, 0.13) 0%, rgba(255, 255, 255, 0.035) 100%);
+      color: #ffffff;
+    }
+    .karaoke-track-pill.active {
+      background: linear-gradient(155deg, rgba(var(--music-accent-rgb), 0.3) 0%, rgba(255, 255, 255, 0.06) 100%);
+      border-color: rgba(var(--music-accent-rgb), 0.68);
+      color: #ffffff;
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.32),
+        0 0 22px rgba(var(--music-accent-rgb), 0.3);
+    }
+    .karaoke-lyric-active {
+      color: #ffffff;
+      text-shadow: 0 2px 16px rgba(255, 255, 255, 0.14);
+    }
+
+    /* Exact src/settings.css .ai-lg-voice-grid 1:1 */
+    .ai-lg-voice-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .ai-lg-voice-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 4px;
+      padding: 11px 13px;
+      border-radius: 14px;
+      background: linear-gradient(165deg, rgba(255, 255, 255, 0.07) 0%, rgba(255, 255, 255, 0.018) 100%);
+      backdrop-filter: blur(18px) saturate(165%);
+      -webkit-backdrop-filter: blur(18px) saturate(165%);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+      color: rgba(255, 255, 255, 0.88);
+      text-align: left;
+      cursor: pointer;
+      transition: transform 0.16s cubic-bezier(0.22, 1, 0.36, 1), background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+    }
+    .ai-lg-voice-btn:hover {
+      transform: translateY(-1px);
+      background: linear-gradient(165deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.035) 100%);
+      border-color: rgba(255, 255, 255, 0.24);
+    }
+    .ai-lg-voice-btn.is-active {
+      background: linear-gradient(165deg, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0.045) 100%);
+      border-color: rgba(255, 255, 255, 0.36);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.34), 0 8px 24px rgba(0, 0, 0, 0.45);
+    }
+    .ai-lg-voice-top {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+    }
+    .ai-lg-voice-top strong {
+      font-size: 13px;
+      font-weight: 700;
+      color: rgba(255, 255, 255, 0.96);
+    }
+    .ai-lg-voice-btn span {
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.52);
+    }
+    .ai-lg-voice-btn.is-active span {
+      color: rgba(255, 255, 255, 0.85);
+    }
+    .ai-lg-voice-check {
+      width: 18px;
+      height: 18px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255, 255, 255, 0.18);
+      border: 1px solid rgba(255, 255, 255, 0.42);
+      color: #ffffff;
+    }
+    .ai-lg-voice-check.is-speaking {
+      background: rgba(52, 211, 153, 0.22);
+      border-color: rgba(52, 211, 153, 0.52);
+      color: #6ee7b7;
+      animation: aiVoicePulse 1.1s ease-in-out infinite;
+    }
+    @keyframes aiVoicePulse {
+      0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.45); }
+      50% { transform: scale(1.08); box-shadow: 0 0 0 6px rgba(52, 211, 153, 0); }
+    }
+    @media (max-width: 820px) {
+      .ai-lg-voice-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @keyframes appleLyricEnter {
+      0% { opacity: 0.12; transform: translateY(10px) scale(0.985); filter: blur(4px); }
+      65% { opacity: 1; filter: blur(0px); }
+      100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0px); }
+    }
+    @keyframes appleLyricNextEnter {
+      0% { opacity: 0; transform: translateY(7px); }
+      100% { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes appleCompactLyricEnter {
+      0% { opacity: 0.15; transform: translateY(6px); filter: blur(2px); }
+      100% { opacity: 1; transform: translateY(0); filter: blur(0px); }
+    }
+    .karaoke-active-line {
+      transform-origin: left center;
+      animation: appleLyricEnter 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
+      will-change: transform, opacity, filter;
+    }
+    .karaoke-next-line {
+      animation: appleLyricNextEnter 280ms cubic-bezier(0.22, 1, 0.36, 1) 25ms both;
+      will-change: transform, opacity;
+    }
+    .compact-karaoke-anim {
+      animation: appleCompactLyricEnter 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+      will-change: transform, opacity, filter;
+    }
+
+    /* ==========================================================================
+       HALO-STYLE MONOCHROME LOGO MARQUEE
+       ========================================================================== */
+    .marquee-section {
+      padding: 28px 0 64px;
+      text-align: center;
+    }
+    .marquee-label {
+      font-size: 11.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--ink-muted);
+      margin-bottom: 18px;
+    }
+    .marquee-track-wrap {
+      overflow: hidden;
+      mask-image: linear-gradient(90deg, transparent, #000 15%, #000 85%, transparent);
+      -webkit-mask-image: linear-gradient(90deg, transparent, #000 15%, #000 85%, transparent);
+    }
+    .marquee-track {
+      display: flex;
+      width: max-content;
+      gap: 48px;
+      animation: marqueeScroll 28s linear infinite;
+    }
+    @keyframes marqueeScroll {
+      0% { transform: translateX(0); }
+      100% { transform: translateX(-50%); }
+    }
+    .marquee-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 15px;
+      font-weight: 700;
+      color: rgba(255, 255, 255, 0.52);
+      white-space: nowrap;
+    }
+
+    /* ==========================================================================
+       HALO-STYLE ASYMMETRIC LIQUID GLASS BENTO GRID
+       ========================================================================== */
+    .section {
+      padding: 72px 0;
+    }
+    .section-head {
+      text-align: center;
+      max-width: 700px;
+      margin: 0 auto 48px;
+    }
+    .section-eyebrow {
+      display: inline-block;
+      font-size: 11.5px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: rgba(255, 255, 255, 0.56);
+      margin-bottom: 12px;
+    }
+    .section-h2 {
+      font-size: clamp(34px, 4.6vw, 52px);
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      line-height: 1.06;
+      color: #ffffff;
+    }
+
+    .bento-grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 18px;
+    }
+
+    .glass-card {
+      position: relative;
+      grid-column: span 4;
+      padding: 28px;
+      border-radius: 28px;
+      background: var(--glass-surface);
+      backdrop-filter: blur(32px) saturate(185%);
+      -webkit-backdrop-filter: blur(32px) saturate(185%);
+      border: 1px solid var(--glass-border);
+      box-shadow:
+        var(--glass-highlight),
+        0 24px 60px rgba(0, 0, 0, 0.68);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 20px;
+      overflow: hidden;
+      transition:
+        transform 240ms var(--ease-out-punch),
+        border-color 240ms var(--ease-out-punch);
+    }
+    .glass-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 36px;
+      right: 36px;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.42), transparent);
+      pointer-events: none;
+    }
+    .glass-card:hover {
+      transform: translateY(-4px);
+      border-color: rgba(255, 255, 255, 0.3);
+    }
+    .glass-card::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 260ms ease;
+      background: radial-gradient(360px circle at var(--mx, 50%) var(--my, 0%), rgba(255, 255, 255, 0.075), transparent 65%);
+    }
+    .glass-card:hover::after {
+      opacity: 1;
+    }
+    .glass-card.span-7 { grid-column: span 7; }
+    .glass-card.span-5 { grid-column: span 5; }
+    .glass-card.span-6 { grid-column: span 6; }
+
+    .card-title {
+      font-size: 24px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      color: #ffffff;
+      margin-bottom: 6px;
+    }
+    .card-desc {
+      font-size: 14.5px;
+      line-height: 1.5;
+      color: var(--ink-silver);
+    }
+
+    /* Multi-Profession Bedo Buddy Widget inside Bento */
+    .prof-pills-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .prof-pill {
+      padding: 5px 11px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(255, 255, 255, 0.05);
+      color: rgba(255, 255, 255, 0.68);
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .prof-pill.active {
+      background: linear-gradient(165deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.06) 100%);
+      border-color: rgba(255, 255, 255, 0.42);
+      color: #ffffff;
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.36),
+        0 6px 18px rgba(0, 0, 0, 0.38);
+      backdrop-filter: blur(16px);
+    }
+
+    .buddy-showcase-box {
+      position: relative;
+      padding: 16px;
+      border-radius: 20px;
+      background: linear-gradient(168deg, rgba(255, 255, 255, 0.065) 0%, rgba(255, 255, 255, 0.015) 38%, rgba(6, 8, 12, 0.78) 100%);
+      backdrop-filter: blur(24px) saturate(170%);
+      -webkit-backdrop-filter: blur(24px) saturate(170%);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 12px 28px rgba(0, 0, 0, 0.35);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      overflow: hidden;
+      transition:
+        opacity 220ms var(--ease-out-punch),
+        transform 220ms var(--ease-out-punch),
+        filter 220ms var(--ease-out-punch);
+    }
+    .buddy-showcase-box.switching {
+      opacity: 0;
+      transform: scale(0.96);
+      filter: blur(5px);
+    }
+    .buddy-scan-beam {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.22), transparent);
+      animation: buddyBeamSweep 2.4s var(--ease-in-out-move) infinite alternate;
+      pointer-events: none;
+    }
+    @keyframes buddyBeamSweep {
+      0% { transform: translateY(6px); opacity: 0.75; }
+      100% { transform: translateY(125px); opacity: 0.25; }
+    }
+    .buddy-captured-source {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 9px 12px;
+      border-radius: 13px;
+      background: linear-gradient(165deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.02) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11.5px;
+      color: #ffffff;
+    }
+    .buddy-role-badge {
+      font-family: var(--font-family-ui);
+      font-size: 10px;
+      font-weight: 700;
+      padding: 3px 9px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      color: #ffffff;
+      white-space: nowrap;
+    }
+    .buddy-answer-box {
+      padding: 10px 12px;
+      border-radius: 13px;
+      background: linear-gradient(165deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.025) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
+      color: #ffffff;
+      font-size: 12px;
+      font-weight: 600;
+      opacity: 0.2;
+      transform: scale(0.985);
+      filter: blur(2px);
+      transition: all 240ms var(--ease-out-punch);
+    }
+    .buddy-answer-box.revealed {
+      opacity: 1;
+      transform: scale(1);
+      filter: blur(0px);
+    }
+
+    /* ==========================================================================
+       HALO-STYLE 3-STEP "HOW IT WORKS" + 4-COLUMN STATS BAR
+       ========================================================================== */
+    .steps-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 18px;
+      margin-bottom: 20px;
+    }
+    .step-num-badge {
+      font-family: var(--font-family-number);
+      font-variant-numeric: tabular-nums;
+      width: 36px;
+      height: 36px;
+      border-radius: 11px;
+      background: linear-gradient(180deg, #ffffff 0%, #d4d4d8 100%);
+      color: #050507;
+      font-size: 15px;
+      font-weight: 800;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 8px 20px rgba(255, 255, 255, 0.16);
+    }
+
+    .stats-bar {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      border-radius: 26px;
+      background: var(--glass-surface);
+      backdrop-filter: blur(30px);
+      border: 1px solid var(--glass-border);
+      box-shadow: var(--glass-highlight);
+      overflow: hidden;
+    }
+    .stat-cell {
+      padding: 26px 22px;
+      text-align: center;
+      border-right: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .stat-cell:last-child {
+      border-right: none;
+    }
+    .stat-val {
+      font-family: var(--font-family-number);
+      font-variant-numeric: tabular-nums;
+      font-size: 40px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 4px;
+    }
+    .stat-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--ink-muted);
+    }
+
+    /* ==========================================================================
+       MONOCHROME LIQUID GLASS STUDIO VIDEO FRAME
+       ========================================================================== */
+    .studio-chassis {
+      position: relative;
+      max-width: 1020px;
+      margin: 0 auto;
+      border-radius: 28px;
+      background: var(--glass-surface);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.18),
+        0 40px 100px rgba(0, 0, 0, 0.85);
+      overflow: hidden;
+    }
+    .studio-inner {
+      padding: 10px;
+    }
+    .studio-viewport {
+      border-radius: 20px;
+      overflow: hidden;
+      background: #020305;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      cursor: pointer;
+    }
+    .cinema-video {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      display: block;
+    }
+    .studio-control-deck {
+      margin-top: 10px;
+      padding: 13px 18px;
+      border-radius: 20px;
+      background: linear-gradient(172deg, rgba(255, 255, 255, 0.095) 0%, rgba(255, 255, 255, 0.025) 38%, rgba(8, 10, 15, 0.85) 100%);
+      backdrop-filter: blur(28px) saturate(180%);
+      -webkit-backdrop-filter: blur(28px) saturate(180%);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.24),
+        inset 0 -1px 0 rgba(255, 255, 255, 0.05),
+        0 16px 36px rgba(0, 0, 0, 0.45);
+      display: flex;
+      flex-direction: column;
+      gap: 11px;
+    }
+    .deck-top-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .deck-play-btn {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      border: 1px solid rgba(255, 255, 255, 0.36);
+      background: linear-gradient(165deg, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0.08));
+      color: #ffffff;
+      font-size: 13px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.5);
+    }
+    .deck-timeline-wrap {
+      flex: 1;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+    }
+    .deck-timeline-track {
+      width: 100%;
+      height: 6px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.12);
+      overflow: hidden;
+    }
+    .deck-timeline-fill {
+      height: 100%;
+      width: 0%;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #a1a1aa, #ffffff);
+      box-shadow: 0 0 12px rgba(255, 255, 255, 0.55);
+      transition: width 80ms linear;
+    }
+    .deck-time {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11.5px;
+      font-weight: 600;
+      color: rgba(255, 255, 255, 0.72);
+      min-width: 86px;
+      text-align: right;
+    }
+    .deck-icon-btn {
+      width: 34px;
+      height: 34px;
+      border-radius: 11px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: linear-gradient(165deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.04));
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.26);
+      backdrop-filter: blur(14px);
+      color: #ffffff;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .cinema-chapters {
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 7px;
+    }
+    .chapter-pill {
+      padding: 6px 14px;
+      border-radius: 999px;
+      background: linear-gradient(170deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.025));
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
+      backdrop-filter: blur(12px);
+      color: rgba(255, 255, 255, 0.72);
+      font-family: inherit;
+      font-size: 11.5px;
+      font-weight: 600;
+    }
+    .chapter-pill.active,
+    .chapter-pill:hover {
+      background: rgba(255, 255, 255, 0.18);
+      border-color: rgba(255, 255, 255, 0.42);
+      color: #ffffff;
+    }
+
+    /* ==========================================================================
+       HALO-STYLE FAQ ACCORDION
+       ========================================================================== */
+    .faq-list {
+      position: relative;
+      max-width: 820px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      border-radius: 26px;
+      background: linear-gradient(172deg, rgba(255, 255, 255, 0.085) 0%, rgba(255, 255, 255, 0.02) 32%, rgba(8, 10, 15, 0.88) 100%);
+      backdrop-filter: blur(32px) saturate(185%);
+      -webkit-backdrop-filter: blur(32px) saturate(185%);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.24),
+        inset 0 -1px 0 rgba(255, 255, 255, 0.05),
+        0 28px 70px rgba(0, 0, 0, 0.68);
+      overflow: hidden;
+    }
+    .faq-list::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 36px;
+      right: 36px;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.42), transparent);
+      pointer-events: none;
+    }
+    .faq-item {
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      transition: background 200ms var(--ease-out-punch);
+    }
+    .faq-item:last-child {
+      border-bottom: none;
+    }
+    .faq-item:hover {
+      background: rgba(255, 255, 255, 0.025);
+    }
+    .faq-item.open {
+      background: rgba(255, 255, 255, 0.035);
+    }
+    .faq-trigger {
+      width: 100%;
+      padding: 20px 24px;
+      border: none;
+      background: transparent;
+      color: #ffffff;
+      font-family: inherit;
+      font-size: 16px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      text-align: left;
+    }
+    .faq-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      transition: transform 200ms var(--ease-out-punch), background 200ms var(--ease-out-punch);
+    }
+    .faq-item.open .faq-icon {
+      background: #ffffff;
+      color: #050507;
+      transform: rotate(45deg);
+    }
+    .faq-body {
+      display: none;
+      padding: 0 24px 20px;
+      font-size: 14.5px;
+      line-height: 1.55;
+      color: var(--ink-silver);
+    }
+    .faq-item.open .faq-body {
+      display: block;
+    }
+
+    /* ==========================================================================
+       HALO-STYLE BOTTOM DOWNLOAD BANNER WITH TILTED LIQUID GLASS QR CARD
+       ========================================================================== */
+    .cta-banner {
+      padding: 48px;
+      border-radius: 34px;
+      background:
+        radial-gradient(circle at 80% 30%, rgba(255, 255, 255, 0.14), transparent 55%),
+        var(--glass-surface);
+      backdrop-filter: blur(36px);
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      box-shadow:
+        var(--glass-highlight),
+        0 34px 90px rgba(0, 0, 0, 0.8);
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 32px;
+      align-items: center;
+      margin-bottom: 64px;
+    }
+
+    .tilted-qr-card {
+      justify-self: center;
+      padding: 22px;
+      border-radius: 26px;
+      background: linear-gradient(165deg, rgba(255, 255, 255, 0.15) 0%, rgba(12, 13, 18, 0.82) 100%);
+      backdrop-filter: blur(28px);
+      border: 1px solid rgba(255, 255, 255, 0.26);
+      box-shadow:
+        inset 0 1px 1px rgba(255, 255, 255, 0.36),
+        0 26px 60px rgba(0, 0, 0, 0.78);
+      transform: rotate(3deg);
+      transition: transform 280ms var(--ease-out-punch);
+      text-align: center;
+      width: 240px;
+    }
+    .tilted-qr-card:hover {
+      transform: rotate(0deg) scale(1.02);
+    }
+
+    footer {
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      padding: 28px 0 40px;
+    }
+    .footer-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+      font-size: 13px;
+      color: var(--ink-muted);
+    }
+    .footer-links {
+      display: flex;
+      gap: 22px;
+    }
+    .footer-links a {
+      color: var(--ink-silver);
+      text-decoration: none;
+    }
+    .footer-links a:hover {
+      color: #ffffff;
+    }
+
+    /* Sonner Toast */
+    .sonner-toaster {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      pointer-events: none;
+    }
+    .sonner-toast {
+      padding: 11px 16px;
+      border-radius: 16px;
+      background: rgba(15, 16, 22, 0.9);
+      backdrop-filter: blur(24px);
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      color: #ffffff;
+      font-size: 12.5px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      animation: sonnerIn 220ms var(--ease-out-punch) forwards;
+    }
+    .sonner-toast.out {
+      animation: sonnerOut 180ms var(--ease-out-punch) forwards;
+    }
+    @keyframes sonnerIn {
+      0% { opacity: 0; transform: translateY(12px) scale(0.95); }
+      100% { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    @keyframes sonnerOut {
+      0% { opacity: 1; transform: translateY(0) scale(1); }
+      100% { opacity: 0; transform: translateY(8px) scale(0.95); }
+    }
+
+    @media (max-width: 980px) {
+      .magnetic-nav { display: none; }
+      .hero-grid,
+      .steps-grid,
+      .cta-banner {
+        grid-template-columns: 1fr;
+      }
+      .stats-bar {
+        grid-template-columns: repeat(2, 1fr);
+      }
+      .glass-card,
+      .glass-card.span-7,
+      .glass-card.span-5,
+      .glass-card.span-6 {
+        grid-column: span 12;
+      }
+      .floating-glass-badge { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="bg-depth-lines" aria-hidden="true"></div>
+
+  <!-- FLOATING LIQUID GLASS PILL NAVBAR -->
+  <header class="navbar-fixed">
+    <div class="navbar-shell">
+      <a href="#" class="brand-link">
+        <div class="bedo-logo-squircle" title="Bedo">
+          <div class="bedo-logo-visor">
+            <span class="bedo-logo-eye"></span>
+            <span class="bedo-logo-eye"></span>
+          </div>
+        </div>
+        <span class="brand-name">Bedo</span>
+      </a>
+
+      <nav class="magnetic-nav" onmouseleave="hideNavBubble()">
+        <span class="magnetic-bubble" id="navBubble"></span>
+        <a href="#ozellikler" class="magnetic-link" onmouseenter="moveNavBubble(this)">Özellikler</a>
+        <a href="#nasil-calisir" class="magnetic-link" onmouseenter="moveNavBubble(this)">Nasıl Çalışır</a>
+        <a href="#film" class="magnetic-link" onmouseenter="moveNavBubble(this)">Tanıtım Filmi</a>
+        <a href="#sss" class="magnetic-link" onmouseenter="moveNavBubble(this)">SSS</a>
+      </nav>
+
+      <a
+        href="https://github.com/bedirhanorseloglu/Bedo-Dynamic-Island-And-AI-Assistant-For-Windows/releases/latest"
+        class="btn-white-shimmer pressable js-download-exe"
+        onclick="showToast(this.dataset.toast || 'Bedo kurulum dosyası indiriliyor...')"
+      >
+        <span class="sheen"></span>
+        <span>Uygulamayı İndir</span>
+      </a>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- ======================================================================
+         HERO: 2-COLUMN SPLIT (Left Rotating Headline + Right Live Liquid Glass Island)
+         ====================================================================== -->
+    <section class="hero-grid">
+      <!-- Left Column -->
+      <div>
+        <a href="#ozellikler" class="hero-eyebrow-pill pressable">
+          <span class="hero-new-badge">Yeni</span>
+          <span>Windows için Liquid Glass Dynamic Island →</span>
+        </a>
+
+        <h1 class="hero-h1">
+          Masaüstünüz,<br />
+          <span class="hero-rotate-wrap">
+            <span class="hero-rotate-word" id="heroRotateWord">sesle uyanır.</span>
+            <svg class="hero-swash" viewBox="0 0 280 12" fill="none" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="swashSilver" x1="0" y1="0" x2="280" y2="0" gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stop-color="#ffffff" />
+                  <stop offset="60%" stop-color="#d4d4d8" />
+                  <stop offset="100%" stop-color="#52525b" />
+                </linearGradient>
+              </defs>
+              <path d="M2 9C75 2 185 2 278 8" stroke="url(#swashSilver)" stroke-width="3" stroke-linecap="round" />
+            </svg>
+          </span>
+        </h1>
+
+        <p class="hero-lead">
+          Windows’un üst kenarında yaşayan yeni nesil yapay zeka ve kontrol merkezi. Doğal sesinizle klasörlerden uygulamalara kadar her şeyi yönetir.
+        </p>
+
+        <div class="hero-actions">
+          <a
+            href="https://github.com/bedirhanorseloglu/Bedo-Dynamic-Island-And-AI-Assistant-For-Windows/releases/latest"
+            class="btn-white-shimmer pressable js-download-exe"
+            style="padding:14px 24px;font-size:14.5px;"
+            onclick="showToast(this.dataset.toast || 'Bedo kurulum dosyası indiriliyor...')"
+          >
+            <span class="sheen"></span>
+            <span>Windows için İndir</span>
+          </a>
+
+          <button type="button" class="btn-glass-pill pressable" onclick="triggerHandsFreeWake()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+            <span>Sesli Asistanı Dene</span>
+          </button>
+        </div>
+
+        <div class="hero-meta-row">
+          <span>Windows 10 / 11 · Ücretsiz & Açık Kaynak</span>
+        </div>
+      </div>
+
+      <!-- Right Column: Real Interactive Bedo Dynamic Island + 3 Floating Glass Badges -->
+      <div class="hero-stage-card">
+        <div class="hero-stage-glow"></div>
+
+        <!-- Mode Switcher Bar -->
+        <div class="stage-mode-bar" style="flex-wrap:nowrap;white-space:nowrap;max-width:100%;overflow-x:auto;">
+          <button type="button" class="stage-mode-btn" data-mode="wake" onclick="triggerHandsFreeWake()" style="display:inline-flex;align-items:center;gap:6px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>“Bedo”</button>
+          <button type="button" class="stage-mode-btn active" data-mode="home" onclick="switchTab('home')">Ana Ada</button>
+          <button type="button" class="stage-mode-btn" data-mode="music" onclick="switchTab('music')">Müzik</button>
+          <button type="button" class="stage-mode-btn" data-mode="karaoke" onclick="setIslandMode('music-bar')">Karaoke Bar</button>
+          <button type="button" class="stage-mode-btn" data-mode="idle" onclick="setIslandMode('idle')">Mini Ada</button>
+        </div>
+
+        <!-- THE REAL BEDO DYNAMIC ISLAND (All 9 Real App Tabs + Media-Reactive Bottom Gradient) -->
+        <div class="dynamic-island" id="liveIsland" onclick="handleIslandClick()">
+          <!-- COMPACT 1: IDLE MINI-NOTCH -->
+          <div class="layer-compact layer-idle-view" style="justify-content:center;">
+            <div class="robo-character">
+              <div class="robo-body"><div class="robo-visor"><span class="robo-eye"></span><span class="robo-eye"></span></div></div>
+            </div>
+          </div>
+
+          <!-- COMPACT 2: BEDO LIVE SIRI PILL -->
+          <div class="layer-compact layer-live-view">
+            <div class="robo-character">
+              <div class="robo-body"><div class="robo-visor"><span class="robo-eye"></span><span class="robo-eye"></span></div></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:700;">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+              <span id="liveLabel">Dinliyor</span>
+            </div>
+            <div class="eq-bars"><span></span><span></span><span></span><span></span><span></span></div>
+          </div>
+
+          <!-- COMPACT 3: REAL KARAOKE MUSIC BAR -->
+          <div class="layer-compact layer-karaoke-view">
+            <div style="display:flex;align-items:center;gap:10px;overflow:hidden;">
+              <div id="compactCover" style="width:22px;height:22px;border-radius:6px;flex-shrink:0;overflow:hidden;background:linear-gradient(135deg,#f43f5e,#8b5cf6);"><img id="compactCoverImg" src="https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/73/c6/ed/73c6edb3-924c-27f0-28f8-1470906d6780/cover.jpg/300x300bb.jpg" alt="" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.style.display='none'"/></div>
+              <span id="compactLyric" class="karaoke-lyric-active" style="font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Waiting for a ride in the dark</span>
+            </div>
+            <div class="eq-bars"><span></span><span></span><span></span><span></span></div>
+          </div>
+
+          <!-- EXPANDED REAL DYNAMIC ISLAND -->
+          <div class="layer-expanded-view">
+            <header class="island-topbar">
+              <div class="topbar-left">
+                <span id="topConnGroup" style="display:inline-flex;align-items:center;gap:6px;">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#55e6a5" stroke-width="2.4" stroke-linecap="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/></svg>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#8dbbff" stroke-width="2.4" stroke-linecap="round"><polyline points="6.5 6.5 17.5 17.5 12 23 12 1 17.5 6.5 6.5 17.5"/></svg>
+                  <span style="width:1px;height:11px;background:rgba(255,255,255,0.18);"></span>
+                </span>
+                <span>PER <strong style="color:#fff;font-family:'Oswald',sans-serif;font-size:12px;">19</strong> KAS</span>
+              </div>
+
+              <div id="topRoboEyes" class="robo-character" style="transition:opacity 0.2s;">
+                <div class="robo-body"><div class="robo-visor"><span class="robo-eye"></span><span class="robo-eye"></span></div></div>
+              </div>
+
+              <div style="display:flex;align-items:center;gap:6px;">
+                <span id="topStatusPills" style="display:inline-flex;align-items:center;gap:6px;">
+                  <span style="width:22px;height:18px;border-radius:6px;background:rgba(59,130,246,0.14);border:1px solid rgba(59,130,246,0.38);display:inline-flex;align-items:center;justify-content:center;color:#60a5fa;">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
+                  </span>
+                  <span style="width:22px;height:18px;border-radius:6px;background:rgba(59,130,246,0.14);border:1px solid rgba(59,130,246,0.38);display:inline-flex;align-items:center;justify-content:center;color:#60a5fa;">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                  </span>
+                  <span style="width:22px;height:18px;border-radius:6px;background:rgba(52,211,153,0.16);border:1px solid rgba(52,211,153,0.42);display:inline-flex;align-items:center;justify-content:center;color:#34d399;">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49"/></svg>
+                  </span>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.75)" stroke-width="2" style="margin-left:2px;"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                </span>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.6)" stroke-width="2.4" stroke-linecap="round"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
+              </div>
+            </header>
+
+            <div style="flex:1;display:flex;flex-direction:column;justify-content:center;overflow:hidden;">
+              <!-- 1. ANA (HOME) -->
+              <div id="pane-home" class="tab-pane active">
+                <div class="hero-clock-display">
+                  <span id="clockHour">20</span>
+                  <span class="clock-colon"><i></i><i></i></span>
+                  <span id="clockMin">52</span>
+                </div>
+                <div class="home-cards-grid">
+                  <div class="mini-glass-card pressable" onclick="switchTab('robo')">
+                    <div style="display:flex;align-items:center;gap:8px;">
+                      <div class="robo-character" style="transform:scale(0.8);">
+                        <div class="robo-body"><div class="robo-visor"><span class="robo-eye"></span><span class="robo-eye"></span></div></div>
+                      </div>
+                      <div class="card-meta">
+                        <strong>Bedo</strong>
+                        <span style="color:#34d399;">Odak başlatıldı ✓</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="mini-glass-card pressable" onclick="switchTab('music')" style="border-color:rgba(var(--music-accent-rgb),0.45);">
+                    <div style="display:flex;align-items:center;gap:8px;overflow:hidden;">
+                      <div id="homeSongCover" style="width:30px;height:30px;border-radius:8px;flex-shrink:0;overflow:hidden;background:linear-gradient(135deg,#f43f5e,#8b5cf6);"><img id="homeSongCoverImg" src="https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/73/c6/ed/73c6edb3-924c-27f0-28f8-1470906d6780/cover.jpg/300x300bb.jpg" alt="" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.style.display='none'"/></div>
+                      <div class="card-meta">
+                        <strong id="homeSongTitle">Midnight City</strong>
+                        <span id="homeSongArtist">M83</span>
+                      </div>
+                    </div>
+                    <button type="button" class="round-btn" onclick="event.stopPropagation();nextSong();">⏭</button>
+                  </div>
+
+                  <div class="mini-glass-card pressable" onclick="switchTab('timer')">
+                    <div class="card-meta">
+                      <strong style="font-family:var(--font-family-number);font-variant-numeric:tabular-nums;font-size:17px;line-height:1.05;" id="focusTimerText">24:58</strong>
+                      <span id="focusStatusText">Odaklanıyor</span>
+                    </div>
+                    <button type="button" class="round-btn" id="focusToggleBtn" onclick="toggleFocusTimer(event)">❚❚</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 2. MÜZİK (REAL MUSIC TAB + KARAOKE LYRICS + ALBUM AMBIENT) -->
+              <div id="pane-music" class="tab-pane">
+                <div style="display:flex;align-items:center;gap:18px;height:166px;padding:0 6px;">
+                  <div id="musicTabCover" style="flex:0 0 144px;width:144px;height:144px;border-radius:16px;overflow:hidden;position:relative;background:linear-gradient(135deg,#f43f5e,#8b5cf6);border:1px solid rgba(255,255,255,0.14);box-shadow:inset 0 1px 0 rgba(255,255,255,0.18),0 12px 28px rgba(0,0,0,0.48),0 0 24px rgba(var(--music-accent-rgb),0.22);display:flex;align-items:center;justify-content:center;">
+                    <img id="musicTabCoverImg" src="https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/73/c6/ed/73c6edb3-924c-27f0-28f8-1470906d6780/cover.jpg/300x300bb.jpg" alt="Midnight City" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.style.display='none'"/>
+                  </div>
+                  <div style="flex:1 1 0;min-width:0;height:144px;display:flex;flex-direction:column;justify-content:space-between;">
+                    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;">
+                      <div style="min-width:0;display:flex;flex-direction:column;gap:2px;">
+                        <div id="musicTabTitle" style="font-size:19px;font-weight:700;letter-spacing:-0.02em;line-height:1.15;color:#ffffff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Midnight City</div>
+                        <div id="musicTabArtist" style="font-size:12.5px;color:rgba(255,255,255,0.58);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">M83</div>
+                      </div>
+                      <div class="eq-bars" style="height:14px;flex-shrink:0;margin-top:4px;" aria-hidden="true">
+                        <span></span><span></span><span></span><span></span>
+                      </div>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:2px;justify-content:center;">
+                      <div id="musicTabLyric" class="karaoke-active-line" style="font-size:13.5px;font-weight:700;color:#ffffff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Waiting for a ride in the dark</div>
+                      <div id="musicTabNextLyric" class="karaoke-next-line" style="font-size:11.5px;font-weight:500;color:rgba(255,255,255,0.48);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">The city is my church</div>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:8px;">
+                      <div style="display:flex;align-items:center;gap:10px;">
+                        <span id="musicElapsedText" style="font-size:11px;font-family:'Oswald',sans-serif;font-variant-numeric:tabular-nums;color:rgba(255,255,255,0.7);">1:14</span>
+                        <div style="flex:1;height:4px;border-radius:999px;background:rgba(255,255,255,0.14);overflow:hidden;">
+                          <div id="musicProgressFill" style="width:42%;height:100%;background:rgb(var(--music-accent-rgb));border-radius:999px;transition:width 0.4s linear;"></div>
+                        </div>
+                        <span id="musicRemainText" style="font-size:11px;font-family:'Oswald',sans-serif;font-variant-numeric:tabular-nums;color:rgba(255,255,255,0.7);">-2:34</span>
+                      </div>
+                      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+                        <span style="width:32px;flex-shrink:0;" aria-hidden="true"></span>
+                        <div style="display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:3px 8px;border-radius:999px;background:linear-gradient(155deg,rgba(255,255,255,0.16) 0%,rgba(var(--music-accent-rgb),0.18) 50%,rgba(255,255,255,0.06) 100%);border:1px solid rgba(255,255,255,0.22);box-shadow:inset 0 1px 0 rgba(255,255,255,0.34),inset 0 -1px 4px rgba(var(--music-accent-rgb),0.18),0 6px 16px rgba(0,0,0,0.3);">
+                          <button type="button" onclick="prevSong()" title="Önceki" style="width:32px;height:32px;border-radius:50%;background:transparent;border:none;color:rgba(255,255,255,0.88);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;">⏮</button>
+                          <button id="musicPlayBtn" type="button" onclick="toggleMusicPlay()" title="Oynat / Duraklat" style="width:30px;height:30px;border-radius:50%;background:#ffffff;color:#050507;border:none;font-size:11px;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;">❚❚</button>
+                          <button type="button" onclick="nextSong()" title="Sonraki" style="width:32px;height:32px;border-radius:50%;background:transparent;border:none;color:rgba(255,255,255,0.88);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;">⏭</button>
+                        </div>
+                        <button type="button" onclick="setIslandMode('music-bar')" title="Karaoke / Ses Çıkışı" style="width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.16);color:rgba(255,255,255,0.84);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;">
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M2 16.1A5 5 0 0 1 5.9 20M2 12.05A9 9 0 0 1 9.95 20M2 8V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6"/><line x1="2" y1="20" x2="2.01" y2="20"/></svg>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 3. DROP (REAL QR + SÜRÜKLE VEYA SEÇ — src/styles.css 1:1) -->
+              <div id="pane-drop" class="tab-pane">
+                <div style="display:flex;width:100%;height:166px;align-items:stretch;gap:14px;padding:4px 2px;">
+                  <div style="width:142px;flex-shrink:0;display:flex;flex-direction:column;justify-content:center;">
+                    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:6px;border-radius:20px;background:linear-gradient(145deg,rgba(255,255,255,0.14) 0%,rgba(255,255,255,0.03) 50%,rgba(73,218,202,0.09) 100%);border:1px solid rgba(255,255,255,0.2);box-shadow:inset 0 1px 0 rgba(255,255,255,0.28),inset 0 -1px 0 rgba(255,255,255,0.07),0 12px 28px rgba(0,0,0,0.36);">
+                      <svg viewBox="0 0 21 21" style="width:128px;height:128px;border-radius:12px;padding:6px;background:rgba(255,255,255,0.96);box-shadow:0 4px 14px rgba(0,0,0,0.24);display:block;shape-rendering:crispEdges;">
+                        <path fill="#050507" d="M0,0 h7 v7 h-7 z M1,1 v5 h5 v-5 z M2,2 h3 v3 h-3 z M14,0 h7 v7 h-7 z M15,1 v5 h5 v-5 z M16,2 h3 v3 h-3 z M0,14 h7 v7 h-7 z M1,15 v5 h5 v-5 z M2,16 h3 v3 h-3 z M8,1 h2 v2 h-2 z M11,2 h2 v3 h-2 z M8,5 h4 v2 h-4 z M1,8 h2 v3 h-2 z M4,9 h3 v2 h-3 z M8,8 h5 v5 h-5 z M14,9 h2 v3 h-2 z M17,8 h3 v2 h-3 z M10,14 h2 v3 h-2 z M14,13 h3 v2 h-3 z M16,16 h4 v4 h-4 z M17,17 v2 h2 v-2 z" />
+                      </svg>
+                    </div>
+                  </div>
+                  <div style="flex:1;height:100%;border-radius:16px;border:1px dashed rgba(255,255,255,0.16);background:linear-gradient(155deg,rgba(255,255,255,0.06) 0%,rgba(14,17,25,0.45) 100%);box-shadow:inset 0 1px 0 rgba(255,255,255,0.1),0 8px 24px rgba(0,0,0,0.24);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:rgba(255,255,255,0.72);">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgba(73,218,202,0.88)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="m16 16-4-4-4 4"/></svg>
+                    <strong style="font-size:12px;font-weight:600;">Sürükle veya seç</strong>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 4. BEDO (REAL AI STAGE — media_1795110787766_ee36fefd 1:1) -->
+              <div id="pane-robo" class="tab-pane">
+                <div style="height:166px;display:flex;flex-direction:column;justify-content:space-between;padding:4px 2px;">
+                  <div style="display:flex;align-items:center;justify-content:space-between;">
+                    <div style="display:flex;align-items:center;gap:12px;">
+                      <div class="robo-character"><div class="robo-body"><div class="robo-visor"><span class="robo-eye"></span><span class="robo-eye"></span></div></div></div>
+                      <div>
+                        <strong style="font-size:14px;font-weight:700;display:block;line-height:1.2;">Bedo</strong>
+                        <span style="font-size:11.5px;color:#38bdf8;font-weight:600;display:inline-flex;align-items:center;gap:6px;">Dinliyor <span style="letter-spacing:2px;color:rgba(255,255,255,0.35);">······</span></span>
+                      </div>
+                    </div>
+                    <div style="display:inline-flex;align-items:center;gap:6px;padding:3px 6px;border-radius:999px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.12);box-shadow:inset 0 1px 0 rgba(255,255,255,0.14);">
+                      <span style="width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.75);">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/></svg>
+                      </span>
+                      <span style="width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.48);">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5"/><rect x="2" y="6" width="14" height="12" rx="2"/><line x1="2" y1="2" x2="22" y2="22"/></svg>
+                      </span>
+                      <span style="width:26px;height:26px;border-radius:50%;background:rgba(16,185,129,0.2);border:1px solid rgba(52,211,153,0.48);color:#34d399;display:inline-flex;align-items:center;justify-content:center;">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+                      </span>
+                      <span style="width:26px;height:26px;border-radius:50%;background:rgba(56,189,248,0.18);border:1px solid rgba(56,189,248,0.48);color:#7dd3fc;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;">❚❚</span>
+                    </div>
+                  </div>
+                  <div style="height:36px;border-radius:999px;background:rgba(255,255,255,0.045);border:1px solid rgba(255,255,255,0.12);box-shadow:inset 0 1px 0 rgba(255,255,255,0.1);padding:0 5px 0 15px;display:flex;align-items:center;justify-content:space-between;font-size:12px;color:rgba(255,255,255,0.48);">
+                    <span>Bedo'ya konuş veya yaz...</span>
+                    <span style="width:26px;height:26px;border-radius:50%;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.14);display:inline-flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.82);font-size:13px;">↑</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 5. ODAK (REAL FOCUS RULER — media_1795110798532_2f5ed8ad 1:1) -->
+              <div id="pane-timer" class="tab-pane">
+                <div style="height:166px;display:flex;flex-direction:column;justify-content:space-between;padding:4px 2px;">
+                  <div style="display:flex;align-items:flex-start;justify-content:space-between;">
+                    <div>
+                      <div style="font-family:'Oswald',sans-serif;font-variant-numeric:tabular-nums;font-size:48px;font-weight:700;line-height:0.92;letter-spacing:0.01em;">25:00</div>
+                      <div style="font-size:11.5px;color:rgba(255,255,255,0.58);margin-top:6px;font-weight:600;">Bitiş: 21:18</div>
+                    </div>
+                    <button type="button" onclick="switchTab('home')" style="padding:10px 26px;border-radius:999px;background:#ffffff;color:#050507;border:none;font-weight:700;font-size:13px;cursor:pointer;box-shadow:0 4px 16px rgba(255,255,255,0.18);">Başlat</button>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:6px;">
+                    <div style="display:flex;align-items:flex-end;justify-content:space-between;height:24px;">
+                      <span style="width:1.5px;height:16px;background:rgba(255,255,255,0.75);"></span>
+                      <span style="width:1px;height:8px;background:rgba(255,255,255,0.22);"></span>
+                      <span style="width:1px;height:8px;background:rgba(255,255,255,0.22);"></span>
+                      <span style="width:1px;height:8px;background:rgba(255,255,255,0.22);"></span>
+                      <span style="width:1.5px;height:16px;background:rgba(255,255,255,0.75);"></span>
+                      <span style="width:1px;height:8px;background:rgba(255,255,255,0.22);"></span>
+                      <span style="width:1px;height:8px;background:rgba(255,255,255,0.22);"></span>
+                      <span style="width:1px;height:8px;background:rgba(255,255,255,0.22);"></span>
+                      <span style="width:1.5px;height:16px;background:rgba(255,255,255,0.75);"></span>
+                      <span style="width:1px;height:8px;background:rgba(255,255,255,0.22);"></span>
+                      <span style="width:3px;height:22px;border-radius:2px;background:#ffffff;box-shadow:0 0 12px rgba(255,255,255,0.9);"></span>
+                      <span style="width:1px;height:8px;background:rgba(255,255,255,0.22);"></span>
+                      <span style="width:1.5px;height:16px;background:rgba(255,255,255,0.75);"></span>
+                      <span style="width:1px;height:8px;background:rgba(255,255,255,0.22);"></span>
+                      <span style="width:1px;height:8px;background:rgba(255,255,255,0.22);"></span>
+                      <span style="width:1px;height:8px;background:rgba(255,255,255,0.22);"></span>
+                      <span style="width:1.5px;height:16px;background:rgba(255,255,255,0.75);"></span>
+                      <span style="width:1px;height:8px;background:rgba(255,255,255,0.22);"></span>
+                      <span style="width:1px;height:8px;background:rgba(255,255,255,0.22);"></span>
+                      <span style="width:1px;height:8px;background:rgba(255,255,255,0.22);"></span>
+                      <span style="width:1.5px;height:16px;background:rgba(255,255,255,0.75);"></span>
+                      <span style="width:1px;height:8px;background:rgba(255,255,255,0.22);"></span>
+                      <span style="width:1px;height:8px;background:rgba(255,255,255,0.22);"></span>
+                      <span style="width:1px;height:8px;background:rgba(255,255,255,0.22);"></span>
+                      <span style="width:1.5px;height:16px;background:rgba(255,255,255,0.75);"></span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;font-family:'Oswald',sans-serif;font-variant-numeric:tabular-nums;font-size:10.5px;color:rgba(255,255,255,0.55);font-weight:600;">
+                      <span>0</span><span>10</span><span>20</span><span>30</span><span>40</span><span>50</span><span>60</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 6. MODLAR (REAL FOCUS GUARD / MODES — media_1795110804252_84a5f8e4 1:1) -->
+              <div id="pane-sleep" class="tab-pane">
+                <div style="display:grid;grid-template-columns:120px 1fr;gap:16px;height:166px;align-items:center;">
+                  <div style="display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:600;color:rgba(255,255,255,0.78);">
+                    <div style="padding:5px 10px;display:flex;align-items:center;gap:8px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg> Çalışma</div>
+                    <div style="padding:5px 10px;display:flex;align-items:center;gap:8px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg> Ders</div>
+                    <div style="padding:5px 10px;display:flex;align-items:center;gap:8px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="2"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg> Uyku</div>
+                    <div style="padding:5px 10px;display:flex;align-items:center;gap:8px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fb923c" stroke-width="2"><line x1="6" y1="11" x2="10" y2="11"/><line x1="8" y1="9" x2="8" y2="13"/><line x1="15" y1="12" x2="15.01" y2="12"/><line x1="18" y1="10" x2="18.01" y2="10"/><path d="M17.32 5H6.68a4 4 0 0 0-3.978 3.59c-.006.052-.01.101-.017.152C2.604 9.416 2 14.456 2 16a3 3 0 0 0 3 3c1 0 1.5-.5 2-1l1.414-1.414A2 2 0 0 1 9.828 16h4.344a2 2 0 0 1 1.414.586L17 18c.5.5 1 1 2 1a3 3 0 0 0 3-3c0-1.545-.604-6.584-.685-7.258-.007-.05-.011-.1-.017-.151A4 4 0 0 0 17.32 5z"/></svg> Oyun</div>
+                    <div style="padding:5px 10px;border-radius:999px;background:rgba(16,185,129,0.16);border:1px solid rgba(52,211,153,0.22);color:#34d399;display:flex;align-items:center;gap:8px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49"/></svg> Serbest</div>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:9px;font-size:12px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,0.06);">
+                      <div style="display:flex;align-items:center;gap:9px;">
+                        <span style="width:28px;height:28px;border-radius:8px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.1);display:inline-flex;align-items:center;justify-content:center;color:#fff;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49"/></svg></span>
+                        <div><strong style="font-size:14px;display:block;line-height:1.15;">Serbest</strong><span style="font-size:10.5px;color:rgba(255,255,255,0.5);">Tüm bildirimler açık</span></div>
+                      </div>
+                      <span style="font-size:10.5px;font-weight:600;padding:3px 10px;border-radius:999px;background:rgba(16,185,129,0.14);color:#34d399;border:1px solid rgba(52,211,153,0.3);">Aktif</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                      <span style="display:flex;align-items:center;gap:8px;color:rgba(255,255,255,0.9);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.65)" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> YouTube, TikTok, Instagram’ı engelle</span>
+                      <span style="width:34px;height:19px;border-radius:999px;background:rgba(255,255,255,0.2);position:relative;flex-shrink:0;"><i style="position:absolute;left:2.5px;top:2.5px;width:14px;height:14px;border-radius:50%;background:#fff;"></i></span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                      <span style="display:flex;align-items:center;gap:8px;color:rgba(255,255,255,0.9);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.65)" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg> Yalnızca Claude sana ulaşabilsin</span>
+                      <span style="width:34px;height:19px;border-radius:999px;background:rgba(255,255,255,0.2);position:relative;flex-shrink:0;"><i style="position:absolute;left:2.5px;top:2.5px;width:14px;height:14px;border-radius:50%;background:#fff;"></i></span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                      <span style="display:flex;align-items:center;gap:8px;color:rgba(255,255,255,0.9);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.65)" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg> Müziğim açık kalsın</span>
+                      <span style="width:34px;height:19px;border-radius:999px;background:#ffffff;position:relative;flex-shrink:0;"><i style="position:absolute;right:2.5px;top:2.5px;width:14px;height:14px;border-radius:50%;background:#050507;"></i></span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 7. NOT (REAL NOTES — src/styles.css .note-glass-stage 1:1) -->
+              <div id="pane-notes" class="tab-pane">
+                <div style="display:flex;flex-direction:column;width:100%;height:166px;padding:2px 4px;gap:8px;">
+                  <div style="display:flex;align-items:center;justify-content:space-between;padding:0 2px;">
+                    <div style="display:flex;align-items:center;gap:8px;">
+                      <span style="width:12px;height:12px;border-radius:999px;background:#38bdf8;box-shadow:0 0 0 2px rgba(255,255,255,0.78),0 0 12px #38bdf8;"></span>
+                      <span style="width:26px;height:26px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.78);background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);box-shadow:inset 0 1px 0 rgba(255,255,255,0.14);font-size:13px;">+</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:7px;">
+                      <span style="width:26px;height:26px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.78);background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);box-shadow:inset 0 1px 0 rgba(255,255,255,0.14);"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg></span>
+                      <span style="width:26px;height:26px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.78);background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);box-shadow:inset 0 1px 0 rgba(255,255,255,0.14);"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></span>
+                      <span style="width:26px;height:26px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.78);background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);box-shadow:inset 0 1px 0 rgba(255,255,255,0.14);"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="15" y2="12"/><line x1="3" y1="18" x2="18" y2="18"/></svg></span>
+                      <span style="width:26px;height:26px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.78);background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);box-shadow:inset 0 1px 0 rgba(255,255,255,0.14);"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></span>
+                    </div>
+                  </div>
+                  <div style="flex:1;min-height:0;border-radius:16px;background:linear-gradient(155deg,rgba(255,255,255,0.065) 0%,rgba(255,255,255,0.02) 100%);border:1px solid rgba(255,255,255,0.11);box-shadow:inset 0 1px 0 rgba(255,255,255,0.14),0 10px 28px rgba(0,0,0,0.28);padding:11px 13px;font-size:13.5px;color:rgba(255,255,255,0.28);">
+                    Bir şeyler yaz...
+                  </div>
+                </div>
+              </div>
+
+              <!-- 8. AJANDA (REAL CALENDAR) -->
+              <div id="pane-cal" class="tab-pane">
+                <div style="height:166px;display:flex;flex-direction:column;justify-content:space-between;padding:2px 2px;">
+                  <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div style="display:flex;align-items:center;gap:8px;">
+                      <strong style="font-size:15px;font-weight:700;">Kasım 2026</strong>
+                      <span style="font-size:10.5px;font-weight:600;padding:3px 9px;border-radius:999px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.1);">Bugün</span>
+                    </div>
+                    <span style="font-size:10.5px;font-weight:600;padding:3px 10px;border-radius:999px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.1);">Gün | Ay</span>
+                  </div>
+                  <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;text-align:center;font-size:10.5px;">
+                    <div style="padding:8px 0;border-radius:11px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);">PZT<br/><strong style="font-family:var(--font-family-number);font-size:15px;">16</strong></div>
+                    <div style="padding:8px 0;border-radius:11px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);">SAL<br/><strong style="font-family:var(--font-family-number);font-size:15px;">17</strong></div>
+                    <div style="padding:8px 0;border-radius:11px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);">ÇAR<br/><strong style="font-family:var(--font-family-number);font-size:15px;">18</strong></div>
+                    <div style="padding:8px 0;border-radius:11px;background:rgba(255,255,255,0.14);border:1px solid rgba(255,255,255,0.34);box-shadow:inset 0 1px 0 rgba(255,255,255,0.22);">PER<br/><strong style="font-family:var(--font-family-number);font-size:15px;">19</strong></div>
+                    <div style="padding:8px 0;border-radius:11px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);">CUM<br/><strong style="font-family:var(--font-family-number);font-size:15px;">20</strong></div>
+                    <div style="padding:8px 0;border-radius:11px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);">CMT<br/><strong style="font-family:var(--font-family-number);font-size:15px;">21</strong></div>
+                    <div style="padding:8px 0;border-radius:11px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);">PAZ<br/><strong style="font-family:var(--font-family-number);font-size:15px;">22</strong></div>
+                  </div>
+                  <div style="text-align:center;font-size:11.5px;color:rgba(255,255,255,0.65);padding-bottom:4px;">Bu gün için etkinlik yok</div>
+                </div>
+              </div>
+
+              <!-- 9. PERF (REAL TELEMETRY 2x2 — src/styles.css .perf-tab-view 1:1) -->
+              <div id="pane-perf" class="tab-pane">
+                <div style="width:100%;height:166px;display:flex;align-items:center;justify-content:center;padding:4px 2px;">
+                  <div style="width:100%;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;">
+                    <div style="padding:9px 11px 6px;border-radius:13px;background:rgba(255,255,255,0.045);border:1px solid rgba(255,255,255,0.08);display:flex;flex-direction:column;justify-content:space-between;gap:4px;">
+                      <div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:11px;font-weight:600;color:#7dd3fc;">CPU</span><span style="font-size:10px;color:rgba(255,255,255,0.56);">2.40 GHz</span></div>
+                      <strong style="font-family:var(--font-family-number);font-variant-numeric:tabular-nums;font-size:18px;font-weight:700;">9%</strong>
+                      <div style="height:2px;background:#7dd3fc;border-radius:2px;opacity:0.85;"></div>
+                    </div>
+                    <div style="padding:9px 11px 6px;border-radius:13px;background:rgba(255,255,255,0.045);border:1px solid rgba(255,255,255,0.08);display:flex;flex-direction:column;justify-content:space-between;gap:4px;">
+                      <div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:11px;font-weight:600;color:#c4b5fd;">RAM</span><span style="font-size:10px;color:rgba(255,255,255,0.56);">11.1/15.2 GB</span></div>
+                      <strong style="font-family:var(--font-family-number);font-variant-numeric:tabular-nums;font-size:18px;font-weight:700;">73%</strong>
+                      <div style="height:2px;background:linear-gradient(90deg,#c4b5fd,#a78bfa);border-radius:2px;opacity:0.85;"></div>
+                    </div>
+                    <div style="padding:9px 11px 6px;border-radius:13px;background:rgba(255,255,255,0.045);border:1px solid rgba(255,255,255,0.08);display:flex;flex-direction:column;justify-content:space-between;gap:4px;">
+                      <div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:11px;font-weight:600;color:#f9a8d4;">iGPU</span><span style="font-size:10px;color:rgba(255,255,255,0.56);">610M</span></div>
+                      <strong style="font-family:var(--font-family-number);font-variant-numeric:tabular-nums;font-size:18px;font-weight:700;">0%</strong>
+                      <div style="height:2px;background:#f9a8d4;border-radius:2px;opacity:0.85;"></div>
+                    </div>
+                    <div style="padding:9px 11px 6px;border-radius:13px;background:rgba(255,255,255,0.045);border:1px solid rgba(255,255,255,0.08);display:flex;flex-direction:column;justify-content:space-between;gap:4px;">
+                      <div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:11px;font-weight:600;color:rgba(255,255,255,0.45);">dGPU</span><span style="font-size:10px;color:rgba(255,255,255,0.56);">Eco</span></div>
+                      <strong style="font-size:15px;font-weight:700;color:rgba(255,255,255,0.48);">Kapalı</strong>
+                      <div style="height:2px;background:rgba(255,255,255,0.22);border-radius:2px;"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Real Monochrome Dock (All 9 Tabs!) -->
+            <footer class="island-dock">
+              <div class="dock-plus-btn">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.75)" stroke-width="2.2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              </div>
+              <div class="dock-nav">
+                <button type="button" class="dock-tab active" id="dock-home" onclick="switchTab('home')">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+                  <span class="dock-lbl">ANA</span>
+                </button>
+                <button type="button" class="dock-tab" id="dock-music" onclick="switchTab('music')" title="Müzik">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+                  <span class="dock-lbl" style="display:none;">MÜZİK</span>
+                </button>
+                <button type="button" class="dock-tab" id="dock-drop" onclick="switchTab('drop')" title="Drop">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/></svg>
+                  <span class="dock-lbl" style="display:none;">DROP</span>
+                </button>
+                <button type="button" class="dock-tab" id="dock-robo" onclick="switchTab('robo')" title="Bedo">
+                  <svg width="13" height="13" viewBox="0 0 18 18" fill="none"><rect x="1.5" y="3.5" width="15" height="11" rx="5.5" stroke="currentColor" stroke-width="1.6"/><line x1="7" y1="7" x2="7" y2="11" stroke="currentColor" stroke-width="1.7"/><line x1="11" y1="7" x2="11" y2="11" stroke="currentColor" stroke-width="1.7"/></svg>
+                  <span class="dock-lbl" style="display:none;">Bedo</span>
+                </button>
+                <button type="button" class="dock-tab" id="dock-timer" onclick="switchTab('timer')" title="Odak">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="14" r="8"/><line x1="12" y1="14" x2="15" y2="11"/></svg>
+                  <span class="dock-lbl" style="display:none;">ODAK</span>
+                </button>
+                <button type="button" class="dock-tab" id="dock-sleep" onclick="switchTab('sleep')" title="Modlar">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+                  <span class="dock-lbl" style="display:none;">MODLAR</span>
+                </button>
+                <button type="button" class="dock-tab" id="dock-notes" onclick="switchTab('notes')" title="Not">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>
+                  <span class="dock-lbl" style="display:none;">NOT</span>
+                </button>
+                <button type="button" class="dock-tab" id="dock-cal" onclick="switchTab('cal')" title="Ajanda">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M8 2v4"/><path d="M16 2v4"/></svg>
+                  <span class="dock-lbl" style="display:none;">AJANDA</span>
+                </button>
+                <button type="button" class="dock-tab" id="dock-perf" onclick="switchTab('perf')" title="Perf">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                  <span class="dock-lbl" style="display:none;">PERF</span>
+                </button>
+              </div>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.68)" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+            </footer>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================================================================
+         HALO-STYLE MONOCHROME MARQUEE (Supported Ecosystems & Original Logos)
+         ====================================================================== -->
+    <section class="marquee-section">
+      <div class="marquee-label">Entegre Yapay Zeka & Ekosistemler</div>
+      <div class="marquee-track-wrap">
+        <div class="marquee-track">
+          <div class="marquee-item">Claude Code</div>
+          <div class="marquee-item">Antigravity</div>
+          <div class="marquee-item">OpenAI Codex</div>
+          <div class="marquee-item">Google Gemini</div>
+          <div class="marquee-item">Google Takvim</div>
+          <div class="marquee-item">Spotify</div>
+          <div class="marquee-item">ASUS G-Helper</div>
+          <div class="marquee-item">Claude Code</div>
+          <div class="marquee-item">Antigravity</div>
+          <div class="marquee-item">OpenAI Codex</div>
+          <div class="marquee-item">Google Gemini</div>
+          <div class="marquee-item">Google Takvim</div>
+          <div class="marquee-item">Spotify</div>
+          <div class="marquee-item">ASUS G-Helper</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================================================================
+         HALO-STYLE ASYMMETRIC LIQUID GLASS BENTO GRID
+         ====================================================================== -->
+    <section class="section" id="ozellikler">
+      <div class="section-head reveal">
+        <span class="section-eyebrow">Özellikler</span>
+        <h2 class="section-h2">
+          Tek bir ada.<br />
+          <span class="silver-gradient-text">Sınırsız kontrol.</span>
+        </h2>
+      </div>
+
+      <div class="bento-grid">
+        <!-- BENTO 1 (Span 6): Multi-Profession Animated Bedo Buddy -->
+        <div class="glass-card span-6 reveal">
+          <div>
+            <h3 class="card-title">Ekrandan seçin. Anında yanıtlasın.</h3>
+          </div>
+
+          <div class="prof-pills-bar">
+            <button type="button" class="prof-pill active" data-prof="0" onclick="selectBuddyScenario(0, true)">Matematik</button>
+            <button type="button" class="prof-pill" data-prof="2" onclick="selectBuddyScenario(2, true)">Finans</button>
+            <button type="button" class="prof-pill" data-prof="3" onclick="selectBuddyScenario(3, true)">Tıp</button>
+            <button type="button" class="prof-pill" data-prof="5" onclick="selectBuddyScenario(5, true)">Yazılım</button>
+          </div>
+
+          <div class="buddy-showcase-box" id="bentoBuddyBox" style="border-color:rgba(255,255,255,0.08);background:rgba(255,255,255,0.025);">
+            <div class="buddy-scan-beam"></div>
+            <div class="buddy-captured-source" style="border:none;background:rgba(255,255,255,0.04);">
+              <span id="bentoBuddySource" style="font-weight:700;">∫ (3x² + 4x - 2) dx = ?</span>
+              <span class="buddy-role-badge" id="bentoBuddyRole">Öğrenci · Matematik</span>
+            </div>
+            <div style="font-size:12.5px;font-weight:500;color:rgba(255,255,255,0.78);min-height:20px;">
+              <span id="bentoBuddyTyped"></span>
+            </div>
+            <div class="buddy-answer-box revealed" id="bentoBuddyAnswer" style="border:none;background:rgba(255,255,255,0.06);">
+              ✓ <strong>Çözüm:</strong> <code>x³ + 2x² - 2x + C</code>
+            </div>
+          </div>
+        </div>
+
+        <!-- BENTO 2 (Span 6): Exact SettingsApp.jsx .ai-lg-voice-grid 1:1 -->
+        <div class="glass-card span-6 reveal" data-delay="1">
+          <div>
+            <h3 class="card-title">Altı farklı ses karakteri.</h3>
+            <p class="card-desc">Sesli yanıtlar için çalışma tarzınıza uygun tonu seçin.</p>
+          </div>
+
+          <div class="ai-lg-voice-grid" id="voiceGrid"></div>
+
+          <div style="font-size:11.5px;color:rgba(255,255,255,0.5);display:flex;justify-content:space-between;align-items:center;">
+            <span>Gemini Live · Gerçek Zamanlı Ses</span>
+            <span>Canlı Kamera & 20+ Eylem</span>
+          </div>
+        </div>
+
+        <!-- BENTO 3 (Span 6): Coding Agents with Original Logos -->
+        <div class="glass-card span-6 pressable reveal" data-delay="1" onclick="showToast('Claude Code, Antigravity, Codex CLI & Gemini CLI izleniyor')">
+          <div>
+            <h3 class="card-title">Ajanlarınızı canlı izleyin.</h3>
+            <p class="card-desc">Kodlama ajanları işini tamamladığında veya onay beklediğinde anında bildirir.</p>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <div style="padding:11px 12px;border-radius:13px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.12);font-size:12px;font-weight:700;display:flex;align-items:center;gap:8px;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 1.8L13.55 7.95L18.1 3.45L15.6 9.3L21.7 8.1L16.35 11.4L22.2 13.75L16.05 13.95L19.45 19.15L14.2 15.65L13.95 21.8L11.9 16.0L8.85 21.45L9.95 15.35L4.35 18.2L8.45 13.5L2.25 12.75L8.05 10.65L3.1 6.75L9.15 8.55L7.65 2.45L11.2 7.75L12 1.8Z" fill="#D97757"/></svg>
+              <span>Claude Code</span>
+            </div>
+            <div style="padding:11px 12px;border-radius:13px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.12);font-size:12px;font-weight:700;display:flex;align-items:center;gap:8px;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><defs><linearGradient id="agTop" x1="12" y1="2" x2="12" y2="22" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#F59E0B"/><stop offset="30%" stop-color="#EF4444"/><stop offset="60%" stop-color="#3B82F6"/><stop offset="100%" stop-color="#2563EB"/></linearGradient></defs><path d="M12 2.4C14.3 2.4 16.05 6.25 18.2 12.1C19.6 15.9 21.15 18.95 21.65 20.15C22.05 21.1 21.25 22 20.15 21.7C18.05 21.1 16.4 18.75 15.1 15.85C14.1 13.65 13.15 12.5 12 12.5C10.85 12.5 9.9 13.65 8.9 15.85C7.6 18.75 5.95 21.1 3.85 21.7C2.75 22 1.95 21.1 2.35 20.15C2.85 18.95 4.4 15.9 5.8 12.1C7.95 6.25 9.7 2.4 12 2.4Z" fill="url(#agTop)"/></svg>
+              <span>Antigravity</span>
+            </div>
+            <div style="padding:11px 12px;border-radius:13px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.12);font-size:12px;font-weight:700;display:flex;align-items:center;gap:8px;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6.8 18.5C4.1 18.5 2 16.4 2 13.8C2 11.5 3.65 9.6 5.85 9.2C6.65 6.2 9.4 4 12.65 4C16.35 4 19.4 6.8 19.65 10.4C21.05 10.95 22 12.3 22 13.9C22 16.45 19.9 18.5 17.3 18.5H6.8Z" fill="#F8FAFC"/><path d="M7.5 10.8L10.3 12.8L7.5 14.8" stroke="#0F172A" stroke-width="1.9" stroke-linecap="round"/><line x1="12.2" y1="15.2" x2="15.6" y2="15.2" stroke="#0F172A" stroke-width="1.9" stroke-linecap="round"/></svg>
+              <span>Codex CLI</span>
+            </div>
+            <div style="padding:11px 12px;border-radius:13px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.12);font-size:12px;font-weight:700;display:flex;align-items:center;gap:8px;">
+              <img src="gemini-logo.png" alt="Gemini" width="16" height="16" style="width:16px;height:16px;object-fit:contain;" />
+              <span>Gemini CLI</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- BENTO 4 (Span 6): Instant QR Drop -->
+        <div class="glass-card span-6 pressable reveal" data-delay="2" onclick="switchTab('drop')">
+          <div>
+            <h3 class="card-title">Saniyeler içinde dosya aktarımı.</h3>
+            <p class="card-desc">Telefonunuzdan veya bilgisayarınızdan kablosuz ve anında paylaşın.</p>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:center;gap:24px;">
+            <div style="width:86px;height:86px;border-radius:14px;background:#ffffff;padding:8px;flex-shrink:0;">
+              <svg viewBox="0 0 21 21" style="width:100%;height:100%;shape-rendering:crispEdges;">
+                <path fill="#050507" d="M0,0 h7 v7 h-7 z M1,1 v5 h5 v-5 z M2,2 h3 v3 h-3 z M14,0 h7 v7 h-7 z M15,1 v5 h5 v-5 z M16,2 h3 v3 h-3 z M0,14 h7 v7 h-7 z M1,15 v5 h5 v-5 z M2,16 h3 v3 h-3 z M8,2 h2 v2 h-2 z M8,8 h5 v5 h-5 z M14,10 h3 v2 h-3 z M16,15 h4 v4 h-4 z" />
+              </svg>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px;font-size:12px;">
+              <div style="padding:7px 13px;border-radius:10px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);">Sunum.pdf · 4.8 MB</div>
+              <div style="padding:7px 13px;border-radius:10px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);">Tasarım.png · 3.2 MB</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- BENTO 5 (Span 12): 10-SONG YERLİ & YABANCI KARAOKE + BOTTOM-EDGE AMBIENT -->
+        <div class="glass-card reveal" id="bentoKaraokeCard" style="grid-column:span 12;--music-accent-rgb:244,63,94;background:radial-gradient(ellipse 80% 34% at 50% 106%, rgba(var(--music-accent-rgb), 0.22) 0%, rgba(var(--music-accent-rgb), 0.06) 46%, transparent 72%), var(--glass-surface);box-shadow:var(--glass-highlight), inset 0 -1px 10px rgba(var(--music-accent-rgb), 0.15), 0 24px 60px rgba(0,0,0,0.68);transition:background 420ms ease, box-shadow 420ms ease;">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:nowrap;gap:20px;">
+            <div style="min-width:0;flex:1;">
+              <h3 class="card-title">Müziğinizle renklenen ambiyans.</h3>
+              <p class="card-desc">Çalan şarkının albüm kapağına göre adanın alt ışığı ve senkronize sözleri canlı olarak güncellenir.</p>
+            </div>
+
+            <!-- Live Karaoke Compact Pill Preview (Fixed width so it never wraps down) -->
+            <div style="display:inline-flex;align-items:center;justify-content:space-between;gap:12px;width:360px;max-width:44%;flex-shrink:0;padding:9px 16px;border-radius:999px;background:radial-gradient(ellipse 90% 80% at 50% 110%, rgba(var(--music-accent-rgb), 0.34), rgba(10,12,18,0.92));border:1px solid rgba(var(--music-accent-rgb), 0.55);box-shadow:inset 0 1px 0 rgba(255,255,255,0.22), 0 12px 32px rgba(0,0,0,0.6), 0 0 24px rgba(var(--music-accent-rgb), 0.24);transition:all 380ms ease;">
+              <div id="bentoKaraokeCover" style="width:26px;height:26px;border-radius:7px;flex-shrink:0;overflow:hidden;background:linear-gradient(135deg,#f43f5e,#8b5cf6);"><img id="bentoKaraokeCoverImg" src="https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/73/c6/ed/73c6edb3-924c-27f0-28f8-1470906d6780/cover.jpg/300x300bb.jpg" alt="" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.style.display='none'"/></div>
+              <span id="bentoKaraokeLyric" class="karaoke-lyric-active" style="flex:1;min-width:0;font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">♪ Waiting for a ride in the dark</span>
+              <div class="eq-bars" style="flex-shrink:0;"><span></span><span></span><span></span><span></span></div>
+            </div>
+          </div>
+
+          <!-- 10 Yerli & Yabancı Şarkı Seçici (Tam Sığan 5x2 Grid) -->
+          <div id="karaokeSongList" style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================================================================
+         HALO-STYLE 3-STEP HOW IT WORKS + 4-COLUMN STATS BAR
+         ====================================================================== -->
+    <section class="section" id="nasil-calisir">
+      <div class="section-head reveal">
+        <span class="section-eyebrow">Nasıl Çalışır</span>
+        <h2 class="section-h2">Üç adımda masaüstünüzde.</h2>
+      </div>
+
+      <div class="steps-grid">
+        <div class="glass-card reveal" data-delay="1">
+          <span class="step-num-badge">1</span>
+          <h3 class="card-title">İndirin ve açın.</h3>
+        </div>
+        <div class="glass-card reveal" data-delay="2">
+          <span class="step-num-badge">2</span>
+          <h3 class="card-title">Sadece “Bedo” deyin.</h3>
+        </div>
+        <div class="glass-card reveal" data-delay="3">
+          <span class="step-num-badge">3</span>
+          <h3 class="card-title">Ekrandan seçip sorun.</h3>
+        </div>
+      </div>
+
+      <div class="stats-bar reveal" data-delay="2">
+        <div class="stat-cell">
+          <div class="stat-val silver-gradient-text" data-count="20" data-suffix="+">20+</div>
+          <div class="stat-label">Sistem Eylemi</div>
+        </div>
+        <div class="stat-cell">
+          <div class="stat-val silver-gradient-text" data-count="6" data-suffix="">6</div>
+          <div class="stat-label">Ses Personası</div>
+        </div>
+        <div class="stat-cell">
+          <div class="stat-val silver-gradient-text" data-count="4" data-suffix="">4</div>
+          <div class="stat-label">Canlı AI Ajan</div>
+        </div>
+        <div class="stat-cell">
+          <div class="stat-val silver-gradient-text" data-count="0" data-suffix="">0</div>
+          <div class="stat-label">Manuel Kurulum</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================================================================
+         LAUNCH VIDEO INSIDE MONOCHROME LIQUID GLASS STUDIO FRAME
+         ====================================================================== -->
+    <section class="section" id="film">
+      <div class="section-head reveal">
+        <span class="section-eyebrow">Tanıtım Filmi</span>
+        <h2 class="section-h2">Bedo. Hareket halinde.</h2>
+      </div>
+
+      <div class="studio-chassis reveal" data-delay="1">
+        <div class="studio-inner">
+          <div class="studio-viewport" onclick="toggleVideoPlay()">
+            <video id="launchVideo" class="cinema-video" src="bedo-launch.mp4" autoplay muted loop playsinline preload="auto"></video>
+          </div>
+
+          <div class="studio-control-deck">
+            <div class="deck-top-row">
+              <button type="button" class="deck-play-btn" id="videoPlayBtn" onclick="toggleVideoPlay()">❚❚</button>
+              <div class="deck-timeline-wrap" onclick="scrubVideo(event)">
+                <div class="deck-timeline-track"><div class="deck-timeline-fill" id="videoProgressFill"></div></div>
+              </div>
+              <span class="deck-time" id="videoTimeLabel" style="font-family:var(--font-family-number);font-variant-numeric:tabular-nums;font-size:12.5px;">00:00 / 00:27</span>
+              <button type="button" class="deck-icon-btn" id="videoMuteBtn" onclick="toggleVideoMute()" title="Sesi Aç / Kapat"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg></button>
+              <button type="button" class="deck-icon-btn" onclick="fullscreenVideo()" title="Tam Ekran"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button>
+            </div>
+            <div class="cinema-chapters">
+              <button type="button" class="chapter-pill active" onclick="seekVideo(0, this)">Sesli Uyandırma</button>
+              <button type="button" class="chapter-pill" onclick="seekVideo(3.6, this)">Liquid Glass</button>
+              <button type="button" class="chapter-pill" onclick="seekVideo(7.3, this)">Multimodal Kamera</button>
+              <button type="button" class="chapter-pill" onclick="seekVideo(13.1, this)">Bedo Buddy</button>
+              <button type="button" class="chapter-pill" onclick="seekVideo(18.5, this)">Karaoke & Drop</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================================================================
+         HALO-STYLE FAQ ACCORDION
+         ====================================================================== -->
+    <section class="section" id="sss">
+      <div class="section-head reveal">
+        <span class="section-eyebrow">SSS</span>
+        <h2 class="section-h2">Sıkça sorulan sorular.</h2>
+      </div>
+
+      <div class="faq-list">
+        <div class="faq-item open reveal" data-delay="1">
+          <button type="button" class="faq-trigger" onclick="toggleFaq(this)">
+            <span>Bedo ücretsiz mi, API anahtarı gerekiyor mu?</span>
+            <span class="faq-icon">+</span>
+          </button>
+          <div class="faq-body">
+            Bedo tamamen ücretsiz ve açık kaynaklıdır. Gemini Live sesli sohbet, ekran okuma ve kamera görüşü gibi yapay zeka özellikleri için kendi Gemini, OpenAI veya Anthropic API anahtarınızı doğrudan uygulama ayarlarından güvenle bağlarsınız.
+          </div>
+        </div>
+
+        <div class="faq-item reveal" data-delay="2">
+          <button type="button" class="faq-trigger" onclick="toggleFaq(this)">
+            <span>Eller serbest “Bedo” komutu bilgisayarımı nasıl yönetir?</span>
+            <span class="faq-icon">+</span>
+          </button>
+          <div class="faq-body">
+            Fareye dokunmadan yalnızca “Bedo” dediğinizde ada uyanır. Klasör veya uygulama açma, ses ve ekran parlaklığı ayarı, odak sayacı başlatma ve WhatsApp mesajı gönderme gibi 20’den fazla sistem eylemini anında gerçekleştirir.
+          </div>
+        </div>
+
+        <div class="faq-item reveal" data-delay="3">
+          <button type="button" class="faq-trigger" onclick="toggleFaq(this)">
+            <span>Bedo Buddy sadece yazılımcılar için mi?</span>
+            <span class="faq-icon">+</span>
+          </button>
+          <div class="faq-body">
+            Hayır. Ekranınızdaki herhangi bir soruyu, denklemi, tabloyu, yabancı metni veya hata çıktısını seçerek matematikten finansa, tıptan tasarıma ve yazılıma kadar her alanda saniyeler içinde açıklama ve çözüm alabilirsiniz.
+          </div>
+        </div>
+
+        <div class="faq-item reveal" data-delay="4">
+          <button type="button" class="faq-trigger" onclick="toggleFaq(this)">
+            <span>Kodlama ajanlarını nasıl takip ediyor?</span>
+            <span class="faq-icon">+</span>
+          </button>
+          <div class="faq-body">
+            Claude Code, Antigravity, Codex CLI ve Gemini CLI oturumlarını arka planda izler. Ajanlar bir görevi tamamladığında veya sizden onay beklediğinde adanın üst kenarından anlık bildirim ve sesli uyarı verir.
+          </div>
+        </div>
+
+        <div class="faq-item reveal" data-delay="5">
+          <button type="button" class="faq-trigger" onclick="toggleFaq(this)">
+            <span>Ek kurulum veya Python yüklemem gerekiyor mu?</span>
+            <span class="faq-icon">+</span>
+          </button>
+          <div class="faq-body">
+            Hayır. İlk açılışta gerekli tüm çalışma ortamı arka planda otomatik olarak hazırlanır; Windows 10 ve Windows 11 sistemlerde ek bir kurulum yapmadan kullanmaya başlayabilirsiniz.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================================================================
+         HALO-STYLE BOTTOM DOWNLOAD BANNER + TILTED LIQUID GLASS QR CARD
+         ====================================================================== -->
+    <section class="cta-banner reveal">
+      <div>
+        <span class="section-eyebrow">Bedo’yu Edinin</span>
+        <h2 class="section-h2" style="margin-bottom:16px;">
+          Masaüstünüz,<br />
+          <span class="silver-gradient-text">artık çok daha akıllı.</span>
+        </h2>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:20px;">
+          <a
+            href="https://github.com/bedirhanorseloglu/Bedo-Dynamic-Island-And-AI-Assistant-For-Windows/releases/latest"
+            class="btn-white-shimmer pressable js-download-exe"
+            style="padding:14px 26px;font-size:14.5px;"
+            onclick="showToast(this.dataset.toast || 'Bedo kurulum dosyası indiriliyor...')"
+          >
+            <span class="sheen"></span>
+            <span>Windows için İndir</span>
+          </a>
+          <a
+            href="https://github.com/bedirhanorseloglu/Bedo-Dynamic-Island-And-AI-Assistant-For-Windows"
+            target="_blank"
+            rel="noopener"
+            class="btn-glass-pill pressable"
+          >
+            GitHub Deposu
+          </a>
+        </div>
+      </div>
+
+      <div class="tilted-qr-card" style="display:flex;flex-direction:column;align-items:center;gap:12px;padding:24px 28px;transform:rotate(0deg);">
+        <div style="width:92px;height:92px;border-radius:24px;overflow:hidden;border:1px solid rgba(255,255,255,0.22);box-shadow:inset 0 1px 0 rgba(255,255,255,0.3),0 18px 42px rgba(0,0,0,0.65),0 0 36px rgba(137,180,255,0.16);background:rgba(10,12,18,0.9);display:flex;align-items:center;justify-content:center;">
+          <img src="icon.png" alt="Bedo Logo" style="width:100%;height:100%;object-fit:cover;display:block;" />
+        </div>
+        <div style="text-align:center;">
+          <div style="font-size:15px;font-weight:800;letter-spacing:-0.02em;">Bedo for Windows</div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+      <div class="footer-row">
+        <div class="brand-link">
+          <div class="bedo-logo-squircle" style="width:28px;height:28px;border-radius:8px;">
+            <div class="bedo-logo-visor" style="width:16px;height:9px;gap:2.5px;">
+              <span class="bedo-logo-eye" style="width:2.5px;height:4.5px;"></span>
+              <span class="bedo-logo-eye" style="width:2.5px;height:4.5px;"></span>
+            </div>
+          </div>
+          <span style="font-weight:800;color:#fff;">Bedo</span>
+        </div>
+
+        <div class="footer-links">
+          <a href="#ozellikler">Özellikler</a>
+          <a href="#nasil-calisir">Nasıl Çalışır</a>
+          <a href="#film">Tanıtım Filmi</a>
+          <a href="#sss">SSS</a>
+        </div>
+
+        <div>© 2026 Bedo · Bedirhan Örseloğlu</div>
+      </div>
+    </div>
+  </footer>
+
+  <div class="sonner-toaster" id="sonnerToaster"></div>
+
+  <script>
+    function showToast(message) {
+      const container = document.getElementById('sonnerToaster');
+      const toast = document.createElement('div');
+      toast.className = 'sonner-toast';
+      toast.innerHTML = `<span style="font-weight:800;">✓</span><span>${message}</span>`;
+      container.appendChild(toast);
+      setTimeout(() => {
+        toast.classList.add('out');
+        setTimeout(() => toast.remove(), 190);
+      }, 2400);
+    }
+
+    function moveNavBubble(el) {
+      const bubble = document.getElementById('navBubble');
+      bubble.style.width = `${el.offsetWidth}px`;
+      bubble.style.transform = `translateX(${el.offsetLeft - 4}px)`;
+      bubble.style.opacity = '1';
+    }
+    function hideNavBubble() {
+      document.getElementById('navBubble').style.opacity = '0';
+    }
+
+    // Rotating Hero Headline (Halo-style blur-reveal)
+    const HERO_PHRASES = ['sesle uyanır.', 'ekranı anlar.', 'sizinle düşünür.'];
+    let heroPhraseIdx = 0;
+    setInterval(() => {
+      heroPhraseIdx = (heroPhraseIdx + 1) % HERO_PHRASES.length;
+      const el = document.getElementById('heroRotateWord');
+      el.style.animation = 'none';
+      void el.offsetWidth;
+      el.textContent = HERO_PHRASES[heroPhraseIdx];
+      el.style.animation = 'wordBlurReveal 380ms cubic-bezier(0.16, 1, 0.3, 1) forwards';
+    }, 3200);
+
+    // Cursor-tracking RoboEyes
+    document.addEventListener('mousemove', (e) => {
+      const eyes = document.querySelectorAll('.robo-eye, .bedo-logo-eye');
+      const nx = (e.clientX / window.innerWidth - 0.5) * 2;
+      const ny = (e.clientY / window.innerHeight - 0.5) * 2;
+      const tx = Math.max(-2.2, Math.min(2.2, nx * 2.2));
+      const ty = Math.max(-1.6, Math.min(1.6, ny * 1.6));
+      eyes.forEach((eye) => {
+        eye.style.transform = `translate(${tx}px, ${ty}px)`;
+      });
+    });
+
+    // Live Clock & Focus Timer
+    let focusRemaining = 24 * 60 + 58;
+    let focusRunning = true;
+    setInterval(() => {
+      const now = new Date();
+      const hh = String(now.getHours()).padStart(2, '0');
+      const mm = String(now.getMinutes()).padStart(2, '0');
+      const hEl = document.getElementById('clockHour');
+      const mEl = document.getElementById('clockMin');
+      if (hEl) hEl.textContent = hh;
+      if (mEl) mEl.textContent = mm;
+
+      if (focusRunning && focusRemaining > 0) {
+        focusRemaining--;
+        const fMin = String(Math.floor(focusRemaining / 60)).padStart(2, '0');
+        const fSec = String(focusRemaining % 60).padStart(2, '0');
+        const timerEl = document.getElementById('focusTimerText');
+        if (timerEl) timerEl.textContent = `${fMin}:${fSec}`;
+      }
+    }, 1000);
+
+    function toggleFocusTimer(e) {
+      e.stopPropagation();
+      focusRunning = !focusRunning;
+      document.getElementById('focusStatusText').textContent = focusRunning ? 'Odaklanıyor' : 'Duraklatıldı';
+      document.getElementById('focusToggleBtn').textContent = focusRunning ? '❚❚' : '▶';
+    }
+
+    // Dynamic Island Modes & Tabs
+    let t1 = null, t2 = null;
+    function clearTimers() {
+      if (t1) clearTimeout(t1);
+      if (t2) clearTimeout(t2);
+    }
+
+    function setIslandMode(state) {
+      clearTimers();
+      const island = document.getElementById('liveIsland');
+      island.className = 'dynamic-island';
+      if (state) island.classList.add('state-' + state);
+      syncStageBtns(state === 'music-bar' ? 'karaoke' : state);
+    }
+
+    function switchTab(tabName) {
+      clearTimers();
+      const island = document.getElementById('liveIsland');
+      island.className = 'dynamic-island';
+      const allTabs = ['home', 'music', 'drop', 'robo', 'timer', 'sleep', 'notes', 'cal', 'perf'];
+      allTabs.forEach((n) => {
+        const pane = document.getElementById('pane-' + n);
+        const dock = document.getElementById('dock-' + n);
+        if (pane) pane.classList.toggle('active', n === tabName);
+        if (dock) {
+          dock.classList.toggle('active', n === tabName);
+          const lbl = dock.querySelector('.dock-lbl');
+          if (lbl) lbl.style.display = n === tabName ? 'inline' : 'none';
+        }
+      });
+      const topConn = document.getElementById('topConnGroup');
+      const topPills = document.getElementById('topStatusPills');
+      const topRobo = document.getElementById('topRoboEyes');
+      if (topConn) topConn.style.display = tabName === 'home' ? 'inline-flex' : 'none';
+      if (topPills) topPills.style.display = tabName === 'home' ? 'inline-flex' : 'none';
+      if (topRobo) topRobo.style.opacity = tabName === 'robo' ? '0' : '1';
+      syncStageBtns(tabName);
+    }
+
+    // 10 Yerli & Yabancı Şarkı — Gerçek Albüm Kapakları, Medyaya Göre Dinamik Alt Gradyan & Akan Karaoke Motoru
+    const SONGS = [
+      { title: 'Midnight City', artist: 'M83', rgb: '236, 72, 153', grad: 'linear-gradient(135deg,#ec4899,#8b5cf6)', cover: 'https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/73/c6/ed/73c6edb3-924c-27f0-28f8-1470906d6780/cover.jpg/300x300bb.jpg', duration: 243, lyrics: ['Waiting in a car', 'Waiting for a ride in the dark', 'The night city grows', 'Look at the horizon glow'] },
+      { title: 'Senden Daha Güzel', artist: 'Duman', rgb: '245, 158, 11', grad: 'linear-gradient(135deg,#f59e0b,#b45309)', cover: 'https://is1-ssl.mzstatic.com/image/thumb/Music126/v4/e3/6a/03/e36a0347-7191-da04-7d53-32569e5904fd/884977122039.jpg/300x300bb.jpg', duration: 228, lyrics: ['Kimseyi görmedim ben, senden daha güzel', 'Kimseyi tanımadım ben, senden daha özel', 'Kimselere de bakmadım, aklımdan geçmedi', 'Kimseyi sevmedim ben, senden daha güzel'] },
+      { title: 'Blinding Lights', artist: 'The Weeknd', rgb: '220, 38, 38', grad: 'linear-gradient(135deg,#dc2626,#7f1d1d)', cover: 'https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/6f/bc/e6/6fbce6c4-c38c-72d8-4fd0-66cfff32f679/20UMGIM12176.rgb.jpg/300x300bb.jpg', duration: 200, lyrics: ['I’ve been tryna call', 'I’ve been on my own for long enough', 'I’m blinded by the lights', 'No, I can’t sleep until I feel your touch'] },
+      { title: 'Antidepresan', artist: 'Mabel Matiz', rgb: '16, 185, 129', grad: 'linear-gradient(135deg,#10b981,#047857)', cover: 'https://is1-ssl.mzstatic.com/image/thumb/Music122/v4/cd/6a/fb/cd6afb23-3442-e7ab-3b39-46f458bcad40/196922249655_Cover.jpg/300x300bb.jpg', duration: 215, lyrics: ['Bir tek sana yenilirim, antidepresanım', 'Gülüşün bana iyi geliyor', 'Aklım başımdan gidiyor yine', 'Bırak aksın gece ellerine'] },
+      { title: 'Instant Crush', artist: 'Daft Punk', rgb: '56, 189, 248', grad: 'linear-gradient(135deg,#38bdf8,#1e3a8a)', cover: 'https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/e8/43/5f/e8435ffa-b6b9-b171-40ab-4ff3959ab661/886443919266.jpg/300x300bb.jpg', duration: 337, lyrics: ['I didn’t want to be the one to forget', 'I thought of everything I’d never regret', 'And we will never be alone again', '‘Cause it doesn’t happen every day'] },
+      { title: 'Rengarenk', artist: 'Sertab Erener', rgb: '244, 63, 94', grad: 'linear-gradient(135deg,#f43f5e,#f59e0b)', cover: 'https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/61/06/c2/6106c2ba-b9b1-bc85-42d9-b6daec13e059/0.jpg/300x300bb.jpg', duration: 212, lyrics: ['Dünya rengarenk, aşka boyanmış', 'Kalbim seninle yeniden uyanmış', 'Kuşlar gibi özgürüz gökyüzünde', 'Her şey çok güzel olacak bugün de'] },
+      { title: 'Do I Wanna Know?', artist: 'Arctic Monkeys', rgb: '148, 163, 184', grad: 'linear-gradient(135deg,#64748b,#0f172a)', cover: 'https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/69/9c/b5/699cb5d6-115c-ff73-9d26-e57ea4350d72/887828031795.png/300x300bb.jpg', duration: 272, lyrics: ['Have you got colour in your cheeks?', 'Do you ever get that fear that you can’t shift', 'Crawling back to you', 'Ever thought of calling when you’ve had a few?'] },
+      { title: 'Bir Derdim Var', artist: 'Mor ve Ötesi', rgb: '139, 92, 246', grad: 'linear-gradient(135deg,#8b5cf6,#4c1d95)', cover: 'https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/2d/85/95/2d8595f4-400e-45f9-e5f1-412f011a7361/cover.jpg/300x300bb.jpg', duration: 214, lyrics: ['Bir derdim var, artık tutamam içimde', 'Gitsem nereye kadar, kalsam neye yarar', 'Hiç anlatamadım, hiç anlamadılar', 'Herkes neden düşman, herkes neden suskun'] },
+      { title: 'Birds of a Feather', artist: 'Billie Eilish', rgb: '37, 99, 235', grad: 'linear-gradient(135deg,#2563eb,#0f172a)', cover: 'https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/92/9f/69/929f69f1-9977-3a44-d674-11f70c852d1b/24UMGIM36186.rgb.jpg/300x300bb.jpg', duration: 210, lyrics: ['I want you to stay', '‘Til I’m in the grave', 'Birds of a feather, we should stick together', 'I know I said I’d never think I wasn’t better alone'] },
+      { title: 'Kuzu Kuzu', artist: 'Tarkan', rgb: '234, 179, 8', grad: 'linear-gradient(135deg,#eab308,#9a3412)', cover: 'https://is1-ssl.mzstatic.com/image/thumb/Music124/v4/35/8d/22/358d22cf-8b9c-1e7d-996d-85aad739a255/dj.nixigvoo.jpg/300x300bb.jpg', duration: 234, lyrics: ['İşte kuzu kuzu geldim', 'Dilediğince kapandım dizlerine', 'Bu kez gururumu ateşe verdim', 'Yaktım da geldim'] },
+    ];
+    let currentSongIdx = 0;
+    let musicElapsed = 74;
+    let musicLyricIdx = 0;
+    let musicPlaying = true;
+
+    function fmtSec(sec) {
+      const m = Math.floor(sec / 60);
+      const s = sec % 60;
+      return `${m}:${String(s).padStart(2, '0')}`;
+    }
+
+    function triggerLyricAnim(el, cls) {
+      if (!el) return;
+      el.classList.remove(cls);
+      void el.offsetWidth;
+      el.classList.add(cls);
+    }
+
+    function updateKaraokeUI(animate) {
+      const s = SONGS[currentSongIdx];
+      const activeText = s.lyrics[musicLyricIdx % s.lyrics.length];
+      const nextText = s.lyrics[(musicLyricIdx + 1) % s.lyrics.length];
+
+      const tabLyric = document.getElementById('musicTabLyric');
+      const tabNext = document.getElementById('musicTabNextLyric');
+      const compactLyric = document.getElementById('compactLyric');
+      const bentoLyric = document.getElementById('bentoKaraokeLyric');
+
+      if (tabLyric) {
+        tabLyric.textContent = activeText;
+        if (animate) triggerLyricAnim(tabLyric, 'karaoke-active-line');
+      }
+      if (tabNext) {
+        tabNext.textContent = nextText;
+        if (animate) triggerLyricAnim(tabNext, 'karaoke-next-line');
+      }
+      if (compactLyric) {
+        compactLyric.textContent = activeText;
+        if (animate) triggerLyricAnim(compactLyric, 'compact-karaoke-anim');
+        const island = document.getElementById('liveIsland');
+        if (island) {
+          const canvas = updateKaraokeUI._c || (updateKaraokeUI._c = document.createElement('canvas'));
+          const ctx = canvas.getContext('2d');
+          ctx.font = '700 12px Inter, sans-serif';
+          const textW = Math.ceil(ctx.measureText(activeText).width);
+          const targetW = Math.max(220, Math.min(560, textW + 104));
+          island.style.setProperty('--karaoke-bar-w', `${targetW}px`);
+        }
+      }
+      if (bentoLyric) bentoLyric.textContent = `♪ ${activeText}`;
+
+      const elEl = document.getElementById('musicElapsedText');
+      const remEl = document.getElementById('musicRemainText');
+      const fillEl = document.getElementById('musicProgressFill');
+      if (elEl) elEl.textContent = fmtSec(musicElapsed);
+      if (remEl) remEl.textContent = `-${fmtSec(Math.max(0, s.duration - musicElapsed))}`;
+      if (fillEl) fillEl.style.width = `${Math.min(100, (musicElapsed / s.duration) * 100).toFixed(1)}%`;
+    }
+
+    function toggleMusicPlay() {
+      musicPlaying = !musicPlaying;
+      const btn = document.getElementById('musicPlayBtn');
+      if (btn) btn.textContent = musicPlaying ? '❚❚' : '▶';
+    }
+
+    let songAutoTick = 0;
+    setInterval(() => {
+      if (!musicPlaying) return;
+      const s = SONGS[currentSongIdx];
+      musicElapsed += 1;
+      songAutoTick += 1;
+      if (songAutoTick >= 5 || musicElapsed >= s.duration) {
+        nextSong();
+        return;
+      }
+      const shouldAdvanceLyric = musicElapsed % 2 === 0;
+      if (shouldAdvanceLyric) musicLyricIdx = (musicLyricIdx + 1) % s.lyrics.length;
+      updateKaraokeUI(shouldAdvanceLyric);
+    }, 1000);
+
+    function selectSong(idx) {
+      currentSongIdx = (idx + SONGS.length) % SONGS.length;
+      musicElapsed = 42;
+      musicLyricIdx = 0;
+      songAutoTick = 0;
+      const s = SONGS[currentSongIdx];
+
+      // Update CSS variable --music-accent-rgb on Hero Stage & Karaoke Card -> shifts bottom gradient!
+      const stageCard = document.querySelector('.hero-stage-card');
+      const karaokeCard = document.getElementById('bentoKaraokeCard');
+      if (stageCard) stageCard.style.setProperty('--music-accent-rgb', s.rgb);
+      if (karaokeCard) karaokeCard.style.setProperty('--music-accent-rgb', s.rgb);
+
+      // Update Home card, Music Tab, Compact Karaoke Bar, and Bento Karaoke Pill
+      document.getElementById('homeSongCover').style.background = s.grad;
+      document.getElementById('homeSongTitle').textContent = s.title;
+      document.getElementById('homeSongArtist').textContent = s.artist;
+
+      document.getElementById('musicTabCover').style.background = s.grad;
+      document.getElementById('musicTabTitle').textContent = s.title;
+      document.getElementById('musicTabArtist').textContent = s.artist;
+
+      document.getElementById('compactCover').style.background = s.grad;
+      document.getElementById('bentoKaraokeCover').style.background = s.grad;
+
+      ['homeSongCoverImg', 'musicTabCoverImg', 'compactCoverImg', 'bentoKaraokeCoverImg'].forEach((id) => {
+        const img = document.getElementById(id);
+        if (img) {
+          img.style.display = 'block';
+          img.src = s.cover;
+        }
+      });
+
+      updateKaraokeUI(true);
+
+      document.querySelectorAll('.karaoke-track-pill').forEach((p, i) => {
+        p.classList.toggle('active', i === currentSongIdx);
+      });
+    }
+
+    function nextSong() { selectSong(currentSongIdx + 1); }
+    function prevSong() { selectSong(currentSongIdx - 1); }
+
+    function renderKaraokeSongList() {
+      const container = document.getElementById('karaokeSongList');
+      if (!container) return;
+      container.innerHTML = SONGS.map((s, i) =>
+        `<button type="button" class="karaoke-track-pill pressable ${i === 0 ? 'active' : ''}" onclick="selectSong(${i})" style="flex:0 0 auto;border-radius:12px;padding:7px 11px;gap:8px;">` +
+        `<img src="${s.cover}" alt="" style="width:24px;height:24px;border-radius:6px;object-fit:cover;flex-shrink:0;" onerror="this.style.display='none'"/>` +
+        `<span style="font-size:12px;font-weight:600;white-space:nowrap;">${s.title}</span>` +
+        `</button>`
+      ).join('');
+    }
+
+    function syncStageBtns(mode) {
+      document.querySelectorAll('.stage-mode-btn').forEach((b) => {
+        b.classList.toggle('active', b.dataset.mode === mode);
+      });
+    }
+
+    function handleIslandClick() {
+      const island = document.getElementById('liveIsland');
+      if (island.classList.contains('state-idle') || island.classList.contains('state-bedo-live') || island.classList.contains('state-music-bar')) {
+        switchTab('home');
+      }
+    }
+
+    function triggerHandsFreeWake() {
+      clearTimers();
+      syncStageBtns('wake');
+      const island = document.getElementById('liveIsland');
+      const liveLabel = document.getElementById('liveLabel');
+      island.className = 'dynamic-island state-bedo-live';
+      liveLabel.textContent = '“Bedo, odak başlat”';
+      showToast('🎙️ “Bedo” sesli komutu algılandı');
+
+      t1 = setTimeout(() => {
+        liveLabel.textContent = 'Odak Başlatıldı ✓';
+        focusRemaining = 24 * 60 + 59;
+        focusRunning = true;
+      }, 1100);
+
+      t2 = setTimeout(() => {
+        switchTab('home');
+      }, 2200);
+    }
+
+    // Multi-Profession Bedo Buddy Auto-Cycle + Typewriter
+    const BUDDY_SCENARIOS = [
+      {
+        role: 'Öğrenci · Matematik',
+        source: '∫ (3x² + 4x - 2) dx = ?',
+        question: 'Bu integrali adım adım çöz ve kuralı açıkla',
+        answer: '✓ <strong>Çözüm:</strong> <code>x³ + 2x² - 2x + C</code>',
+      },
+      {
+        role: 'Araştırmacı · Genel Kültür',
+        source: '“Göbeklitepe Dikilitaşları · MÖ 9600”',
+        question: 'Tarihteki önemi nedir? Tek cümleyle özetle',
+        answer: '✓ <strong>Özet:</strong> Mısır piramitlerinden 7.000 yıl eski ilk anıtsal tapınak yerleşimi.',
+      },
+      {
+        role: 'Analist · Finans',
+        source: 'Q3: $1.42M → Q4: $1.89M · Gider: $1.10M',
+        question: 'Çeyreklik büyüme ve net kâr marjını hesapla',
+        answer: '✓ <strong>Analiz:</strong> +%33.1 büyüme · $790K net kâr (%41.8 marj)',
+      },
+      {
+        role: 'Hekim · Tıp',
+        source: 'Ferritin: 9 ng/mL · Hb: 10.8 g/dL',
+        question: 'Bu laboratuvar bulgularını değerlendir',
+        answer: '✓ <strong>Yorum:</strong> Demir eksikliği anemisi ile uyumlu bulgular.',
+      },
+      {
+        role: 'Tasarımcı · Dil',
+        source: '“La simplicité est la sophistication suprême.”',
+        question: 'Türkçeye çevir ve kontrast oranını kontrol et',
+        answer: '✓ <strong>Çeviri:</strong> “Sadelik, en yüksek gelişmişliktir.” · 9.4:1 AAA',
+      },
+      {
+        role: 'Mühendis · Yazılım',
+        source: '✖ TypeError: Cannot read properties of undefined',
+        question: 'Neden hata veriyor ve nasıl düzeltilir?',
+        answer: '✓ <strong>Çözüm:</strong> <code>user?.profile?.name?.toUpperCase()</code>',
+      },
+    ];
+
+    let typingTimer = null, answerTimer = null, cycleTimer = null;
+    function selectBuddyScenario(idx, manual = false) {
+      if (typingTimer) clearInterval(typingTimer);
+      if (answerTimer) clearTimeout(answerTimer);
+      if (cycleTimer) clearTimeout(cycleTimer);
+
+      const item = BUDDY_SCENARIOS[idx];
+      document.querySelectorAll('.prof-pill[data-prof]').forEach((p) => p.classList.toggle('active', Number(p.dataset.prof) === idx));
+
+      const box = document.getElementById('bentoBuddyBox');
+      const srcEl = document.getElementById('bentoBuddySource');
+      const roleEl = document.getElementById('bentoBuddyRole');
+      const typedEl = document.getElementById('bentoBuddyTyped');
+      const ansEl = document.getElementById('bentoBuddyAnswer');
+
+      box.classList.add('switching');
+      ansEl.classList.remove('revealed');
+
+      setTimeout(() => {
+        srcEl.textContent = item.source;
+        roleEl.textContent = item.role;
+        typedEl.textContent = '';
+        ansEl.innerHTML = item.answer;
+        box.classList.remove('switching');
+
+        let c = 0;
+        typingTimer = setInterval(() => {
+          c++;
+          typedEl.textContent = item.question.slice(0, c);
+          if (c >= item.question.length) {
+            clearInterval(typingTimer);
+            answerTimer = setTimeout(() => ansEl.classList.add('revealed'), 140);
+          }
+        }, 26);
+      }, 150);
+
+      cycleTimer = setTimeout(() => {
+        const order = [0, 2, 3, 5];
+        const nextIdx = order[(order.indexOf(idx) + 1) % order.length];
+        selectBuddyScenario(nextIdx, false);
+      }, manual ? 6500 : 4400);
+    }
+
+    const VOICE_PERSONAS = [
+      { name: 'Charon', desc: 'Varsayılan • Derin' },
+      { name: 'Fenrir', desc: 'Net • Güçlü' },
+      { name: 'Puck', desc: 'Dinamik • Genç' },
+      { name: 'Aoede', desc: 'Yumuşak • Doğal' },
+      { name: 'Kore', desc: 'Sıcak • Sakin' },
+      { name: 'Zephyr', desc: 'Hafif • Akıcı' },
+    ];
+    let currentVoiceIdx = 0;
+
+    function renderVoiceGrid() {
+      const grid = document.getElementById('voiceGrid');
+      if (!grid) return;
+      const checkSvg = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+      grid.innerHTML = VOICE_PERSONAS.map((v, i) => {
+        const active = i === currentVoiceIdx;
+        const badge = active ? `<span class="ai-lg-voice-check">${checkSvg}</span>` : '';
+        return `<button type="button" class="ai-lg-voice-btn ${active ? 'is-active' : ''}" onclick="selectVoicePersona(${i})">` +
+          `<div class="ai-lg-voice-top"><strong>${v.name}</strong>${badge}</div>` +
+          `<span>${v.desc}</span>` +
+          `</button>`;
+      }).join('');
+    }
+
+    function selectVoicePersona(idx) {
+      currentVoiceIdx = idx % VOICE_PERSONAS.length;
+      renderVoiceGrid();
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      renderKaraokeSongList();
+      renderVoiceGrid();
+      selectSong(0);
+      selectBuddyScenario(0, false);
+
+      // Auto-sync "Windows için İndir" buttons with the latest GitHub Release .exe asset
+      fetch('https://api.github.com/repos/bedirhanorseloglu/Bedo-Dynamic-Island-And-AI-Assistant-For-Windows/releases/latest')
+        .then((res) => (res.ok ? res.json() : null))
+        .then((release) => {
+          if (!release || !Array.isArray(release.assets)) return;
+          const exe = release.assets.find((a) => a && a.name && a.name.toLowerCase().endsWith('.exe'));
+          if (!exe || !exe.browser_download_url) return;
+          document.querySelectorAll('.js-download-exe').forEach((el) => {
+            el.href = exe.browser_download_url;
+            el.dataset.toast = `${exe.name} indiriliyor...`;
+          });
+        })
+        .catch(() => {});
+
+      // Cursor-Tracking Liquid Glass Specular Glare on Bento Cards
+      document.querySelectorAll('.glass-card').forEach((card) => {
+        card.addEventListener('mousemove', (e) => {
+          const r = card.getBoundingClientRect();
+          card.style.setProperty('--mx', `${e.clientX - r.left}px`);
+          card.style.setProperty('--my', `${e.clientY - r.top}px`);
+        });
+      });
+
+      // Scroll-Driven 3D Stage Depth + Navbar Subtle Compression
+      const heroStage = document.querySelector('.hero-stage-card');
+      const navShell = document.querySelector('.navbar-shell');
+      let scrollTicking = false;
+      window.addEventListener('scroll', () => {
+        if (scrollTicking) return;
+        scrollTicking = true;
+        requestAnimationFrame(() => {
+          const y = window.scrollY || 0;
+          if (heroStage) {
+            const p = Math.min(1, y / 520);
+            const tilt = (p * 3.5).toFixed(2);
+            const scale = (1 - p * 0.035).toFixed(4);
+            heroStage.style.transform = `rotateX(${tilt}deg) scale(${scale})`;
+          }
+          if (navShell) {
+            navShell.style.maxWidth = y > 40 ? '960px' : '1080px';
+          }
+          scrollTicking = false;
+        });
+      }, { passive: true });
+
+      // Scroll-Triggered Reveal Observer (Emil Kowalski scale 0.95 + blur -> 1)
+      const observer = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            if (entry.isIntersecting) {
+              entry.target.classList.add('is-visible');
+
+              // Animate Stats Bar numbers when visible
+              entry.target.querySelectorAll('[data-count]').forEach((numEl) => {
+                if (numEl.dataset.counted) return;
+                numEl.dataset.counted = '1';
+                const target = parseInt(numEl.dataset.count, 10);
+                const suffix = numEl.dataset.suffix || '';
+                if (target === 0) {
+                  numEl.textContent = '0' + suffix;
+                  return;
+                }
+                const start = performance.now();
+                const dur = 700;
+                function tick(now) {
+                  const p = Math.min(1, (now - start) / dur);
+                  const eased = 1 - Math.pow(1 - p, 3);
+                  numEl.textContent = Math.round(target * eased) + suffix;
+                  if (p < 1) requestAnimationFrame(tick);
+                }
+                requestAnimationFrame(tick);
+              });
+
+              observer.unobserve(entry.target);
+            }
+          });
+        },
+        { threshold: 0.14, rootMargin: '0px 0px -40px 0px' }
+      );
+
+      document.querySelectorAll('.reveal').forEach((el) => observer.observe(el));
+    });
+
+    // Subtle Scroll-Linked Parallax on Hero Stage Card
+    window.addEventListener(
+      'scroll',
+      () => {
+        const y = window.scrollY;
+        const stage = document.querySelector('.hero-stage-card');
+        if (stage && y < 700) {
+          stage.style.transform = `translateY(${Math.min(28, y * 0.05)}px)`;
+        }
+      },
+      { passive: true }
+    );
+
+    // FAQ Accordion
+    function toggleFaq(btn) {
+      const item = btn.parentElement;
+      const isOpen = item.classList.contains('open');
+      document.querySelectorAll('.faq-item').forEach((i) => i.classList.remove('open'));
+      if (!isOpen) item.classList.add('open');
+    }
+
+    // Video Player Deck
+    const videoEl = document.getElementById('launchVideo');
+    const playBtnEl = document.getElementById('videoPlayBtn');
+    const progressFillEl = document.getElementById('videoProgressFill');
+    const timeLabelEl = document.getElementById('videoTimeLabel');
+    const muteBtnEl = document.getElementById('videoMuteBtn');
+
+    function fmtTime(sec) {
+      const s = Math.max(0, Math.floor(sec || 0));
+      return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+    }
+    function toggleVideoPlay() {
+      if (!videoEl) return;
+      if (videoEl.paused) { videoEl.play(); playBtnEl.textContent = '❚❚'; }
+      else { videoEl.pause(); playBtnEl.textContent = '▶'; }
+    }
+    function toggleVideoMute() {
+      if (!videoEl) return;
+      videoEl.muted = !videoEl.muted;
+      muteBtnEl.innerHTML = videoEl.muted
+        ? '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>'
+        : '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
+    }
+    function fullscreenVideo() {
+      if (videoEl && videoEl.requestFullscreen) videoEl.requestFullscreen();
+    }
+    function scrubVideo(e) {
+      if (!videoEl || !videoEl.duration) return;
+      const rect = e.currentTarget.getBoundingClientRect();
+      videoEl.currentTime = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)) * videoEl.duration;
+    }
+    if (videoEl) {
+      videoEl.addEventListener('timeupdate', () => {
+        const dur = videoEl.duration || 27;
+        const cur = videoEl.currentTime || 0;
+        progressFillEl.style.width = `${(cur / dur) * 100}%`;
+        timeLabelEl.textContent = `${fmtTime(cur)} / ${fmtTime(dur)}`;
+        const idx = cur < 3.5 ? 0 : cur < 7.2 ? 1 : cur < 13.0 ? 2 : cur < 18.4 ? 3 : 4;
+        document.querySelectorAll('.chapter-pill').forEach((p, i) => p.classList.toggle('active', i === idx));
+      });
+      videoEl.addEventListener('ended', () => { playBtnEl.textContent = '▶'; });
+    }
+    function seekVideo(sec, btn) {
+      if (!videoEl) return;
+      videoEl.currentTime = sec;
+      videoEl.play();
+      playBtnEl.textContent = '❚❚';
+      if (btn) {
+        document.querySelectorAll('.chapter-pill').forEach((p) => p.classList.remove('active'));
+        btn.classList.add('active');
+      }
+    }
+  </script>
+</body>
+</html>
