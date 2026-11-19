@@ -35,6 +35,8 @@ interface IAudioEndpointVolume {
 [Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
 interface IMMDevice {
     int Activate(ref Guid id, int clsCtx, int activationParams, out IAudioEndpointVolume aev);
+    int OpenPropertyStore(int stgmAccess, out IntPtr ppProperties);
+    int GetId([MarshalAs(UnmanagedType.LPWStr)] out string ppstrId);
 }
 
 [Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
@@ -48,27 +50,78 @@ class MMDeviceEnumeratorComObject { }
 
 public class WinAudioHelper {
     private static IAudioEndpointVolume endpoint;
-    private static IAudioEndpointVolume micEndpoint;
+    private static string cachedDeviceId;
+    private static long lastDeviceCheckTicks;
+
+    public static void InvalidateAudioEndpoint() {
+        if (endpoint != null) {
+            try { Marshal.ReleaseComObject(endpoint); } catch {}
+            endpoint = null;
+        }
+        cachedDeviceId = null;
+        lastDeviceCheckTicks = 0;
+    }
+
+    private static bool EnsureEndpoint(bool forceCheck) {
+        long nowTicks = DateTime.UtcNow.Ticks;
+        if (endpoint != null && !forceCheck && (nowTicks - lastDeviceCheckTicks) < 10000000L) {
+            return true;
+        }
+        lastDeviceCheckTicks = nowTicks;
+        IMMDeviceEnumerator enumerator = null;
+        IMMDevice dev = null;
+        try {
+            enumerator = new MMDeviceEnumeratorComObject() as IMMDeviceEnumerator;
+            if (enumerator == null) {
+                InvalidateAudioEndpoint();
+                return false;
+            }
+            enumerator.GetDefaultAudioEndpoint(0, 1, out dev);
+            if (dev == null) {
+                enumerator.GetDefaultAudioEndpoint(0, 0, out dev);
+            }
+            if (dev == null) {
+                InvalidateAudioEndpoint();
+                return false;
+            }
+            string devId = null;
+            try { dev.GetId(out devId); } catch {}
+            if (endpoint != null && devId != null && devId == cachedDeviceId) {
+                return true;
+            }
+            InvalidateAudioEndpoint();
+            Guid epvId = typeof(IAudioEndpointVolume).GUID;
+            dev.Activate(ref epvId, 23, 0, out endpoint);
+            if (endpoint == null) return false;
+            cachedDeviceId = devId;
+            return true;
+        } catch {
+            InvalidateAudioEndpoint();
+            return false;
+        } finally {
+            if (dev != null) try { Marshal.ReleaseComObject(dev); } catch {}
+            if (enumerator != null) try { Marshal.ReleaseComObject(enumerator); } catch {}
+        }
+    }
 
     public static int GetVolume(out bool muted) {
         muted = false;
-        try {
-            if (endpoint == null) {
-                var enumerator = new MMDeviceEnumeratorComObject() as IMMDeviceEnumerator;
-                IMMDevice dev = null;
-                enumerator.GetDefaultAudioEndpoint(0, 1, out dev);
-                if (dev == null) return -1;
-                Guid epvId = typeof(IAudioEndpointVolume).GUID;
-                dev.Activate(ref epvId, 23, 0, out endpoint);
-                if (endpoint == null) return -1;
+        for (int attempt = 0; attempt < 2; attempt++) {
+            try {
+                if (!EnsureEndpoint(attempt > 0)) return -1;
+                float v = 0;
+                int hrVol = endpoint.GetMasterVolumeLevelScalar(out v);
+                int hrMute = endpoint.GetMute(out muted);
+                if (hrVol < 0 || hrMute < 0) {
+                    InvalidateAudioEndpoint();
+                    continue;
+                }
+                return (int)Math.Round(v * 100);
+            } catch {
+                InvalidateAudioEndpoint();
             }
-            float v = 0;
-            endpoint.GetMasterVolumeLevelScalar(out v);
-            endpoint.GetMute(out muted);
-            return (int)Math.Round(v * 100);
-        } catch {
-            return -1;
         }
+        return -1;
     }
 
     public static int GetMicMuted(out bool muted) {
@@ -117,28 +170,40 @@ public class WinAudioHelper {
     }
 
     public static bool SetVolume(int percent) {
-        try {
-            bool dummy;
-            if (endpoint == null) GetVolume(out dummy);
-            if (endpoint == null) return false;
-            int clamped = Math.Max(0, Math.Min(100, percent));
-            endpoint.SetMasterVolumeLevelScalar(clamped / 100.0f, Guid.Empty);
-            endpoint.SetMute(clamped <= 0, Guid.Empty);
-            return true;
-        } catch {
-            return false;
+        int clamped = Math.Max(0, Math.Min(100, percent));
+        for (int attempt = 0; attempt < 2; attempt++) {
+            try {
+                if (!EnsureEndpoint(attempt > 0)) return false;
+                int hr1 = endpoint.SetMasterVolumeLevelScalar(clamped / 100.0f, Guid.Empty);
+                int hr2 = endpoint.SetMute(clamped <= 0, Guid.Empty);
+                if (hr1 < 0 || hr2 < 0) {
+                    InvalidateAudioEndpoint();
+                    continue;
+                }
+                return true;
+            } catch {
+                InvalidateAudioEndpoint();
+            }
         }
+        return false;
     }
 
     public static bool ToggleMute() {
-        try {
-            bool muted = false;
-            if (GetVolume(out muted) < 0 || endpoint == null) return false;
-            endpoint.SetMute(!muted, Guid.Empty);
-            return true;
-        } catch {
-            return false;
+        for (int attempt = 0; attempt < 2; attempt++) {
+            try {
+                bool muted = false;
+                if (GetVolume(out muted) < 0 || endpoint == null) return false;
+                int hr = endpoint.SetMute(!muted, Guid.Empty);
+                if (hr < 0) {
+                    InvalidateAudioEndpoint();
+                    continue;
+                }
+                return true;
+            } catch {
+                InvalidateAudioEndpoint();
+            }
         }
+        return false;
     }
 }
 
@@ -551,13 +616,24 @@ using System.Management;
 public class WinBrightnessHelper {
     private static ManagementObject cachedObj;
 
+    public static void Reset() {
+        if (cachedObj != null) {
+            try { cachedObj.Dispose(); } catch {}
+            cachedObj = null;
+        }
+    }
+
     public static int GetBrightness() {
-        try {
-            if (cachedObj != null) {
+        if (cachedObj != null) {
+            try {
                 cachedObj.Get();
                 object val = cachedObj["CurrentBrightness"];
                 if (val != null) return Convert.ToInt32(val);
+            } catch {
+                Reset();
             }
+        }
+        try {
             using (var searcher = new ManagementObjectSearcher("root\\wmi", "SELECT CurrentBrightness FROM WmiMonitorBrightness")) {
                 foreach (ManagementObject obj in searcher.Get()) {
                     cachedObj = obj;
@@ -566,7 +642,7 @@ public class WinBrightnessHelper {
                 }
             }
         } catch {
-            cachedObj = null;
+            Reset();
         }
         return -1;
     }
@@ -587,6 +663,7 @@ $notificationsInitialized = $false
 $initialized = $false
 $lastVolumePoll = [DateTimeOffset]::MinValue
 $lastBrightnessPoll = [DateTimeOffset]::MinValue
+$brightnessUnsupportedUntil = [DateTimeOffset]::MinValue
 $lastGameModePoll = [DateTimeOffset]::MinValue
 $lastParentCheck = [DateTimeOffset]::MinValue
 $lastBrightnessJobPoll = [DateTimeOffset]::MinValue
@@ -596,10 +673,20 @@ $lastGcPoll = [DateTimeOffset]::MinValue
 $notificationTask = $null
 $notificationListType = [System.Collections.Generic.IReadOnlyList[Windows.UI.Notifications.UserNotification]]
 $brightnessEventSubscription = $null
-try {
-    # WMI brightness events arrive as the display changes; no repeated CIM scans.
-    $brightnessEventSubscription = Register-WmiEvent -Namespace 'root\wmi' -Query 'SELECT * FROM WmiMonitorBrightnessEvent' -SourceIdentifier 'TwoCodeBrightness' -ErrorAction Stop
-} catch {}
+function Register-BrightnessEventSubscription {
+    try {
+        if ($null -ne $script:brightnessEventSubscription) {
+            try { Unregister-Event -SourceIdentifier 'TwoCodeBrightness' -Force -ErrorAction SilentlyContinue } catch {}
+            try { Remove-Job -Job $script:brightnessEventSubscription -Force -ErrorAction SilentlyContinue } catch {}
+            $script:brightnessEventSubscription = $null
+        }
+        # WMI brightness events arrive as the display changes; no repeated CIM scans.
+        $script:brightnessEventSubscription = Register-WmiEvent -Namespace 'root\wmi' -Query 'SELECT * FROM WmiMonitorBrightnessEvent' -SourceIdentifier 'TwoCodeBrightness' -ErrorAction Stop
+    } catch {
+        $script:brightnessEventSubscription = $null
+    }
+}
+Register-BrightnessEventSubscription
 
 $stdinStream = $null
 $stdinBuf = New-Object byte[] 256
@@ -613,41 +700,50 @@ try {
 } catch {}
 
 while ($true) {
-    if ($null -ne $stdinReadTask -and $stdinReadTask.IsCompleted) {
-        $bytesRead = 0
-        try { $bytesRead = $stdinReadTask.Result } catch { $bytesRead = 0 }
-        if ($bytesRead -gt 0) {
-            $stdinAcc += [System.Text.Encoding]::UTF8.GetString($stdinBuf, 0, $bytesRead)
-            while ($stdinAcc.Contains("`n")) {
-                $nlIdx = $stdinAcc.IndexOf("`n")
-                $trimmedCmd = $stdinAcc.Substring(0, $nlIdx).Trim()
-                $stdinAcc = $stdinAcc.Substring($nlIdx + 1)
-                if ($trimmedCmd -match '^set-volume:(\d+)$') {
-                    $targetVol = [int]$Matches[1]
-                    if ([WinAudioHelper]::SetVolume($targetVol)) {
-                        $lastVol = [Math]::Max(0, [Math]::Min(100, $targetVol))
-                        $lastMuted = ($lastVol -le 0)
-                    }
-                } elseif ($trimmedCmd -eq 'toggle-mute') {
-                    if ([WinAudioHelper]::ToggleMute()) {
-                        $m = $false
-                        $v = [WinAudioHelper]::GetVolume([ref]$m)
-                        if ($v -ge 0) { $lastVol = $v; $lastMuted = $m }
-                    }
-                } elseif ($trimmedCmd -match '^set-mic-mute:(true|false)$') {
-                    $targetMicMute = ($Matches[1] -eq 'true')
-                    if ([WinAudioHelper]::SetMicMuted($targetMicMute)) {
-                        $lastMicMuted = $targetMicMute
-                        $lastMicInit = $true
-                        Write-Output ((@{ event = 'mic-mute'; muted = [bool]$targetMicMute }) | ConvertTo-Json -Compress)
+    try {
+        if ($null -ne $stdinReadTask -and $stdinReadTask.IsCompleted) {
+            $bytesRead = 0
+            try { $bytesRead = $stdinReadTask.Result } catch { $bytesRead = 0 }
+            if ($bytesRead -gt 0) {
+                $stdinAcc += [System.Text.Encoding]::UTF8.GetString($stdinBuf, 0, $bytesRead)
+                while ($stdinAcc.Contains("`n")) {
+                    $nlIdx = $stdinAcc.IndexOf("`n")
+                    $trimmedCmd = $stdinAcc.Substring(0, $nlIdx).Trim()
+                    $stdinAcc = $stdinAcc.Substring($nlIdx + 1)
+                    if ($trimmedCmd -match '^set-volume:(\d+)$') {
+                        $targetVol = [int]$Matches[1]
+                        if ([WinAudioHelper]::SetVolume($targetVol)) {
+                            $lastVol = [Math]::Max(0, [Math]::Min(100, $targetVol))
+                            $lastMuted = ($lastVol -le 0)
+                        }
+                    } elseif ($trimmedCmd -eq 'toggle-mute') {
+                        if ([WinAudioHelper]::ToggleMute()) {
+                            $m = $false
+                            $v = [WinAudioHelper]::GetVolume([ref]$m)
+                            if ($v -ge 0) { $lastVol = $v; $lastMuted = $m }
+                        }
+                    } elseif ($trimmedCmd -match '^set-mic-mute:(true|false)$') {
+                        $targetMicMute = ($Matches[1] -eq 'true')
+                        if ([WinAudioHelper]::SetMicMuted($targetMicMute)) {
+                            $lastMicMuted = $targetMicMute
+                            $lastMicInit = $true
+                            Write-Output ((@{ event = 'mic-mute'; muted = [bool]$targetMicMute }) | ConvertTo-Json -Compress)
+                        }
+                    } elseif ($trimmedCmd -eq 'refresh-watchers') {
+                        [WinAudioHelper]::InvalidateAudioEndpoint()
+                        [WinBrightnessHelper]::Reset()
+                        $brightnessUnsupportedUntil = [DateTimeOffset]::MinValue
+                        $lastBrightnessPoll = [DateTimeOffset]::MinValue
+                        $lastVolumePoll = [DateTimeOffset]::MinValue
+                        Register-BrightnessEventSubscription
                     }
                 }
+                try { $stdinReadTask = $stdinStream.ReadAsync($stdinBuf, 0, $stdinBuf.Length) } catch { $stdinReadTask = $null }
+            } else {
+                $stdinReadTask = $null
             }
-            try { $stdinReadTask = $stdinStream.ReadAsync($stdinBuf, 0, $stdinBuf.Length) } catch { $stdinReadTask = $null }
-        } else {
-            $stdinReadTask = $null
         }
-    }
+    } catch {}
     $now = [DateTimeOffset]::Now
     # Parent Electron lifecycle guard: check every 2.5s instead of 120ms to avoid Get-Process allocation churn
     if ($ElectronPid -gt 0 -and ($now - $lastParentCheck).TotalMilliseconds -ge 2500) {
@@ -745,9 +841,10 @@ while ($true) {
 
         # Sample brightness at 10 Hz on desktop; in game mode rely on event-driven WmiMonitorBrightnessEvent
         # (or low-rate 600ms fallback) to eliminate continuous WmiPrvSE CPU overhead.
-        $skipBrightnessPoll = $gameModeActive -and ($null -ne $brightnessEventSubscription) -and ($lastBrightness -ge 0)
+        $brightnessJobRunning = ($null -ne $brightnessEventSubscription) -and ($brightnessEventSubscription.State -eq 'Running')
+        $skipBrightnessPoll = $gameModeActive -and $brightnessJobRunning -and ($lastBrightness -ge 0)
         $brightnessPollMs = if ($gameModeActive) { 600 } else { 100 }
-        if (-not $wmiBrightnessUnsupported -and -not $skipBrightnessPoll -and ($lastBrightness -lt 0 -or ($now - $lastBrightnessPoll).TotalMilliseconds -ge $brightnessPollMs)) {
+        if ($now -ge $brightnessUnsupportedUntil -and -not $skipBrightnessPoll -and ($lastBrightness -lt 0 -or ($now - $lastBrightnessPoll).TotalMilliseconds -ge $brightnessPollMs)) {
             $lastBrightnessPoll = $now
             $bri = -1
             try { $bri = [WinBrightnessHelper]::GetBrightness() } catch {}
@@ -756,11 +853,12 @@ while ($true) {
                 if ($null -ne $bObj -and $null -ne $bObj.CurrentBrightness) {
                     $bri = [int]$bObj.CurrentBrightness
                 } else {
-                    # External/desktop monitors do not expose WmiMonitorBrightness; stop polling WMI at 10 Hz.
-                    $wmiBrightnessUnsupported = $true
+                    # External/desktop monitors or sleeping displays may not expose WmiMonitorBrightness; back off 10s instead of disabling forever.
+                    $brightnessUnsupportedUntil = $now.AddSeconds(10)
                 }
             }
             if ($bri -ge 0) {
+                $brightnessUnsupportedUntil = [DateTimeOffset]::MinValue
                 if ($lastBrightness -ge 0 -and $bri -ne $lastBrightness) {
                     $bEv = @{ event = 'brightness'; value = $bri }
                     Write-Output ($bEv | ConvertTo-Json -Compress)
@@ -771,14 +869,18 @@ while ($true) {
         $brightnessJobPollMs = if ($gameModeActive) { 150 } else { 500 }
         if ($null -ne $brightnessEventSubscription -and ($now - $lastBrightnessJobPoll).TotalMilliseconds -ge $brightnessJobPollMs) {
             $lastBrightnessJobPoll = $now
-            $bEvent = Receive-Job -Job $brightnessEventSubscription -ErrorAction SilentlyContinue | Select-Object -Last 1
-            if ($null -ne $bEvent) {
-                $bri = -1
-                try { $bri = [int]$bEvent.SourceEventArgs.NewEvent.Brightness } catch {}
-                if ($bri -ge 0 -and $bri -ne $lastBrightness) {
-                    $lastBrightness = $bri
-                    $bEv = @{ event = 'brightness'; value = $bri }
-                    Write-Output ($bEv | ConvertTo-Json -Compress)
+            if ($brightnessEventSubscription.State -ne 'Running') {
+                Register-BrightnessEventSubscription
+            } else {
+                $bEvent = Receive-Job -Job $brightnessEventSubscription -ErrorAction SilentlyContinue | Select-Object -Last 1
+                if ($null -ne $bEvent) {
+                    $bri = -1
+                    try { $bri = [int]$bEvent.SourceEventArgs.NewEvent.Brightness } catch {}
+                    if ($bri -ge 0 -and $bri -ne $lastBrightness) {
+                        $lastBrightness = $bri
+                        $bEv = @{ event = 'brightness'; value = $bri }
+                        Write-Output ($bEv | ConvertTo-Json -Compress)
+                    }
                 }
             }
         }
@@ -884,6 +986,8 @@ while ($true) {
         [WinWindowHelper]::TrimMemory()
     }
 
-    if ($ghelperBridgeLoaded) { Invoke-GHelperNotificationMessagePump }
+    if ($ghelperBridgeLoaded) {
+        try { Invoke-GHelperNotificationMessagePump } catch {}
+    }
     Start-Sleep -Milliseconds $(if ($gameModeActive) { 150 } else { 120 })
 }

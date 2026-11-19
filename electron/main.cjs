@@ -2158,6 +2158,9 @@ function registerGlobalShortcuts() {
 }
 
 let systemWatcherProc = null;
+let systemWatcherRestartTimer = null;
+let systemWatcherRestartAttempts = 0;
+let isAppQuitting = false;
 let gameModeActive = false;
 let isSystemLockedOrSuspended = false;
 let gameModeSettingsWasVisible = false;
@@ -2190,6 +2193,22 @@ function showWindowForGameModeOverlay() {
     if (userSettings.gameOptDeepHideWindow === true) {
       mainWindow.moveTop();
     }
+  } catch {}
+}
+
+function ensureWindowVisibleForHud() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (gameModeActive) {
+    showWindowForGameModeOverlay();
+    return;
+  }
+  try {
+    if (!mainWindow.isVisible()) {
+      mainWindow.showInactive();
+      updateWindowMouseIgnore(true);
+    }
+    mainWindow.setAlwaysOnTop(true, 'screen-saver');
+    mainWindow.moveTop();
   } catch {}
 }
 
@@ -2409,17 +2428,38 @@ function setGameModeActive(active) {
   gameModeSettingsWasVisible = false;
 }
 
+function scheduleSystemWatcherRestart() {
+  if (isAppQuitting || isSystemLockedOrSuspended) return;
+  if (systemWatcherRestartTimer) return;
+  const delayMs = Math.min(10000, 1500 * Math.pow(2, Math.min(systemWatcherRestartAttempts, 3)));
+  systemWatcherRestartAttempts += 1;
+  systemWatcherRestartTimer = setTimeout(() => {
+    systemWatcherRestartTimer = null;
+    startSystemWatcher();
+  }, delayMs);
+}
+
 function startSystemWatcher() {
+  if (isAppQuitting) return;
+  if (systemWatcherRestartTimer) {
+    clearTimeout(systemWatcherRestartTimer);
+    systemWatcherRestartTimer = null;
+  }
+  if (systemWatcherProc && !systemWatcherProc.killed && systemWatcherProc.exitCode === null) {
+    return;
+  }
   try {
     const watcherScript = resolveScriptPath('win-system-watcher.ps1');
-    systemWatcherProc = spawn(
+    const proc = spawn(
       'powershell.exe',
       ['-WindowStyle', 'Hidden', '-NoProfile', '-STA', '-ExecutionPolicy', 'Bypass', '-File', watcherScript, '-ElectronPid', String(process.pid)],
       { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] }
     );
+    systemWatcherProc = proc;
     let buffer = '';
     const watcherStartedAt = Date.now();
-    systemWatcherProc.stdout.on('data', (chunk) => {
+    proc.stdout.on('data', (chunk) => {
+      systemWatcherRestartAttempts = 0;
       buffer += chunk.toString('utf8');
       const lines = buffer.split(/\r?\n/);
       buffer = lines.pop() || '';
@@ -2503,7 +2543,7 @@ function startSystemWatcher() {
             });
           } else if (ev.event === 'volume') {
             if (!isStartupGrace && isGameOptHudAllowed()) {
-              if (gameModeActive) showWindowForGameModeOverlay();
+              ensureWindowVisibleForHud();
               mainWindow.webContents.send('system-hud', {
                 type: 'volume',
                 value: ev.value,
@@ -2513,7 +2553,7 @@ function startSystemWatcher() {
             }
           } else if (ev.event === 'brightness') {
             if (!isStartupGrace && isGameOptHudAllowed()) {
-              if (gameModeActive) showWindowForGameModeOverlay();
+              ensureWindowVisibleForHud();
               mainWindow.webContents.send('system-hud', {
                 type: 'brightness',
                 value: ev.value,
@@ -2557,11 +2597,25 @@ function startSystemWatcher() {
         } catch {}
       }
     });
-    systemWatcherProc.on('error', () => {});
-  } catch {}
+    proc.on('error', () => {
+      if (systemWatcherProc === proc) systemWatcherProc = null;
+      scheduleSystemWatcherRestart();
+    });
+    proc.on('exit', () => {
+      if (systemWatcherProc === proc) systemWatcherProc = null;
+      scheduleSystemWatcherRestart();
+    });
+  } catch {
+    scheduleSystemWatcherRestart();
+  }
 }
 
 app.on('will-quit', () => {
+  isAppQuitting = true;
+  if (systemWatcherRestartTimer) {
+    clearTimeout(systemWatcherRestartTimer);
+    systemWatcherRestartTimer = null;
+  }
   if (gameModeHideTimer) {
     clearTimeout(gameModeHideTimer);
     gameModeHideTimer = null;
@@ -2800,6 +2854,11 @@ ipcMain.handle('get-python-bootstrap-status', () => getPythonBootstrapStatus());
     if (!isSystemLockedOrSuspended) return;
     isSystemLockedOrSuspended = false;
     if (!gameModeActive) startBackgroundPolling();
+    if (!systemWatcherProc || systemWatcherProc.killed || systemWatcherProc.exitCode !== null) {
+      startSystemWatcher();
+    } else if (systemWatcherProc.stdin && !systemWatcherProc.stdin.destroyed) {
+      try { systemWatcherProc.stdin.write('refresh-watchers\n'); } catch {}
+    }
   };
   powerMonitor.on('suspend', handlePowerPause);
   powerMonitor.on('lock-screen', handlePowerPause);
