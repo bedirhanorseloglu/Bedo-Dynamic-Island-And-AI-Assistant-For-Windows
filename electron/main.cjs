@@ -4913,6 +4913,38 @@ function translateTextMyMemory(text, from = 'tr', to = 'en') {
 }
 
 // Google Gemini API query
+function httpsPostJson(urlStr, headers, bodyStr, timeoutMs = 20000) {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(urlStr);
+    const req = https.request(
+      {
+        hostname: parsed.hostname,
+        port: parsed.port || 443,
+        path: parsed.pathname + parsed.search,
+        method: 'POST',
+        family: 4,
+        headers: {
+          ...headers,
+          'Content-Length': Buffer.byteLength(bodyStr, 'utf8'),
+        },
+        timeout: timeoutMs,
+      },
+      (res) => {
+        let data = '';
+        res.setEncoding('utf8');
+        res.on('data', (chunk) => { data += chunk; });
+        res.on('end', () => resolve({ status: res.statusCode || 0, statusText: res.statusMessage || '', body: data }));
+      }
+    );
+    req.on('timeout', () => {
+      req.destroy(new Error('TIMEOUT'));
+    });
+    req.on('error', reject);
+    req.write(bodyStr);
+    req.end();
+  });
+}
+
 function callGeminiApi(apiKey, prompt) {
   return (async () => {
     const cleanKey = String(apiKey || '').trim();
@@ -4933,21 +4965,17 @@ function callGeminiApi(apiKey, prompt) {
     });
     const retryableStatuses = new Set([404, 429, 500, 502, 503, 504]);
     for (let index = 0; index < models.length; index += 1) {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 12000);
       try {
-        // Electron's Chromium network stack follows the user's Windows proxy/PAC settings.
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${models[index]}:generateContent`;
-        const response = await net.fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': cleanKey },
-          body: payload,
-          signal: controller.signal,
-        });
-        const body = await response.text();
+        const response = await httpsPostJson(
+          url,
+          { 'Content-Type': 'application/json', 'x-goog-api-key': cleanKey },
+          payload,
+          20000
+        );
         let data;
-        try { data = JSON.parse(body); } catch { throw new Error(`Gemini yanıtı çözümlenemedi (HTTP ${response.status}).`); }
-        if (!response.ok) {
+        try { data = JSON.parse(response.body); } catch { throw new Error(`Gemini yanıtı çözümlenemedi (HTTP ${response.status}).`); }
+        if (response.status < 200 || response.status >= 300) {
           const message = data?.error?.message || response.statusText || 'Gemini API isteği reddedildi.';
           if (retryableStatuses.has(response.status) && index < models.length - 1) continue;
           throw new Error(`${response.status}: ${message}`);
@@ -4958,7 +4986,7 @@ function callGeminiApi(apiKey, prompt) {
         }
         return answer || '';
       } catch (error) {
-        if (error?.name === 'AbortError') {
+        if (error?.message === 'TIMEOUT' || error?.name === 'AbortError') {
           if (index < models.length - 1) continue;
           throw new Error('TIMEOUT');
         }
@@ -4966,8 +4994,6 @@ function callGeminiApi(apiKey, prompt) {
           continue;
         }
         throw error;
-      } finally {
-        clearTimeout(timeout);
       }
     }
     return '';

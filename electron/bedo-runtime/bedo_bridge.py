@@ -16,9 +16,11 @@ import sys
 import threading
 from pathlib import Path
 
-from bridge_ui import BridgeUI
-
 BASE_DIR = Path(__file__).resolve().parent
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
+
+from bridge_ui import BridgeUI
 
 
 def _configure_utf8_stdio(redirect_prints_to_stderr: bool = True) -> None:
