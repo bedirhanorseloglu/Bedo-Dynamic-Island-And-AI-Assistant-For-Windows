@@ -282,7 +282,7 @@ export default {
 
   // App.jsx — Music Tab
   'music.albumArtAlt': '{title} albüm kapağı',
-  'music.nowPlaying': 'ŞU AN ÇALIYOR',
+  'music.nowPlaying': 'Şu an çalıyor',
   'music.nothingPlaying': 'Hiçbir şey çalmıyor',
   'music.playingOnPc': 'Bu bilgisayarda çalıyor',
   'music.playPrompt': 'Müzik veya video oynatın',
@@ -399,6 +399,7 @@ export default {
   'settings.nav.notifications': 'Bildirimler',
   'settings.nav.island': 'Ada',
   'settings.nav.focusguard': 'Odak koruma',
+  'settings.nav.gameopt': 'Oyun optimizasyonu',
   'settings.nav.news': 'Haberler',
   'settings.nav.support': 'Bedo’yu Destekle',
   'settings.tasksDone': '{count} görev tamamlandı',
@@ -433,6 +434,8 @@ export default {
   'settings.header.island.sub': 'Adanın görünümü ve gösterdikleri',
   'settings.header.focusguard.title': 'Odak koruma',
   'settings.header.focusguard.sub': 'Dikkatin dağıldığında Bedo seni bir anlığına durdurur',
+  'settings.header.gameopt.title': 'Oyun optimizasyonu',
+  'settings.header.gameopt.sub': 'Oyun sırasında FPS düşüren özellikleri otomatik yönetir, oyun kapanınca geri açar',
   'settings.header.news.title': 'Haberler',
   'settings.header.news.sub': 'Bedo’daki yenilikler',
   'settings.header.support.title': 'Bedo’yu Destekle',

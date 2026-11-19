@@ -282,7 +282,7 @@ export default {
 
   // App.jsx — Music Tab
   'music.albumArtAlt': '{title} album art',
-  'music.nowPlaying': 'NOW PLAYING',
+  'music.nowPlaying': 'Now playing',
   'music.nothingPlaying': 'Nothing playing',
   'music.playingOnPc': 'Playing on this PC',
   'music.playPrompt': 'Play music or a video',
@@ -399,6 +399,7 @@ export default {
   'settings.nav.notifications': 'Notifications',
   'settings.nav.island': 'Island',
   'settings.nav.focusguard': 'Focus guard',
+  'settings.nav.gameopt': 'Game optimization',
   'settings.nav.news': 'News',
   'settings.nav.support': 'Support Bedo',
   'settings.tasksDone': '{count} tasks done',
@@ -433,6 +434,8 @@ export default {
   'settings.header.island.sub': 'How the island looks and what it shows',
   'settings.header.focusguard.title': 'Focus guard',
   'settings.header.focusguard.sub': 'Bedo stops you for a moment when something distracts you',
+  'settings.header.gameopt.title': 'Game optimization',
+  'settings.header.gameopt.sub': 'Automatically manages FPS-heavy features during games and restores them on exit',
   'settings.header.news.title': 'News',
   'settings.header.news.sub': 'What is new in Bedo',
   'settings.header.support.title': 'Support Bedo',

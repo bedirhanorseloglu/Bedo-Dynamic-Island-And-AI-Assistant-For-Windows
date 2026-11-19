@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import RealAppIcon from './RealAppIcon';
+import NotificationText from './NotificationText';
 import {
   Home,
   Plug,
@@ -44,6 +45,8 @@ import {
   ArrowUp,
   ArrowDown,
   Plus,
+  Gamepad2,
+  Zap,
 } from 'lucide-react';
 import './settings.css';
 import { playRoboSound, playNotifSound } from './sounds';
@@ -174,6 +177,14 @@ const DEFAULT_SETTINGS = {
   focusGuardCustom: '',
   focusGuardWaitSec: 5,
   focusGuardLeaveMin: 5,
+  gameOptEnabled: true,
+  gameOptHideIsland: true,
+  gameOptPauseAnimations: true,
+  gameOptDisableBlur: true,
+  gameOptPauseBackgroundPolling: true,
+  gameOptPauseBedoVoice: false,
+  gameOptAllowHudAndNotifs: true,
+  gameOptDeepHideWindow: false,
 };
 
 const PAGE_HEADERS = {
@@ -203,6 +214,10 @@ const PAGE_HEADERS = {
     title: 'Focus guard',
     subtitle: 'Bedo stops you for a moment when something distracts you',
     hasSearch: true,
+  },
+  gameopt: {
+    title: 'Game optimization',
+    subtitle: 'Automatically manages FPS-heavy features during games and restores them on exit',
   },
   news: { title: 'News', subtitle: 'What is new in Bedo' },
   support: { title: 'Support Bedo', subtitle: 'Help Bedo grow' },
@@ -374,6 +389,13 @@ export default function SettingsApp() {
   const [installedAppsQuery, setInstalledAppsQuery] = useState('');
   const [fgAppQuery, setFgAppQuery] = useState('');
   const [pythonBootstrap, setPythonBootstrap] = useState({ state: 'idle', detail: '' });
+  const [gameModeLive, setGameModeLive] = useState(false);
+
+  useEffect(() => {
+    window.twocode?.isGameModeActive?.().then((active) => setGameModeLive(Boolean(active))).catch(() => {});
+    const unsub = window.twocode?.onGameModeChange?.((active) => setGameModeLive(Boolean(active)));
+    return () => { if (typeof unsub === 'function') unsub(); };
+  }, []);
 
   const loadInstalledApps = async (forceRefresh = false) => {
     if (!window.twocode?.getInstalledApps) return;
@@ -803,9 +825,15 @@ export default function SettingsApp() {
     ...(aiHistory.codexJobs || []),
   ].sort((a, b) => String(b.time || '').localeCompare(String(a.time || ''))).slice(0, 4), [aiHistory]);
 
+  const settingsSeeThrough = Math.min(60, Math.max(0, Number(settings.islandSeeThrough || 0)));
+  const settingsBgOpacity = Math.max(0.32, 1 - (settingsSeeThrough / 100) * 0.95).toFixed(2);
+
   return (
     <LanguageProvider language={settings.language}>
-    <div className="twocode-settings-window">
+    <div
+      className={`twocode-settings-window ${settingsSeeThrough > 0 ? 'is-see-through' : ''}`}
+      style={{ '--island-bg-opacity': settingsBgOpacity }}
+    >
       {/* ============================================================
           LEFT SIDEBAR NAVIGATION
           ============================================================ */}
@@ -877,6 +905,7 @@ export default function SettingsApp() {
               { id: 'notifications', label: t('settings.nav.notifications'), icon: Bell },
               { id: 'island', label: t('settings.nav.island'), icon: PanelTop },
               { id: 'focusguard', label: t('settings.nav.focusguard'), icon: Shield },
+              { id: 'gameopt', label: t('settings.nav.gameopt'), icon: Gamepad2 },
             ].map((item) => {
               const Icon = item.icon;
               return (
@@ -958,31 +987,37 @@ export default function SettingsApp() {
           </div>
 
           {/* Center Top Notch Preview inside the Hero Banner */}
-          <div className="hero-notch-preview clock-notch-preview">
+          <div
+            className="hero-notch-preview clock-notch-preview"
+            style={{ '--hero-eye-color': settings.eyeColorHex || '#ffffff' }}
+          >
             {liveMedia && liveMedia.hasSession && liveMedia.isPlaying ? (
-              <div className="hero-media-top-pill">
-                {liveMedia.thumbnail && (
-                  <img src={liveMedia.thumbnail} alt="" className="hero-preview-thumb" />
-                )}
-                <span className="hero-preview-song">{liveMedia.title}</span>
-                <div className="hero-preview-eq">
-                  <i />
-                  <i />
-                  <i />
-                  <i />
-                  <i />
+              <>
+                <div className="hero-media-top-pill">
+                  {liveMedia.thumbnail && (
+                    <img src={liveMedia.thumbnail} alt="" className="hero-preview-thumb" />
+                  )}
+                  <span className="hero-preview-song">{liveMedia.title}</span>
+                  <div className="hero-preview-eq">
+                    <i />
+                    <i />
+                    <i />
+                    <i />
+                    <i />
+                  </div>
                 </div>
-              </div>
+                <div className="hero-notch-clock">{formatTimeHHMM(now)}</div>
+              </>
             ) : (
-              <div className="hero-notch-toprow">
-                <span className="hero-notch-date">{formatDateTop(now)}</span>
-                <div className="hero-notch-eyes">
-                  <i style={{ background: settings.eyeColorHex || '#fff' }} />
-                  <i style={{ background: settings.eyeColorHex || '#fff' }} />
+              <>
+                <div className="hero-notch-eyes" aria-hidden="true">
+                  <i />
+                  <i />
                 </div>
-              </div>
+                <div className="hero-notch-clock">{formatTimeHHMM(now)}</div>
+                <span className="hero-notch-date">{formatDateTop(now)}</span>
+              </>
             )}
-            <div className="hero-notch-clock">{formatTimeHHMM(now)}</div>
           </div>
 
           {/* Page Title & Subtitle at Bottom of Banner */}
@@ -2774,7 +2809,7 @@ export default function SettingsApp() {
                         }, 3200);
                       }}
                     >
-                      {em.label}
+                      <NotificationText text={em.label} />
                     </button>
                   ))}
                 </div>
@@ -2883,7 +2918,9 @@ export default function SettingsApp() {
                                 <Check size={10} strokeWidth={3} />
                               </span>
                             )}
-                            <span className="wardrobe-lg-emoji">{o.icon}</span>
+                            <span className="wardrobe-lg-emoji">
+                              <NotificationText text={o.icon} />
+                            </span>
                             <strong>{o.label}</strong>
                           </button>
                         );
@@ -3630,7 +3667,7 @@ export default function SettingsApp() {
               <div className="settings-row">
                 <div className="row-text-col">
                   <strong>{langCode === 'tr' ? 'Saydamlık' : 'See-through'}</strong>
-                  <span>{langCode === 'tr' ? 'Liquid Glass bulanıklığı ve arka plan geçirgenliği' : 'Liquid Glass blur and background translucency'}</span>
+                  <span>{langCode === 'tr' ? 'Ada ve ayarlar için Liquid Glass bulanıklığı ve arka plan koyuluğu' : 'Liquid Glass blur and background translucency for the island and settings'}</span>
                 </div>
                 <div className="slider-with-val">
                   <input
@@ -4121,6 +4158,342 @@ export default function SettingsApp() {
                       : 'Bedo only looks at the name of the window in front, on your own PC. Nothing is stored or sent.'}
                   </span>
                 </div>
+              </div>
+            </div>
+          </div>
+          );
+        })()}
+
+        {activePage === 'gameopt' && (() => {
+          const optEnabled = settings.gameOptEnabled !== false;
+          const activeOptCount = [
+            settings.gameOptHideIsland !== false,
+            settings.gameOptPauseAnimations !== false,
+            settings.gameOptDisableBlur !== false,
+            settings.gameOptPauseBackgroundPolling !== false,
+            settings.gameOptPauseBedoVoice === true,
+            settings.gameOptAllowHudAndNotifs === false,
+            settings.gameOptDeepHideWindow === true,
+          ].filter(Boolean).length;
+
+          const applyPreset = (preset) => {
+            if (preset === 'balanced') {
+              updateSetting({
+                gameOptEnabled: true,
+                gameOptHideIsland: true,
+                gameOptPauseAnimations: true,
+                gameOptDisableBlur: true,
+                gameOptPauseBackgroundPolling: true,
+                gameOptPauseBedoVoice: false,
+                gameOptAllowHudAndNotifs: true,
+                gameOptDeepHideWindow: false,
+              });
+            } else if (preset === 'maxfps') {
+              updateSetting({
+                gameOptEnabled: true,
+                gameOptHideIsland: true,
+                gameOptPauseAnimations: true,
+                gameOptDisableBlur: true,
+                gameOptPauseBackgroundPolling: true,
+                gameOptPauseBedoVoice: true,
+                gameOptAllowHudAndNotifs: false,
+                gameOptDeepHideWindow: true,
+              });
+            } else if (preset === 'light') {
+              updateSetting({
+                gameOptEnabled: true,
+                gameOptHideIsland: false,
+                gameOptPauseAnimations: true,
+                gameOptDisableBlur: false,
+                gameOptPauseBackgroundPolling: true,
+                gameOptPauseBedoVoice: false,
+                gameOptAllowHudAndNotifs: true,
+                gameOptDeepHideWindow: false,
+              });
+            }
+          };
+
+          const isBalanced =
+            optEnabled &&
+            settings.gameOptHideIsland !== false &&
+            settings.gameOptPauseAnimations !== false &&
+            settings.gameOptDisableBlur !== false &&
+            settings.gameOptPauseBackgroundPolling !== false &&
+            settings.gameOptPauseBedoVoice !== true &&
+            settings.gameOptAllowHudAndNotifs !== false &&
+            settings.gameOptDeepHideWindow !== true;
+
+          const isMaxFps =
+            optEnabled &&
+            settings.gameOptPauseBackgroundPolling !== false &&
+            settings.gameOptPauseBedoVoice === true &&
+            settings.gameOptAllowHudAndNotifs === false &&
+            settings.gameOptDeepHideWindow === true;
+
+          const isLight =
+            optEnabled &&
+            settings.gameOptHideIsland === false &&
+            settings.gameOptPauseAnimations !== false &&
+            settings.gameOptDisableBlur === false &&
+            settings.gameOptPauseBackgroundPolling !== false &&
+            settings.gameOptPauseBedoVoice !== true &&
+            settings.gameOptAllowHudAndNotifs !== false &&
+            settings.gameOptDeepHideWindow !== true;
+
+          return (
+          <div className="settings-section ai-lg-section gameopt-lg-page">
+            <div className={`gameopt-lg-hero ${optEnabled ? 'is-enabled' : 'is-off'} ${gameModeLive ? 'is-live' : ''}`}>
+              <div className="gameopt-lg-hero-glow" aria-hidden="true" />
+              <div className="gameopt-hero-top">
+                <div className="gameopt-hero-lead">
+                  <div className="gameopt-hero-icon" aria-hidden="true">
+                    <Gamepad2 size={20} strokeWidth={1.8} />
+                  </div>
+                  <div className="gameopt-hero-copy">
+                    <span className="gameopt-hero-eyebrow">
+                      {langCode === 'tr' ? 'OTOMATİK OYUN OPTİMİZASYONU' : 'AUTOMATIC GAME OPTIMIZATION'}
+                    </span>
+                    <h3>
+                      {langCode === 'tr'
+                        ? 'FPS Düşüren Özellikleri Oyunda Otomatik Kapat'
+                        : 'Automatically Pause FPS-Heavy Features in Games'}
+                    </h3>
+                    <p>
+                      {langCode === 'tr'
+                        ? 'Tam ekran oyun algılandığında seçtiğin ağır özellikler anında durdurulur; oyundan çıktığında veya Alt+Tab yaptığında otomatik olarak geri açılır.'
+                        : 'When a fullscreen game is detected, selected heavy features pause automatically and restore the moment you exit or Alt+Tab.'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className={`gameopt-status-capsule ${optEnabled ? (gameModeLive ? 'is-live' : 'is-ready') : 'is-off'}`}>
+                  <span className="gameopt-status-primary">
+                    {!optEnabled
+                      ? langCode === 'tr'
+                        ? 'Kapalı'
+                        : 'Off'
+                      : gameModeLive
+                      ? langCode === 'tr'
+                        ? 'Oyun Aktif'
+                        : 'Game Active'
+                      : langCode === 'tr'
+                      ? 'Hazır'
+                      : 'Ready'}
+                  </span>
+                  {optEnabled && (
+                    <span className="gameopt-status-meta">
+                      {langCode === 'tr'
+                        ? `${activeOptCount} aktif`
+                        : `${activeOptCount} active`}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="gameopt-preset-bar">
+                <span className="gameopt-preset-label">
+                  {langCode === 'tr' ? 'Hızlı profil' : 'Quick preset'}
+                </span>
+                <div className="gameopt-segmented" role="group" aria-label={langCode === 'tr' ? 'Hızlı profiller' : 'Quick presets'}>
+                  <button
+                    type="button"
+                    className={`gameopt-seg-btn ${isBalanced ? 'active' : ''}`}
+                    onClick={() => applyPreset('balanced')}
+                  >
+                    {langCode === 'tr' ? 'Dengeli' : 'Balanced'}
+                  </button>
+                  <button
+                    type="button"
+                    className={`gameopt-seg-btn ${isMaxFps ? 'active' : ''}`}
+                    onClick={() => applyPreset('maxfps')}
+                  >
+                    {langCode === 'tr' ? 'Maksimum FPS' : 'Max FPS'}
+                  </button>
+                  <button
+                    type="button"
+                    className={`gameopt-seg-btn ${isLight ? 'active' : ''}`}
+                    onClick={() => applyPreset('light')}
+                  >
+                    {langCode === 'tr' ? 'Hafif' : 'Light'}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <span className="section-eyebrow">{langCode === 'tr' ? 'GENEL KONTROL' : 'MASTER CONTROL'}</span>
+            <div className="settings-card ai-lg-card">
+              <div className="settings-row">
+                <div className="row-text-col">
+                  <strong>{langCode === 'tr' ? 'Otomatik oyun optimizasyonu' : 'Automatic game optimization'}</strong>
+                  <span>
+                    {langCode === 'tr'
+                      ? 'Tam ekran oyun (EA AntiCheat, Vanguard, EAC dahil) algılandığında aşağıdaki ayarları uygular ve oyun kapanınca otomatik geri açar.'
+                      : 'Applies the toggles below when a fullscreen game runs (including anti-cheat games) and automatically restores them when the game closes.'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className={`settings-switch ${optEnabled ? 'on' : ''}`}
+                  onClick={() => updateSetting({ gameOptEnabled: !optEnabled })}
+                >
+                  <i />
+                </button>
+              </div>
+            </div>
+
+            <span className="section-eyebrow">{langCode === 'tr' ? 'GÖRSEL & GPU OPTİMİZASYONLARI' : 'VISUAL & GPU OPTIMIZATIONS'}</span>
+            <div className={`settings-card ai-lg-card ${!optEnabled ? 'gameopt-card-disabled' : ''}`}>
+              <div className="settings-row">
+                <div className="row-text-col">
+                  <div className="gameopt-row-title">
+                    <strong>{langCode === 'tr' ? 'Oyunda boştayken adayı gizle (Akıcı)' : 'Smoothly hide island while idle in game'}</strong>
+                    <span className="gameopt-impact-tag is-high">GPU / DWM</span>
+                  </div>
+                  <span>
+                    {langCode === 'tr'
+                      ? 'Bildirim veya HUD yokken adayı GPU üzerinden yumuşakça gizler. HUD/bildirim geldiğinde kasmadan akıcı şekilde açılır, oyun bitince geri gelir.'
+                      : 'Smoothly fades the island out on the GPU when idle so DWM does zero repaints; HUDs and notifications glide in smoothly and the island restores on exit.'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className={`settings-switch ${settings.gameOptHideIsland !== false ? 'on' : ''}`}
+                  onClick={() => updateSetting({ gameOptHideIsland: !(settings.gameOptHideIsland !== false) })}
+                >
+                  <i />
+                </button>
+              </div>
+
+              <div className="settings-row">
+                <div className="row-text-col">
+                  <div className="gameopt-row-title">
+                    <strong>{langCode === 'tr' ? 'Boştaki sonsuz animasyonları duraklat' : 'Pause background infinite animations'}</strong>
+                    <span className="gameopt-impact-tag is-high">GPU / CPU</span>
+                  </div>
+                  <span>
+                    {langCode === 'tr'
+                      ? 'Robo göz, glow ve arka plan CSS animasyonlarını oyun sırasında duraklatır; HUD/bildirim animasyonları akıcı kalır, oyun bitince otomatik açılır.'
+                      : 'Pauses idle glow/breathe CSS animations during games to eliminate continuous GPU/renderer frames while keeping HUD and notification animations fluid.'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className={`settings-switch ${settings.gameOptPauseAnimations !== false ? 'on' : ''}`}
+                  onClick={() => updateSetting({ gameOptPauseAnimations: !(settings.gameOptPauseAnimations !== false) })}
+                >
+                  <i />
+                </button>
+              </div>
+
+              <div className="settings-row">
+                <div className="row-text-col">
+                  <div className="gameopt-row-title">
+                    <strong>{langCode === 'tr' ? 'Cam efektini (Backdrop Blur) oyunda kapat' : 'Disable backdrop blur in games'}</strong>
+                    <span className="gameopt-impact-tag is-med">iGPU / DWM</span>
+                  </div>
+                  <span>
+                    {langCode === 'tr'
+                      ? 'Oyun sırasında ağır backdrop-filter blur hesaplamasını kapatır; HUD/bildirim geçişleri daha akıcı olur, oyun kapanınca otomatik geri açılır.'
+                      : 'Disables heavy backdrop-filter blur passes during games for smoother HUD/notification transitions, automatically restored on exit.'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className={`settings-switch ${settings.gameOptDisableBlur !== false ? 'on' : ''}`}
+                  onClick={() => updateSetting({ gameOptDisableBlur: !(settings.gameOptDisableBlur !== false) })}
+                >
+                  <i />
+                </button>
+              </div>
+
+              <div className="settings-row">
+                <div className="row-text-col">
+                  <div className="gameopt-row-title">
+                    <strong>{langCode === 'tr' ? 'Agresif mod: Pencereyi DWM’den tamamen gizle' : 'Aggressive mode: Fully hide window from DWM'}</strong>
+                    <span className="gameopt-impact-tag is-max">{langCode === 'tr' ? 'Maksimum FPS' : 'Max FPS'}</span>
+                  </div>
+                  <span>
+                    {langCode === 'tr'
+                      ? 'Şeffaf pencereyi oyunda tamamen kapatır (hide) ve oyun kapanınca otomatik geri açar. Not: HUD/bildirim açıksa gelirken ufak bir uyanma gecikmesi olabilir.'
+                      : 'Fully hides the transparent Electron window during gameplay for maximum MPO/Flip Model FPS and restores on exit. May add a brief wake hiccup if HUDs are enabled.'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className={`settings-switch ${settings.gameOptDeepHideWindow === true ? 'on' : ''}`}
+                  onClick={() => updateSetting({ gameOptDeepHideWindow: !(settings.gameOptDeepHideWindow === true) })}
+                >
+                  <i />
+                </button>
+              </div>
+            </div>
+
+            <span className="section-eyebrow">{langCode === 'tr' ? 'ARKA PLAN, CPU & RAM OPTİMİZASYONLARI' : 'BACKGROUND, CPU & RAM OPTIMIZATIONS'}</span>
+            <div className={`settings-card ai-lg-card ${!optEnabled ? 'gameopt-card-disabled' : ''}`}>
+              <div className="settings-row">
+                <div className="row-text-col">
+                  <div className="gameopt-row-title">
+                    <strong>{langCode === 'tr' ? 'Arka plan taramalarını durdur (Medya / Pano / AI)' : 'Pause background polling (Media / Clipboard / AI)'}</strong>
+                    <span className="gameopt-impact-tag is-high">CPU / Defender</span>
+                  </div>
+                  <span>
+                    {langCode === 'tr'
+                      ? 'Periyodik PowerShell medya sorgularını, pano ve AI geçmiş taramasını oyunda durdurur. Windows Defender kaynaklı anlık FPS droplarını keser; oyun kapanınca devam eder.'
+                      : 'Stops periodic PowerShell media spawns, clipboard polling, and AI history disk scans during games to prevent Windows Defender CPU spikes; resumes automatically on exit.'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className={`settings-switch ${settings.gameOptPauseBackgroundPolling !== false ? 'on' : ''}`}
+                  onClick={() => updateSetting({ gameOptPauseBackgroundPolling: !(settings.gameOptPauseBackgroundPolling !== false) })}
+                >
+                  <i />
+                </button>
+              </div>
+
+              <div className="settings-row">
+                <div className="row-text-col">
+                  <div className="gameopt-row-title">
+                    <strong>{langCode === 'tr' ? 'Bedo sesli asistanı (Mikrofon) oyunda uyut' : 'Pause Bedo voice assistant during games'}</strong>
+                    <span className="gameopt-impact-tag is-high">CPU / RAM</span>
+                  </div>
+                  <span>
+                    {langCode === 'tr'
+                      ? 'Oyun sırasında Python sesli dinleyiciyi uyutur; oyun bittiğinde önceden açıksa otomatik olarak tekrar aktif eder.'
+                      : 'Pauses the Bedo voice listener while gaming and automatically resumes it after the game closes if it was running before.'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className={`settings-switch ${settings.gameOptPauseBedoVoice === true ? 'on' : ''}`}
+                  onClick={() => updateSetting({ gameOptPauseBedoVoice: !(settings.gameOptPauseBedoVoice === true) })}
+                >
+                  <i />
+                </button>
+              </div>
+            </div>
+
+            <span className="section-eyebrow">{langCode === 'tr' ? 'OYUN İÇİ BİLDİRİM & HUD' : 'IN-GAME NOTIFICATIONS & HUDS'}</span>
+            <div className={`settings-card ai-lg-card ${!optEnabled ? 'gameopt-card-disabled' : ''}`}>
+              <div className="settings-row">
+                <div className="row-text-col">
+                  <div className="gameopt-row-title">
+                    <strong>{langCode === 'tr' ? 'Oyun sırasında HUD ve bildirimlere izin ver' : 'Allow HUDs & notifications during games'}</strong>
+                    <span className="gameopt-impact-tag is-info">{langCode === 'tr' ? 'HUD & Bildirim' : 'HUD & Alerts'}</span>
+                  </div>
+                  <span>
+                    {langCode === 'tr'
+                      ? 'Açıkken ses, parlaklık, G-Helper HUD ve Windows bildirimleri oyun üstünde görünür. Kapatırsan oyun sırasında sıfır kesinti olur, çıkınca her şey normale döner.'
+                      : 'When enabled, volume, brightness, G-Helper HUDs, and Windows notifications appear over games. Turn off for zero-interruption competitive play.'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className={`settings-switch ${settings.gameOptAllowHudAndNotifs !== false ? 'on' : ''}`}
+                  onClick={() => updateSetting({ gameOptAllowHudAndNotifs: !(settings.gameOptAllowHudAndNotifs !== false) })}
+                >
+                  <i />
+                </button>
               </div>
             </div>
           </div>

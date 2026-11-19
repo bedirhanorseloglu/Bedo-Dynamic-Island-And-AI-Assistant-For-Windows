@@ -84,9 +84,7 @@ import NotifToastContent from './components/NotifToastContent';
 import BedoStage from './components/BedoStage';
 import BedoIslandOverlay from './components/BedoIslandOverlay';
 import {
-  IdleLiveActivityPill,
   HomeLiveAndContextStrip,
-  InlineDownloadOrb,
 } from './components/LiveActivityBar';
 import HeroClock, { CLOCK_FONT_FAMILIES } from './HeroClock';
 import { applyTypographyTokens, readTypographyPreferences, TYPOGRAPHY_STORAGE_KEY } from './typography';
@@ -1008,13 +1006,6 @@ export default function App() {
   }, []);
   const shouldRenderExpanded = islandMode === 'expanded' || expandedWarm;
   const [gameModeActive, setGameModeActive] = useState(false);
-  useEffect(() => {
-    const isGameIdle = Boolean(gameModeActive && islandMode === 'idle');
-    document.body.classList.toggle('game-mode-idle', isGameIdle);
-    return () => {
-      document.body.classList.remove('game-mode-idle');
-    };
-  }, [gameModeActive, islandMode]);
   // Right-click thin progress bar toggle
   const [isMiniProgressBar, setIsMiniProgressBar] = useState(false);
   const [activeTab, setActiveTab] = useState('home');
@@ -1328,6 +1319,8 @@ export default function App() {
   const [selectedAiProvider, setSelectedAiProvider] = useState('Bedo');
   const [jobsToday, setJobsToday] = useState(0);
   const [roboMood, setRoboMood] = useState('normal');
+  const [previewEmotion, setPreviewEmotion] = useState('');
+  const previewEmotionTimerRef = useRef(null);
   const [roboReaction, setRoboReaction] = useState(null);
   const [documentVisible, setDocumentVisible] = useState(() => document.visibilityState !== 'hidden');
   const appMountedAtRef = useRef(Date.now());
@@ -2198,9 +2191,42 @@ export default function App() {
     bedoAutoStart: true,
     showAppsInDock: true,
     closeIslandOnAppOpen: false,
+    gameOptEnabled: true,
+    gameOptHideIsland: true,
+    gameOptPauseAnimations: true,
+    gameOptDisableBlur: true,
+    gameOptPauseBackgroundPolling: true,
+    gameOptPauseBedoVoice: false,
+    gameOptAllowHudAndNotifs: true,
+    gameOptDeepHideWindow: false,
   });
   const islandSettingsRef = useRef(islandSettings);
   islandSettingsRef.current = islandSettings;
+
+  useEffect(() => {
+    const isGameIdle = Boolean(gameModeActive && islandMode === 'idle');
+    document.body.classList.toggle(
+      'game-mode-hide-island',
+      isGameIdle && islandSettings.gameOptHideIsland !== false
+    );
+    document.body.classList.toggle(
+      'game-mode-pause-anims',
+      isGameIdle && islandSettings.gameOptPauseAnimations !== false
+    );
+    document.body.classList.toggle(
+      'game-mode-no-blur',
+      Boolean(gameModeActive && islandSettings.gameOptDisableBlur !== false)
+    );
+    return () => {
+      document.body.classList.remove('game-mode-hide-island', 'game-mode-pause-anims', 'game-mode-no-blur');
+    };
+  }, [
+    gameModeActive,
+    islandMode,
+    islandSettings.gameOptHideIsland,
+    islandSettings.gameOptPauseAnimations,
+    islandSettings.gameOptDisableBlur,
+  ]);
   const langCode = normalizeLanguage(islandSettings.language);
   const t = useMemo(() => createTranslator(langCode), [langCode]);
   const locale = getLocale(langCode);
@@ -2211,9 +2237,8 @@ export default function App() {
   const [isDraggingVolume, setIsDraggingVolume] = useState(false);
   const volumeBarRef = useRef(null);
 
-  // App-Aware Context & Live Activities (Steam / Downloads)
+  // App-Aware Context
   const [appContext, setAppContext] = useState({ app: '', category: 'desktop' });
-  const [liveActivity, setLiveActivity] = useState(null);
   const [focusGuardPrompt, setFocusGuardPrompt] = useState(null);
   const [showIslandWelcome, setShowIslandWelcome] = useState(false);
   const focusGuardCooldownRef = useRef({});
@@ -2550,14 +2575,13 @@ export default function App() {
     };
   }, [currentMedia.lyrics, currentMedia.title, currentMedia.artist, islandSettings.lyricsEnabled, activeLyricIndex]);
 
-  // Dynamic width for the compact music/karaoke notch taking into account cover art + lyric + soundwave + inline download orb
+  // Dynamic width for the compact music/karaoke notch taking into account cover art + lyric + soundwave
   const dynamicMusicBarWidth = useMemo(() => {
     const text = primaryLine || currentMedia.title || '';
     const charLen = Math.min(38, Math.max(8, text.length));
     // A compact cap keeps the media notch from covering neighboring dock tabs.
-    const baseWidth = Math.round(Math.min(322, Math.max(222, charLen * 5.2 + 170)));
-    return liveActivity?.active ? baseWidth + 48 : baseWidth;
-  }, [primaryLine, currentMedia.title, liveActivity?.active]);
+    return Math.round(Math.min(322, Math.max(222, charLen * 5.2 + 170)));
+  }, [primaryLine, currentMedia.title]);
 
   // Determine which collapsed state to use when mouse leaves
   // IMPORTANT: Only show music-bar when media is actively playing (`currentMedia.isPlaying`).
@@ -2593,12 +2617,11 @@ export default function App() {
     if (resolvedCollapsedMode === 'mini-progress') return 268;
     if (resolvedCollapsedMode === 'focus-bar') return 126;
     if (resolvedCollapsedMode === 'focus-bar-media') return 120;
-    if (liveActivity?.active) return 200;
     if (hasRestingSlots) {
       return 132 + (hasLeftRestingSlot ? 46 : 0) + (hasRightRestingSlot ? 46 : 0);
     }
     return islandSettings.roboEyesVisible === false ? 96 : 146;
-  }, [resolvedCollapsedMode, dynamicMusicBarWidth, liveActivity?.active, hasRestingSlots, hasLeftRestingSlot, hasRightRestingSlot, islandSettings.roboEyesVisible]);
+  }, [resolvedCollapsedMode, dynamicMusicBarWidth, hasRestingSlots, hasLeftRestingSlot, hasRightRestingSlot, islandSettings.roboEyesVisible]);
 
   // Sync window shape & 60fps animation with Electron main process whenever islandMode or dynamic widths change
   useEffect(() => {
@@ -2612,12 +2635,12 @@ export default function App() {
       window.twocode?.setIslandMode('battery', 366);
     } else if (islandMode === 'bedo-live') {
       window.twocode?.setIslandMode('bedo-live');
-    } else if (islandMode === 'idle' && (liveActivity?.active || hasRestingSlots)) {
+    } else if (islandMode === 'idle' && hasRestingSlots) {
       window.twocode?.setIslandMode('idle-live');
     } else {
       window.twocode?.setIslandMode(islandMode);
     }
-  }, [islandMode, dynamicMusicBarWidth, dynamicNotifToastWidth, dynamicHudSize.width, liveActivity?.active, hasRestingSlots]);
+  }, [islandMode, dynamicMusicBarWidth, dynamicNotifToastWidth, dynamicHudSize.width, hasRestingSlots]);
 
   // Keep collapsed notch updated if media starts/pauses/stops while collapsed
   useEffect(() => {
@@ -2704,15 +2727,6 @@ export default function App() {
           totalSec: waitSec,
         });
         setIslandMode('expanded');
-      }));
-    }
-    if (window.twocode?.onLiveActivity) {
-      cleanups.push(window.twocode.onLiveActivity((act) => {
-        if (!act || !act.active) {
-          setLiveActivity((prev) => (prev && act?.kind && prev.kind !== act.kind ? prev : null));
-        } else {
-          setLiveActivity(act);
-        }
       }));
     }
     return () => cleanups.forEach((fn) => fn && fn());
@@ -2983,9 +2997,14 @@ export default function App() {
 
     const unsubEmotion = window.twocode.onIslandEmotion?.((emotion) => {
       if (emotion) {
+        clearTimeout(previewEmotionTimerRef.current);
+        setPreviewEmotion(emotion);
         setRoboMood(emotion);
         playRoboSound(emotion, islandSettingsRef.current?.soundEffects !== false);
-        setTimeout(() => setRoboMood('normal'), 3200);
+        previewEmotionTimerRef.current = setTimeout(() => {
+          setPreviewEmotion('');
+          setRoboMood('normal');
+        }, 3200);
       }
     });
 
@@ -3764,17 +3783,20 @@ export default function App() {
   }, [activeRecentJobs]);
 
   // Robo's eyes & props reflect the most relevant live device/app state (never random).
-  const topEyeMood = timerRunning || activeTab === 'timer'
-    ? 'focus-arc'
-    : currentMedia.hasSession && currentMedia.isPlaying
-      ? 'music'
-      : islandSettings.doNotDisturb
-        ? 'dnd-sleep'
-        : activeHookTask
-          ? 'thinking'
-          : bedoStatus.paused
-            ? 'sleepy'
-            : roboMood;
+  // Explicit Live Expression Test previews always take priority so Settings previews work even in sleep mode.
+  const topEyeMood = previewEmotion
+    ? previewEmotion
+    : timerRunning || activeTab === 'timer'
+      ? 'focus-arc'
+      : currentMedia.hasSession && currentMedia.isPlaying
+        ? 'music'
+        : islandSettings.doNotDisturb
+          ? 'dnd-sleep'
+          : activeHookTask
+            ? 'thinking'
+            : bedoStatus.paused
+              ? 'sleepy'
+              : roboMood;
 
   const currentLayoutId = HOME_LAYOUTS[homeLayoutIndex]?.id || 'clock';
   const clockDisplay = formatClockDisplay(now);
@@ -3845,7 +3867,7 @@ export default function App() {
     >
       <div
         ref={morphShellRef}
-        className={`notch-morph-shell state-${islandMode} mode-${activeTab} ${liveActivity?.active ? 'has-live-activity' : ''} ${hasRestingSlots ? 'has-resting-slots' : ''} ${islandSettings.islandStyle === 'Floating' ? 'style-floating' : 'style-attached'} ${islandSettings.islandSize === 'Compact' ? 'size-compact' : islandSettings.islandSize === 'Large' ? 'size-large' : 'size-normal'} ${Number(islandSettings.islandSeeThrough || 0) > 0 ? 'is-see-through' : ''} ${batteryAlertKind === 'charging' ? 'is-charging' : ''} ${activeTab === 'home' && isCustomizingClock ? 'customizing-clock' : ''
+        className={`notch-morph-shell state-${islandMode} mode-${activeTab} ${hasRestingSlots ? 'has-resting-slots' : ''} ${islandSettings.islandStyle === 'Floating' ? 'style-floating' : 'style-attached'} ${islandSettings.islandSize === 'Compact' ? 'size-compact' : islandSettings.islandSize === 'Large' ? 'size-large' : 'size-normal'} ${Number(islandSettings.islandSeeThrough || 0) > 0 ? 'is-see-through' : ''} ${batteryAlertKind === 'charging' ? 'is-charging' : ''} ${activeTab === 'home' && isCustomizingClock ? 'customizing-clock' : ''
           } ${activeTab === 'robo' && !bedoStatus.paused && (roboLoading || bedoStatus.jarvisState === 'THINKING') ? 'is-bedo-thinking' : ''
           } ${musicAccent.hasColor ? 'has-cover-color' : ''} ${islandMode === 'hud' && hudOverlay.ghelper?.category === 'aura'
             ? `has-aura-hud effect-${hudOverlay.ghelper.effectType || 'static'}`
@@ -3991,9 +4013,6 @@ export default function App() {
             COLLAPSED LAYER 1: IDLE MINI-NOTCH (Robo's glowing eyes + Live Activity / Mic)
             ============================================================ */}
         <div className={`morph-layer layer-idle ${islandMode === 'idle' ? 'is-visible' : ''}`}>
-          {liveActivity?.active ? (
-            <IdleLiveActivityPill liveActivity={liveActivity} />
-          ) : (
             <div className={`idle-resting-row ${hasRestingSlots ? 'has-slots' : ''}`}>
               {renderRestingSlot(islandSettings.leftOfRobo)}
               {islandSettings.roboEyesVisible !== false ? (
@@ -4016,10 +4035,10 @@ export default function App() {
                         window.twocode?.bedoSetPaused?.(false);
                       }
                     }}
-                    batteryPercent={batteryPercent}
-                    batteryCharging={batteryCharging}
-                    unreadNotificationCount={unreadNotificationCount}
-                    pendingAgendaCount={pendingAgendaCount}
+                    batteryPercent={previewEmotion ? 100 : batteryPercent}
+                    batteryCharging={previewEmotion ? false : batteryCharging}
+                    unreadNotificationCount={previewEmotion ? 0 : unreadNotificationCount}
+                    pendingAgendaCount={previewEmotion ? 0 : pendingAgendaCount}
                   />
                 </div>
               ) : !hasRestingSlots ? (
@@ -4027,7 +4046,6 @@ export default function App() {
               ) : null}
               {renderRestingSlot(islandSettings.rightOfRobo)}
             </div>
-          )}
         </div>
 
         {/* ============================================================
@@ -4441,7 +4459,6 @@ export default function App() {
               <span />
               <span />
             </div>
-            <InlineDownloadOrb liveActivity={liveActivity} />
           </div>
         </div>
 
@@ -4668,10 +4685,10 @@ export default function App() {
                     blinkingEnabled={islandSettings.blinkingEnabled !== false}
                     outfit={islandSettings.outfit || 'Best'}
                     seasonalOutfits={Boolean(islandSettings.seasonalOutfits)}
-                    batteryPercent={batteryPercent}
-                    batteryCharging={batteryCharging}
-                    unreadNotificationCount={unreadNotificationCount}
-                    pendingAgendaCount={pendingAgendaCount}
+                    batteryPercent={previewEmotion ? 100 : batteryPercent}
+                    batteryCharging={previewEmotion ? false : batteryCharging}
+                    unreadNotificationCount={previewEmotion ? 0 : unreadNotificationCount}
+                    pendingAgendaCount={previewEmotion ? 0 : pendingAgendaCount}
                     onPoke={(m) => {
                       setRoboMood(m);
                       playRoboSound(m, islandSettings.soundEffects !== false);
@@ -5656,7 +5673,7 @@ export default function App() {
                         ) : (
                           <>
                             <HomeLiveAndContextStrip
-                              liveActivity={liveActivity}
+                              liveActivity={null}
                               appContext={appContext}
                               onOpenMirror={() => setIslandOverlay('mirror')}
                             />

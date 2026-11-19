@@ -791,7 +791,8 @@ select {
   animation: none !important;
 }
 
-.layer-idle .robo-eyes-wrap .robo-eye {
+.layer-idle .robo-eyes-wrap.normal:not([class*="reaction-"]) .robo-eye,
+.layer-idle .robo-eyes-wrap.sleepy:not([class*="reaction-"]) .robo-eye {
   animation: none !important;
 }
 
@@ -4136,14 +4137,19 @@ select {
   border-radius: 2px;
 }
 
-.robo-eye.focus-arc {
-  width: 7px;
-  height: 4px;
-  background: transparent;
-  border-bottom: 2.2px solid #ffffff;
-  border-radius: 0 0 8px 8px;
-  box-shadow: 0 2px 6px rgba(255, 255, 255, 0.8);
-  transform: none;
+.robo-eye.focus-arc,
+.robo-eye.focus {
+  position: relative;
+  z-index: 2;
+  width: 6.5px;
+  height: 3.5px;
+  background: linear-gradient(180deg, #ffffff 0%, #bfdbfe 100%);
+  border: none;
+  border-radius: 999px;
+  box-shadow:
+    0 0 7px rgba(129, 140, 248, 0.95),
+    0 0 14px rgba(56, 189, 248, 0.55);
+  transform: translateY(0.5px);
 }
 
 .robo-eye.curious.right {
@@ -4185,16 +4191,18 @@ select {
   }
 }
 
-/* Robo reacts to live device and app states; red low-battery color takes priority. */
-body .robo-eye.normal {
-  --robo-eye-color: #ffffff;
-}
+/* Robo reacts to live device and app states; red low-battery color takes priority.
+   Normal mood inherits the user-selected --robo-eye-color from .notch-morph-shell. */
 
-body .robo-eye.focus-arc {
-  --robo-eye-color: #84aaff;
-  border-bottom-color: #84aaff;
-  box-shadow: 0 2px 8px rgba(132, 170, 255, 0.9);
-  animation: roboFocusPulse 1.8s ease-in-out infinite;
+body .robo-eye.focus-arc,
+body .robo-eye.focus {
+  --robo-eye-color: #dbeafe;
+  background: linear-gradient(180deg, #ffffff 0%, #bfdbfe 100%);
+  border-bottom: none;
+  box-shadow:
+    0 0 7px rgba(129, 140, 248, 0.95),
+    0 0 14px rgba(56, 189, 248, 0.55);
+  animation: roboFocusPulse 3.6s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
 }
 
 body .robo-eye.music {
@@ -4435,11 +4443,13 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
 
   0%,
   100% {
-    opacity: 0.72;
+    opacity: 0.84;
+    filter: brightness(0.96);
   }
 
   50% {
     opacity: 1;
+    filter: brightness(1.08);
   }
 }
 
@@ -6584,10 +6594,31 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
   min-width: 0;
 }
 
+.music-primary-row {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.music-primary-row .music-lyrics-box {
+  min-width: 0;
+  margin: 0;
+  gap: 4px;
+}
+
+.music-primary-row .music-header-eq {
+  align-self: flex-start;
+  margin-top: 8px;
+}
+
 .music-track-header {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   flex: 1 1 auto;
   min-width: 0;
   white-space: nowrap;
@@ -6656,19 +6687,6 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
   max-width: 60%;
 }
 
-.music-status-dot {
-  width: 6px;
-  height: 6px;
-  flex: 0 0 6px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.34);
-}
-
-.music-track-dot,
-.music-track-artist {
-  color: rgba(255, 255, 255, 0.52);
-}
-
 .music-track-artist {
   min-width: 0;
   overflow: hidden;
@@ -6676,6 +6694,7 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
   white-space: nowrap;
   font-size: 12px;
   font-weight: 500;
+  color: rgba(255, 255, 255, 0.5);
 }
 
 .music-lyrics-box {
@@ -6699,6 +6718,12 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.music-view.is-idle .lyric-line-active {
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  text-shadow: none;
 }
 
 .lyric-line-next {
@@ -11646,9 +11671,9 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
   content: '✦';
 }
 
-/* Give each Robo expression its own calm, readable accent. */
+/* Give each Robo expression its own calm, readable accent.
+   Normal eyes inherit the user-selected --robo-eye-color from .notch-morph-shell. */
 .robo-eye.normal {
-  --robo-eye-color: #ffffff;
   animation: roboEyeGlow 3.2s ease-in-out infinite;
 }
 
@@ -13766,15 +13791,63 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
 /* =========================================================================
    CONTEXT-AWARE ROBO PROPS & EYE STATES (Non-random, state-driven)
    ========================================================================= */
-.robo-prop-glasses {
+.robo-prop-focus-visor {
   position: absolute;
-  inset: 50% auto auto 50%;
-  width: 34px;
-  height: 13px;
+  left: 50%;
+  top: 56%;
+  width: 24px;
+  height: 9.5px;
   transform: translate(-50%, -50%);
-  color: rgba(132, 170, 255, 0.92);
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(10, 14, 26, 0.94) 0%, rgba(22, 30, 52, 0.88) 100%);
+  border: 1px solid rgba(165, 180, 252, 0.68);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    0 0 10px rgba(99, 102, 241, 0.42);
+  overflow: hidden;
   pointer-events: none;
-  filter: drop-shadow(0 0 5px rgba(132, 170, 255, 0.55));
+  z-index: 1;
+}
+
+.robo-prop-focus-visor::after {
+  content: '';
+  position: absolute;
+  inset: -2px auto -2px -12px;
+  width: 10px;
+  background: linear-gradient(90deg, transparent, rgba(199, 210, 254, 0.42), transparent);
+  transform: skewX(-22deg);
+  animation: roboFocusVisorSweep 3.8s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+}
+
+@keyframes roboFocusVisorSweep {
+  0%, 18% {
+    transform: translateX(0) skewX(-22deg);
+    opacity: 0;
+  }
+  35% {
+    opacity: 1;
+  }
+  65% {
+    transform: translateX(36px) skewX(-22deg);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(36px) skewX(-22deg);
+    opacity: 0;
+  }
+}
+
+.robo-eyes-wrap.focus-arc .robo-body-dome,
+.robo-eyes-wrap.focus .robo-body-dome {
+  border-color: rgba(165, 180, 252, 0.48);
+  box-shadow:
+    0 0 12px rgba(99, 102, 241, 0.25),
+    inset 0 1px 0 rgba(224, 231, 255, 0.28);
+}
+
+.robo-eyes-wrap.focus-arc .robo-mood-spark,
+.robo-eyes-wrap.focus .robo-mood-spark {
+  display: none !important;
 }
 
 .robo-prop-sunglasses {
@@ -13854,7 +13927,6 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
   --robo-eye-color: #a5b4fc;
   background: #a5b4fc;
   box-shadow: 0 0 6px rgba(165, 180, 252, 0.6);
-  transform: none !important;
 }
 
 .robo-prop-sleep {
@@ -14614,8 +14686,11 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
 }
 
 .robo-eye.sleepy {
-  background: rgba(255, 255, 255, 0.9) !important;
-  box-shadow: 0 0 10px rgba(255, 255, 255, 0.32);
+  background: var(--robo-eye-color, #ffffff);
+  opacity: 0.86;
+  box-shadow:
+    0 0 6px var(--robo-eye-color, rgba(255, 255, 255, 0.72)),
+    0 0 12px color-mix(in srgb, var(--robo-eye-color, #ffffff) 36%, transparent);
 }
 
 .robo-voice-mouth {
@@ -16827,16 +16902,252 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
   color: #f8fafc;
 }
 
-/* Smooth GPU-composited hide + pause infinite animations while idle in fullscreen Game Mode;
-   keeps DirectComposition swap chain warm so HUDs & notifications glide in/out at full framerate. */
-body.game-mode-idle .notch-morph-shell {
+/* =========================================================
+   ROBO EXPRESSIONS — ENHANCED FLUID ANIMATIONS
+   ========================================================= */
+
+/* 1. Mutlu (Happy): neşeli yaylı zıplama ve kavisli gülümseyen gözler */
+body .robo-eyes-wrap.happy .robo-eye {
+  width: 8px;
+  height: 4.5px;
+  border-radius: 9px 9px 2px 2px;
+  background: #75ffb0;
+  box-shadow: 0 0 8px rgba(117, 255, 176, 0.92), 0 0 16px rgba(48, 209, 88, 0.52);
+  animation: roboHappyJoy 0.95s cubic-bezier(0.34, 1.56, 0.64, 1) infinite;
+}
+
+body .robo-eyes-wrap.happy .robo-eye.right {
+  animation-delay: 0.06s;
+}
+
+@keyframes roboHappyJoy {
+  0%, 100% {
+    transform: translateY(0) scale(1, 1);
+    filter: brightness(1);
+  }
+  32% {
+    transform: translateY(-2.4px) scale(1.12, 0.92);
+    filter: brightness(1.22);
+  }
+  58% {
+    transform: translateY(0.5px) scale(0.96, 1.06);
+  }
+  78% {
+    transform: translateY(-1.2px) scale(1.05, 0.98);
+  }
+}
+
+/* 2. Aşık (In love): gerçekçi çift kalp atışı (lub-dub) ve hafif eğim */
+body .robo-eyes-wrap.inlove .robo-heart-eye,
+body .robo-eyes-wrap.love .robo-heart-eye {
+  color: #ff5c93;
+  text-shadow: 0 0 8px rgba(255, 92, 147, 0.95), 0 0 16px rgba(236, 72, 153, 0.6);
+  animation: roboHeartLubDubL 1.15s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+
+body .robo-eyes-wrap.inlove .robo-heart-eye.right,
+body .robo-eyes-wrap.love .robo-heart-eye.right {
+  animation-name: roboHeartLubDubR;
+}
+
+@keyframes roboHeartLubDubL {
+  0%, 100% { transform: scale(1) rotate(-7deg); }
+  16% { transform: scale(1.26) rotate(-11deg); }
+  30% { transform: scale(1.02) rotate(-6deg); }
+  44% { transform: scale(1.18) rotate(-10deg); }
+  62% { transform: scale(1) rotate(-7deg); }
+}
+
+@keyframes roboHeartLubDubR {
+  0%, 100% { transform: scale(1) rotate(7deg); }
+  16% { transform: scale(1.26) rotate(11deg); }
+  30% { transform: scale(1.02) rotate(6deg); }
+  44% { transform: scale(1.18) rotate(10deg); }
+  62% { transform: scale(1) rotate(7deg); }
+}
+
+/* 3. Meraklı (Curious): asimetrik kısma/açma ve etrafa yumuşak bakış */
+body .robo-eyes-wrap.curious .robo-eye.left {
+  width: 5px;
+  height: 5.5px;
+  background: #ffd479;
+  box-shadow: 0 0 8px rgba(255, 212, 121, 0.9);
+  animation: roboCuriousScanL 1.9s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+body .robo-eyes-wrap.curious .robo-eye.right {
+  width: 7px;
+  height: 10px;
+  background: #ffe08a;
+  box-shadow: 0 0 11px rgba(255, 196, 86, 0.95), 0 0 18px rgba(255, 179, 64, 0.45);
+  animation: roboCuriousScanR 1.9s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes roboCuriousScanL {
+  0%, 100% { transform: translate(0, 0.5px) rotate(-6deg); }
+  30% { transform: translate(1.8px, -1px) rotate(-10deg) scaleY(0.88); }
+  65% { transform: translate(-1.2px, -0.5px) rotate(-4deg); }
+}
+
+@keyframes roboCuriousScanR {
+  0%, 100% { transform: translate(0, -0.5px) scale(1); }
+  30% { transform: translate(2.2px, -1.5px) scale(1.08); }
+  65% { transform: translate(-1px, -0.8px) scale(1.03); }
+}
+
+/* 4. Odaklı (Focus): keskin buz mavisi bakış ve yatay mikro tarama */
+body .robo-eyes-wrap.focus-arc .robo-eye,
+body .robo-eyes-wrap.focus .robo-eye {
+  width: 7px;
+  height: 3.5px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #ffffff 0%, #93c5fd 100%);
+  box-shadow: 0 0 8px rgba(129, 140, 248, 0.95), 0 0 15px rgba(56, 189, 248, 0.55);
+  animation: roboFocusScan 2.2s ease-in-out infinite;
+}
+
+@keyframes roboFocusScan {
+  0%, 100% { transform: translate(0, 0.5px) scaleX(1); opacity: 0.92; }
+  25% { transform: translate(1.6px, 0.5px) scaleX(1.06); opacity: 1; }
+  75% { transform: translate(-1.6px, 0.5px) scaleX(1.06); opacity: 1; }
+}
+
+/* 5. Göz kırp (Wink): sol göz hafifçe büyürken sağ göz canlı şekilde kırpar */
+body .robo-eyes-wrap.wink .robo-eye.left {
+  background: #8ecbff;
+  box-shadow: 0 0 9px rgba(142, 203, 255, 0.92), 0 0 16px rgba(56, 189, 248, 0.45);
+  animation: roboWinkLeft 1.5s cubic-bezier(0.34, 1.4, 0.64, 1) infinite;
+}
+
+body .robo-eyes-wrap.wink .robo-eye.right {
+  width: 7.5px;
+  height: 7.5px;
+  background: #8ecbff;
+  box-shadow: 0 0 9px rgba(142, 203, 255, 0.92), 0 0 16px rgba(56, 189, 248, 0.45);
+  animation: roboWinkRight 1.5s cubic-bezier(0.34, 1.4, 0.64, 1) infinite;
+}
+
+@keyframes roboWinkLeft {
+  0%, 15%, 85%, 100% { transform: scale(1) rotate(4deg); }
+  32%, 62% { transform: scale(1.12, 1.08) translateY(-0.5px) rotate(6deg); }
+}
+
+@keyframes roboWinkRight {
+  0%, 14%, 84%, 100% { transform: scale(0.7, 1) rotate(-4deg); border-radius: 50%; }
+  28%, 64% { transform: scale(1.12, 0.24) translateY(0.6px) rotate(-8deg); border-radius: 999px; }
+}
+
+/* 6. Üzgün (Sad): aşağı eğik hüzünlü gözler ve yumuşak iç çekme */
+body .robo-eyes-wrap.sad .robo-eye {
+  width: 5.5px;
+  height: 6px;
+  border-radius: 50% 50% 45% 45%;
+  background: #93b4ff;
+  box-shadow: 0 0 8px rgba(147, 180, 255, 0.78), 0 0 14px rgba(129, 140, 248, 0.35);
+}
+
+body .robo-eyes-wrap.sad .robo-eye.left {
+  animation: roboSadSighL 2.2s ease-in-out infinite;
+}
+
+body .robo-eyes-wrap.sad .robo-eye.right {
+  animation: roboSadSighR 2.2s ease-in-out infinite;
+}
+
+@keyframes roboSadSighL {
+  0%, 100% { transform: translateY(0.5px) rotate(-18deg) scaleY(0.92); opacity: 0.88; }
+  50% { transform: translateY(2.2px) rotate(-24deg) scaleY(0.76); opacity: 0.68; }
+}
+
+@keyframes roboSadSighR {
+  0%, 100% { transform: translateY(0.5px) rotate(18deg) scaleY(0.92); opacity: 0.88; }
+  50% { transform: translateY(2.2px) rotate(24deg) scaleY(0.76); opacity: 0.68; }
+}
+
+/* 7. Baş dönmesi (Dizzy): zıt yönlü yörüngede dönen mercan pembe gözler */
+body .robo-eyes-wrap.dizzy .robo-eye {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ff6b9d;
+  box-shadow: 0 0 9px rgba(255, 107, 157, 0.95), 0 0 16px rgba(244, 63, 94, 0.5);
+}
+
+body .robo-eyes-wrap.dizzy .robo-eye.left {
+  animation: roboDizzyOrbitL 0.65s linear infinite;
+}
+
+body .robo-eyes-wrap.dizzy .robo-eye.right {
+  animation: roboDizzyOrbitR 0.65s linear infinite;
+}
+
+@keyframes roboDizzyOrbitL {
+  0%   { transform: translate(0, -2px) scale(0.92); }
+  25%  { transform: translate(2px, 0) scale(1.12); }
+  50%  { transform: translate(0, 2px) scale(0.92); }
+  75%  { transform: translate(-2px, 0) scale(1.12); }
+  100% { transform: translate(0, -2px) scale(0.92); }
+}
+
+@keyframes roboDizzyOrbitR {
+  0%   { transform: translate(0, 2px) scale(1.12); }
+  25%  { transform: translate(2px, 0) scale(0.92); }
+  50%  { transform: translate(0, -2px) scale(1.12); }
+  75%  { transform: translate(-2px, 0) scale(0.92); }
+  100% { transform: translate(0, 2px) scale(1.12); }
+}
+
+/* 8. Uykulu (DND Sleep): huzurlu nefes alıp veren kapalı gözler */
+body .robo-eyes-wrap.dnd-sleep .robo-eye {
+  width: 7.5px;
+  height: 2.4px !important;
+  border-radius: 999px;
+  background: #a5b4fc;
+  box-shadow: 0 0 7px rgba(165, 180, 252, 0.68);
+  animation: roboSleepBreathe 2.8s ease-in-out infinite;
+}
+
+@keyframes roboSleepBreathe {
+  0%, 100% {
+    transform: translateY(0.5px) scaleX(0.94);
+    opacity: 0.62;
+  }
+  50% {
+    transform: translateY(-0.8px) scaleX(1.06);
+    opacity: 0.96;
+  }
+}
+
+/* 9. Düşünüyor (Thinking): yukarı-sağa/sola bakan sıcak kehribar gözler */
+body .robo-eyes-wrap.thinking .robo-eye {
+  background: #ffd479;
+  box-shadow: 0 0 9px rgba(255, 212, 121, 0.9), 0 0 16px rgba(250, 204, 21, 0.45);
+  animation: roboThinkEyes 2.1s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes roboThinkEyes {
+  0%, 100% { transform: translate(0, 0) scaleY(1); }
+  25% { transform: translate(2px, -1.8px) scaleY(0.92); }
+  55% { transform: translate(-1.8px, -1.5px) scaleY(0.95); }
+  80% { transform: translate(0.8px, -1px) scaleY(0.9); }
+}
+
+/* Game Mode visual & GPU optimizations — controlled individually from Settings -> Game Optimization */
+body.game-mode-hide-island .notch-morph-shell {
   opacity: 0;
   transform: translate3d(0, -14px, 0) scale(calc(var(--island-scale, 1) * 0.92));
   pointer-events: none;
 }
 
-body.game-mode-idle *,
-body.game-mode-idle *::before,
-body.game-mode-idle *::after {
+body.game-mode-pause-anims *,
+body.game-mode-pause-anims *::before,
+body.game-mode-pause-anims *::after {
   animation-play-state: paused !important;
+}
+
+body.game-mode-no-blur *,
+body.game-mode-no-blur *::before,
+body.game-mode-no-blur *::after {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }

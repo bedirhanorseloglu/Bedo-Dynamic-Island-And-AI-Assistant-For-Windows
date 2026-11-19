@@ -32,7 +32,6 @@ const {
   resolveGHelperToast,
   readGHelperStatus,
 } = require('./ghelper-service.cjs');
-const { createLiveActivityWatcher } = require('./live-activity-watcher.cjs');
 const { createPerfMonitor } = require('./perf-monitor.cjs');
 const { BedoService } = require('./bedo-service.cjs');
 const { ensurePythonRuntimeBackground, getAvailablePythonExe, getPythonBootstrapStatus } = require('./python-bootstrap.cjs');
@@ -350,6 +349,14 @@ let userSettings = {
   islandOpenMode: 'On hover',
   outfit: 'Best',
   eyeColorHex: '#ffffff',
+  gameOptEnabled: true,
+  gameOptHideIsland: true,
+  gameOptPauseAnimations: true,
+  gameOptDisableBlur: true,
+  gameOptPauseBackgroundPolling: true,
+  gameOptPauseBedoVoice: false,
+  gameOptAllowHudAndNotifs: true,
+  gameOptDeepHideWindow: false,
 };
 
 function getSettingsFilePath() {
@@ -588,6 +595,7 @@ function saveSettingsToDisk(nextSettings) {
   if (settingsWindow && !settingsWindow.isDestroyed()) {
     settingsWindow.webContents.send('settings-updated', userSettings);
   }
+  syncGameModeState();
   if (normalizeLanguage(userSettings.language) !== prevLang && tray) {
     buildTrayContextMenu();
   }
@@ -1727,6 +1735,14 @@ function animateWindowShapeToMode(modeOrExpanded, customBodyWidth) {
         ? Math.min(460, Math.max(366, Math.round(customBodyWidth)))
         : baseTarget.bodyWidth,
   };
+
+  if (gameModeActive && userSettings.gameOptDeepHideWindow === true) {
+    if (modeKey !== 'idle') {
+      showWindowForGameModeOverlay();
+    } else {
+      scheduleGameModeHide(450);
+    }
+  }
 }
 
 function startCursorHoverWatcher() {
@@ -1952,10 +1968,17 @@ let systemWatcherProc = null;
 let gameModeActive = false;
 let isSystemLockedOrSuspended = false;
 let gameModeSettingsWasVisible = false;
+let rawGameDetected = false;
 let gameModeHideTimer = null;
+let gameModePausedBedoVoice = false;
 let agentHistoryPollTimer = null;
 let mediaPollTimeout = null;
 let clipboardPollTimer = null;
+
+function isGameOptHudAllowed() {
+  if (!gameModeActive) return true;
+  return userSettings.gameOptAllowHudAndNotifs !== false;
+}
 
 function showWindowForGameModeOverlay() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
@@ -1964,22 +1987,38 @@ function showWindowForGameModeOverlay() {
     gameModeHideTimer = null;
   }
   try {
+    if (userSettings.gameOptDeepHideWindow === true) {
+      mainWindow.setAlwaysOnTop(true, 'screen-saver');
+    }
     if (!mainWindow.isVisible()) {
       mainWindow.showInactive();
+      updateWindowMouseIgnore(true);
     }
-    updateWindowMouseIgnore(true);
+    if (userSettings.gameOptDeepHideWindow === true) {
+      mainWindow.moveTop();
+    }
   } catch {}
 }
 
-function scheduleGameModeHide() {
+function scheduleGameModeHide(delayMs = 450) {
   if (gameModeHideTimer) {
     clearTimeout(gameModeHideTimer);
     gameModeHideTimer = null;
   }
+  if (!gameModeActive || userSettings.gameOptDeepHideWindow !== true) return;
+  gameModeHideTimer = setTimeout(() => {
+    gameModeHideTimer = null;
+    if (!gameModeActive || userSettings.gameOptDeepHideWindow !== true) return;
+    if (!mainWindow || mainWindow.isDestroyed() || currentModeKey !== 'idle') return;
+    try {
+      mainWindow.setAlwaysOnTop(false);
+      mainWindow.hide();
+    } catch {}
+  }, delayMs);
 }
 
 function scheduleNextMediaPoll(customDelay) {
-  if (gameModeActive || isSystemLockedOrSuspended) return;
+  if ((gameModeActive && userSettings.gameOptPauseBackgroundPolling !== false) || isSystemLockedOrSuspended) return;
   if (mediaPollTimeout) clearTimeout(mediaPollTimeout);
 
   let delay = customDelay;
@@ -2014,7 +2053,7 @@ function stopBackgroundPolling() {
 }
 
 function startBackgroundPolling() {
-  if (gameModeActive || isSystemLockedOrSuspended) return;
+  if ((gameModeActive && userSettings.gameOptPauseBackgroundPolling !== false) || isSystemLockedOrSuspended) return;
   const onBattery = powerMonitor.isOnBatteryPower();
   if (!agentHistoryPollTimer) {
     loadLocalAiHistory();
@@ -2084,6 +2123,54 @@ function startBackgroundPolling() {
   }
 }
 
+function applyGameModeRuntimeOptions() {
+  if (!gameModeActive) return;
+
+  if (userSettings.gameOptPauseBackgroundPolling !== false) {
+    stopBackgroundPolling();
+  } else {
+    startBackgroundPolling();
+  }
+
+  if (userSettings.gameOptPauseBedoVoice === true) {
+    try {
+      const st = bedoService?.getStatus?.();
+      if (st && st.running && !st.paused) {
+        gameModePausedBedoVoice = true;
+        bedoService.setPaused(true);
+      }
+    } catch {}
+  } else if (gameModePausedBedoVoice) {
+    gameModePausedBedoVoice = false;
+    try { bedoService?.setPaused?.(false); } catch {}
+  }
+
+  if (userSettings.gameOptDeepHideWindow === true) {
+    if (currentModeKey === 'idle') scheduleGameModeHide(450);
+  } else {
+    if (gameModeHideTimer) {
+      clearTimeout(gameModeHideTimer);
+      gameModeHideTimer = null;
+    }
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
+      try {
+        mainWindow.showInactive();
+        mainWindow.setAlwaysOnTop(true, 'screen-saver');
+        mainWindow.moveTop();
+      } catch {}
+    }
+  }
+}
+
+function syncGameModeState() {
+  const effectiveActive = Boolean(rawGameDetected && userSettings.gameOptEnabled !== false);
+  if (effectiveActive !== gameModeActive) {
+    setGameModeActive(effectiveActive);
+  } else if (gameModeActive) {
+    applyGameModeRuntimeOptions();
+  }
+}
+
 function setGameModeActive(active) {
   const nextActive = Boolean(active);
   if (gameModeActive === nextActive) return;
@@ -2091,12 +2178,15 @@ function setGameModeActive(active) {
 
   if (nextActive) {
     gameModeSettingsWasVisible = Boolean(settingsWindow && !settingsWindow.isDestroyed() && settingsWindow.isVisible());
-    stopBackgroundPolling();
+    applyGameModeRuntimeOptions();
     if (mainWindow && !mainWindow.isDestroyed()) {
       animateWindowShapeToMode('idle');
       mainWindow.webContents.send('game-mode-change', true);
     }
-    if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.hide();
+    if (settingsWindow && !settingsWindow.isDestroyed()) {
+      settingsWindow.webContents.send('game-mode-change', true);
+      settingsWindow.hide();
+    }
     return;
   }
 
@@ -2105,6 +2195,10 @@ function setGameModeActive(active) {
     gameModeHideTimer = null;
   }
   startBackgroundPolling();
+  if (gameModePausedBedoVoice) {
+    gameModePausedBedoVoice = false;
+    try { bedoService?.setPaused?.(false); } catch {}
+  }
   if (mainWindow && !mainWindow.isDestroyed()) {
     try {
       if (!mainWindow.isVisible()) {
@@ -2115,7 +2209,10 @@ function setGameModeActive(active) {
     } catch {}
     mainWindow.webContents.send('game-mode-change', false);
   }
-  if (gameModeSettingsWasVisible && settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.showInactive();
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    settingsWindow.webContents.send('game-mode-change', false);
+    if (gameModeSettingsWasVisible) settingsWindow.showInactive();
+  }
   gameModeSettingsWasVisible = false;
 }
 
@@ -2139,7 +2236,8 @@ function startSystemWatcher() {
         try {
           const ev = JSON.parse(trimmed);
           if (ev.event === 'game-mode') {
-            setGameModeActive(ev.active);
+            rawGameDetected = Boolean(ev.active);
+            syncGameModeState();
             continue;
           }
           if (ev.event === 'app-context') {
@@ -2168,7 +2266,7 @@ function startSystemWatcher() {
             if (parsed?.category === 'mic' && ghelperBridgeClient?.hasRecentMicToast()) {
               continue;
             }
-            if (mainWindow && !mainWindow.isDestroyed()) {
+            if (mainWindow && !mainWindow.isDestroyed() && isGameOptHudAllowed()) {
               if (gameModeActive) showWindowForGameModeOverlay();
               mainWindow.webContents.send('system-hud', {
                 type: 'ghelper',
@@ -2197,7 +2295,7 @@ function startSystemWatcher() {
               isInit: true,
             });
           } else if (ev.event === 'volume') {
-            if (!isStartupGrace) {
+            if (!isStartupGrace && isGameOptHudAllowed()) {
               if (gameModeActive) showWindowForGameModeOverlay();
               mainWindow.webContents.send('system-hud', {
                 type: 'volume',
@@ -2207,7 +2305,7 @@ function startSystemWatcher() {
               });
             }
           } else if (ev.event === 'brightness') {
-            if (!isStartupGrace) {
+            if (!isStartupGrace && isGameOptHudAllowed()) {
               if (gameModeActive) showWindowForGameModeOverlay();
               mainWindow.webContents.send('system-hud', {
                 type: 'brightness',
@@ -2233,6 +2331,7 @@ function startSystemWatcher() {
               ].slice(0, 10);
               mainWindow.webContents.send('google-data-update', localGoogleState);
             }
+            if (!isGameOptHudAllowed()) continue;
             if (gameModeActive) showWindowForGameModeOverlay();
             mainWindow.webContents.send('windows-notification', {
               id: ev.id,
@@ -2255,35 +2354,12 @@ function startSystemWatcher() {
   } catch {}
 }
 
-let liveActivityWatcher = null;
-
-function startLiveActivityWatchers() {
-  if (liveActivityWatcher) return;
-  liveActivityWatcher = createLiveActivityWatcher({
-    downloadsDir: app.getPath('downloads'),
-    onUpdate: (payload) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('live-activity', payload);
-      }
-    },
-  });
-  liveActivityWatcher.start();
-}
-
-function stopLiveActivityWatchers() {
-  if (liveActivityWatcher) {
-    liveActivityWatcher.stop();
-    liveActivityWatcher = null;
-  }
-}
-
 app.on('will-quit', () => {
   if (gameModeHideTimer) {
     clearTimeout(gameModeHideTimer);
     gameModeHideTimer = null;
   }
   stopBackgroundPolling();
-  stopLiveActivityWatchers();
   perfMonitor.stop();
   stopLocalAgentServers();
   if (dropShareServerInstance) {
@@ -2340,13 +2416,12 @@ app.whenReady().then(() => {
 ipcMain.handle('get-python-bootstrap-status', () => getPythonBootstrapStatus());
   startCursorHoverWatcher();
   startSystemWatcher();
-  startLiveActivityWatchers();
 
   // Start elevated GHelper bridge pipe listener only if G-Helper is installed on this PC
   if (isGHelperInstalled()) try {
     ghelperBridgeClient = new GHelperBridgeClient({
       onToast: (toast) => {
-        if (!mainWindow || mainWindow.isDestroyed()) return;
+        if (!mainWindow || mainWindow.isDestroyed() || !isGameOptHudAllowed()) return;
         if (gameModeActive) showWindowForGameModeOverlay();
         mainWindow.webContents.send('system-hud', {
           type: 'ghelper',

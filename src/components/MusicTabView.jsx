@@ -224,7 +224,11 @@ export default function MusicTabView({
   );
 
   return (
-    <div className={`music-view ${currentMedia.isPlaying ? 'is-playing' : 'is-paused'}`}>
+    <div
+      className={`music-view ${
+        currentMedia.isPlaying ? 'is-playing' : 'is-paused'
+      } ${currentMedia.hasSession ? 'has-session' : 'is-idle'}`}
+    >
       {/* Left: Album Art */}
       <div className="music-art-column">
         <div
@@ -246,71 +250,80 @@ export default function MusicTabView({
         </div>
       </div>
 
-      {/* Right: Header + Lyrics/Title + Scrubber + Transport & Device */}
+      {/* Right: Track Info / Lyrics + Scrubber + Transport & Device */}
       <div className="music-right-panel">
-        <div
-          className="music-track-header-row"
-          onClick={currentMedia.hasSession ? onOpenMediaSource : undefined}
-          title={currentMedia.hasSession ? t('home.openMediaSource') : undefined}
-          style={currentMedia.hasSession ? { cursor: 'pointer' } : undefined}
-        >
-          <div className="music-track-header" aria-live="polite">
-            {showTitleInHeader ? (
-              <>
+        {showTitleInHeader ? (
+          <>
+            <div
+              className="music-track-header-row"
+              onClick={onOpenMediaSource}
+              title={t('home.openMediaSource')}
+              style={{ cursor: 'pointer' }}
+            >
+              <div className="music-track-header" aria-live="polite">
                 <span className="music-track-title-inline">{currentMedia.title}</span>
                 {subtitleText && (
-                  <>
-                    <span className="music-track-dot">·</span>
-                    <span className="music-track-artist">{subtitleText}</span>
-                  </>
+                  <span className="music-track-artist">{subtitleText}</span>
                 )}
-              </>
-            ) : currentMedia.hasSession ? (
-              <>
-                <span className={`music-status-dot ${currentMedia.isPlaying ? 'is-playing' : ''}`} />
-                <span>{t('music.nowPlaying')}</span>
-                {hasSyncedLyrics && subtitleText && (
-                  <>
-                    <span className="music-track-dot">·</span>
-                    <span className="music-track-artist">{subtitleText}</span>
-                  </>
-                )}
-              </>
-            ) : (
-              <>
-                <span className="music-status-dot" />
-                <span className="music-track-title-inline">{t('music.nothingPlaying')}</span>
-                <span className="music-track-dot">·</span>
-                <span className="music-track-artist">{t('music.playPrompt')}</span>
-              </>
+              </div>
+              <span
+                className={`music-header-eq ${currentMedia.isPlaying ? 'is-playing' : ''}`}
+                aria-hidden="true"
+              >
+                <i /><i /><i /><i />
+              </span>
+            </div>
+
+            <div className="music-lyrics-box">
+              <p
+                key={`active-${activeLyricIndex}`}
+                className="lyric-line-active karaoke-active-line"
+              >
+                {primaryLine}
+              </p>
+              {secondaryLine && (
+                <p
+                  key={`next-${activeLyricIndex}`}
+                  className="lyric-line-next karaoke-next-line"
+                >
+                  {secondaryLine}
+                </p>
+              )}
+            </div>
+          </>
+        ) : (
+          <div
+            className="music-primary-row"
+            onClick={currentMedia.hasSession ? onOpenMediaSource : undefined}
+            title={currentMedia.hasSession ? t('home.openMediaSource') : undefined}
+            style={currentMedia.hasSession ? { cursor: 'pointer' } : undefined}
+          >
+            <div className="music-lyrics-box" aria-live="polite">
+              <p
+                key={hasSyncedLyrics ? `active-${activeLyricIndex}` : 'active-static'}
+                className={`lyric-line-active ${hasSyncedLyrics ? 'karaoke-active-line' : ''}`}
+              >
+                {primaryLine}
+              </p>
+              {secondaryLine && (
+                <p
+                  key={hasSyncedLyrics ? `next-${activeLyricIndex}` : 'next-static'}
+                  className={`lyric-line-next ${hasSyncedLyrics ? 'karaoke-next-line' : ''}`}
+                >
+                  {secondaryLine}
+                </p>
+              )}
+            </div>
+            {currentMedia.hasSession && (
+              <span
+                className={`music-header-eq ${currentMedia.isPlaying ? 'is-playing' : ''}`}
+                aria-hidden="true"
+              >
+                <i /><i /><i /><i />
+              </span>
             )}
           </div>
-          {currentMedia.hasSession && (
-            <span
-              className={`music-header-eq ${currentMedia.isPlaying ? 'is-playing' : ''}`}
-              aria-hidden="true"
-            >
-              <i /><i /><i /><i />
-            </span>
-          )}
-        </div>
-
-        <div className="music-lyrics-box">
-          <p
-            key={hasSyncedLyrics ? `active-${activeLyricIndex}` : 'active-static'}
-            className={`lyric-line-active ${hasSyncedLyrics ? 'karaoke-active-line' : ''}`}
-          >
-            {primaryLine}
-          </p>
-          {secondaryLine && (
-            <p
-              key={hasSyncedLyrics ? `next-${activeLyricIndex}` : 'next-static'}
-              className={`lyric-line-next ${hasSyncedLyrics ? 'karaoke-next-line' : ''}`}
-            >
-              {secondaryLine}
-            </p>
-          )}
-        </div>
+        )}
 
         <MusicScrubber
           currentMedia={currentMedia}

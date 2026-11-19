@@ -243,11 +243,7 @@ export default function RoboEyes({ mood = 'normal', reaction = null, active = tr
         </svg>
       )}
       {isFocus && (
-        <svg className="robo-prop-glasses" viewBox="0 0 38 14" aria-hidden="true">
-          <rect x="1.5" y="2" width="14" height="10" rx="3.5" fill="none" stroke="currentColor" strokeWidth="1.6" />
-          <rect x="22.5" y="2" width="14" height="10" rx="3.5" fill="none" stroke="currentColor" strokeWidth="1.6" />
-          <path d="M15.5 6.2h7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-        </svg>
+        <span className="robo-prop-focus-visor" aria-hidden="true" />
       )}
       {isDndSleep && (
         <span className="robo-prop-sleep" aria-hidden="true">zZ</span>
@@ -268,30 +264,10 @@ export default function RoboEyes({ mood = 'normal', reaction = null, active = tr
           <span className={`robo-eye right ${blink ? 'blinking' : ''} ${activeMood}`} />
         </>
       )}
-      {showMouth && (
-        isSpeaking ? (
-          <span className="robo-talking-mouth" aria-hidden="true">
-            <span className="robo-talking-mouth-inner" />
-          </span>
-        ) : (
-          <svg
-            className={`robo-face-mouth ${activeMood} ${micLevel > 0.14 ? 'is-hearing' : ''}`}
-            viewBox="0 0 24 10"
-            aria-hidden="true"
-          >
-            {activeMood === 'happy' || activeMood === 'inlove' || activeReaction === 'happy' ? (
-              <path d="M5 3.5 Q12 9 19 3.5" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
-            ) : activeMood === 'sad' || activeReaction === 'error' ? (
-              <path d="M6 7.5 Q12 3 18 7.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-            ) : activeMood === 'thinking' || activeReaction === 'thinking' ? (
-              <path d="M7 5.5 Q12 4.5 17 5.5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
-            ) : activeMood === 'sleepy' || isDndSleep ? (
-              <path d="M8.5 5.2 Q12 6.8 15.5 5.2" fill="none" stroke="currentColor" strokeWidth="1.55" strokeLinecap="round" />
-            ) : (
-              <path d="M7.5 4.5 Q12 7.4 16.5 4.5" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
-            )}
-          </svg>
-        )
+      {showMouth && isSpeaking && (
+        <span className="robo-talking-mouth" aria-hidden="true">
+          <span className="robo-talking-mouth-inner" />
+        </span>
       )}
     </div>
   );
