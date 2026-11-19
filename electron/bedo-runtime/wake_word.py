@@ -19,6 +19,17 @@ import zipfile
 from pathlib import Path
 from typing import Callable
 
+_DEBUG_LOG_PATH = Path(__file__).resolve().parent / "wake-debug.log"
+
+
+def _wake_log(msg: str) -> None:
+    try:
+        ts = time.strftime("%H:%M:%S")
+        with open(_DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(f"[{ts}] {msg}\n")
+    except Exception:
+        pass
+
 try:
     import pyaudio  # type: ignore[reportMissingModuleSource]
 except Exception:
@@ -70,12 +81,27 @@ WAKE_PHRASES = (
     "beydo",
     "bedu",
     "be do",
+    "bi do",
+    "be du",
+    "bi du",
+    "ve do",
+    "ve du",
+    "bedir",
+    "bedirhan",
+    "vedat",
+    "bede",
+    "be de o",
 )
 
-# Whisper BPE tabanlı olduğundan yalnızca doğrudan "bedo" kelimesini eşleştir
+# Whisper BPE tabanlı olduğundan "bedo" ve yakın Türkçe BPE bölünmelerini eşleştir
 _WHISPER_WAKE_PHRASES = (
     "bedo",
     "bedoo",
+    "beydo",
+    "bedu",
+    "be do",
+    "bedir",
+    "bedirhan",
 )
 
 
@@ -220,7 +246,7 @@ class WakeWordListener:
         segments, _ = whisper_model.transcribe(
             audio_f32,
             language="tr",
-            initial_prompt="Merhaba Bedo.",
+            initial_prompt="Bedo.",
             beam_size=1,
             vad_filter=False,
             without_timestamps=True,
@@ -228,9 +254,9 @@ class WakeWordListener:
         )
         valid_texts: list[str] = []
         for seg in segments:
-            if getattr(seg, "no_speech_prob", 0.0) >= 0.45:
+            if getattr(seg, "no_speech_prob", 0.0) >= 0.65:
                 continue
-            if getattr(seg, "avg_logprob", 0.0) <= -0.95:
+            if getattr(seg, "avg_logprob", 0.0) <= -1.25:
                 continue
             t = (seg.text or "").strip()
             if t:
@@ -247,11 +273,14 @@ class WakeWordListener:
 
     def pause(self) -> None:
         """Aktif Gemini Live oturumu mikrofonu kullanırken dinlemeyi duraklatır ve stream kapanana kadar bekler."""
+        _wake_log(f"WakeWordListener.pause() called (same_thread={threading.current_thread() is self._thread})")
         self._paused.set()
-        self._stream_closed.wait(timeout=1.2)
+        if threading.current_thread() is not self._thread:
+            self._stream_closed.wait(timeout=1.2)
 
     def resume(self) -> None:
         """Uyku moduna dönüldüğünde tekrar 'Hey Bedo' dinlemeye başlar."""
+        _wake_log("WakeWordListener.resume() called")
         self._paused.clear()
 
     def stop(self) -> None:
@@ -262,49 +291,58 @@ class WakeWordListener:
         self._thread = None
 
     def _maybe_trigger(self, text: str, *, strict_whisper: bool = False) -> bool:
+        if text:
+            _wake_log(f"Transcript({ 'whisper' if strict_whisper else 'vosk' }): {text!r}")
         matched = match_whisper_wake_phrase(text) if strict_whisper else match_wake_phrase(text)
         if not matched:
             return False
         now = time.monotonic()
         if now - self._last_trigger < self._cooldown_sec:
+            _wake_log(f"Matched {text!r} but skipped by cooldown")
             return False
         self._last_trigger = now
+        _wake_log(f"TRIGGERED on {text!r}")
         self._on_wake(text)
         return True
 
     def _loop(self) -> None:
         if pyaudio is None:
+            _wake_log("pyaudio is None, exiting _loop")
             return
 
         whisper_model = None
         try:
             whisper_model = self._load_whisper_model()
-        except Exception:
+        except Exception as exc:
+            _wake_log(f"Whisper load failed: {exc}")
             whisper_model = None
 
         vosk_model = None
         if whisper_model is None:
             vosk_model = self._load_model()
 
-        frame_bytes = 960  # 30ms @ 16kHz int16 mono
-        min_speech_bytes = int(0.24 * SAMPLE_RATE * 2)
-        early_peek_bytes = int(0.42 * SAMPLE_RATE * 2)
-        max_speech_bytes = int(0.96 * SAMPLE_RATE * 2)
-        hangover_frames = 3  # 90ms sessizlik sonrası anında işle
-        min_voiced_frames = 5  # En az 150ms gerçek insan konuşması (klavye tıkırtılarını ele)
-        denoiser = RealTimeSpeechDenoiser(sample_rate=SAMPLE_RATE) if (whisper_model is not None and RealTimeSpeechDenoiser is not None) else None
+        _wake_log(f"_loop started: whisper={whisper_model is not None}, vosk={vosk_model is not None}")
 
-        while self._running:
+        frame_bytes = 960  # 30ms @ 16kHz int16 mono
+        min_speech_bytes = int(0.20 * SAMPLE_RATE * 2)
+        early_peek_bytes = int(0.38 * SAMPLE_RATE * 2)
+        max_speech_bytes = int(1.08 * SAMPLE_RATE * 2)
+        hangover_frames = 3  # 90ms sessizlik sonrası anında işle
+        min_voiced_frames = 3  # En az 90ms gerçek insan konuşması (kısa "Bedo" seslenişini kaçırma)
+        pa = pyaudio.PyAudio()
+
+        try:
+          while self._running:
             if self._paused.is_set():
                 time.sleep(0.15)
                 continue
 
-            pa = pyaudio.PyAudio()
+            denoiser = RealTimeSpeechDenoiser(sample_rate=SAMPLE_RATE) if (whisper_model is not None and RealTimeSpeechDenoiser is not None) else None
             stream = None
             rec = None
             vad = None
             if whisper_model is not None:
-                vad = webrtcvad.Vad(3)
+                vad = webrtcvad.Vad(2)
             else:
                 try:
                     rec = KaldiRecognizer(vosk_model, SAMPLE_RATE, json.dumps(_VOSK_GRAMMAR_PHRASES))
@@ -321,22 +359,30 @@ class WakeWordListener:
                     frames_per_buffer=read_frames,
                 )
                 self._stream_closed.clear()
+                _wake_log("Mic stream opened for wake-word")
                 residual = bytearray()
                 speech_buf = bytearray()
                 active_speech = False
                 silence_frames = 0
                 voiced_frames = 0
                 early_peeked = False
+                logged_first_audio = False
 
                 while self._running and not self._paused.is_set():
                     data = stream.read(read_frames, exception_on_overflow=False)
+                    rms_val = audioop.rms(data, 2)
+                    if rms_val == 0:
+                        continue
+                    if not logged_first_audio:
+                        logged_first_audio = True
+                        _wake_log(f"First non-zero audio frame received (rms={rms_val})")
                     if whisper_model is not None and vad is not None:
                         # Gürültü/klavye kapısı: önce RMS, ardından RNNoise insan sesi olasılığı
-                        if not active_speech and audioop.rms(data, 2) < 140:
+                        if not active_speech and rms_val < 90:
                             continue
                         if denoiser is not None and denoiser.enabled:
                             data, speech_prob = denoiser.process(data)
-                            if not active_speech and speech_prob < 0.42:
+                            if not active_speech and speech_prob < 0.25:
                                 continue
                         residual.extend(data)
                         while len(residual) >= frame_bytes:
@@ -352,14 +398,17 @@ class WakeWordListener:
                                 silence_frames += 1
                                 speech_buf.extend(frame)
                                 if silence_frames >= hangover_frames:
+                                    triggered = False
                                     if voiced_frames >= min_voiced_frames and len(speech_buf) >= min_speech_bytes:
                                         text = self._transcribe_whisper(whisper_model, bytes(speech_buf))
-                                        self._maybe_trigger(text, strict_whisper=True)
+                                        triggered = self._maybe_trigger(text, strict_whisper=True)
                                     speech_buf.clear()
                                     active_speech = False
                                     silence_frames = 0
                                     voiced_frames = 0
                                     early_peeked = False
+                                    if triggered:
+                                        break
                             if not early_peeked and voiced_frames >= min_voiced_frames and len(speech_buf) >= early_peek_bytes:
                                 early_peeked = True
                                 text = self._transcribe_whisper(whisper_model, bytes(speech_buf))
@@ -371,14 +420,17 @@ class WakeWordListener:
                                     early_peeked = False
                                     break
                             if len(speech_buf) >= max_speech_bytes:
+                                triggered = False
                                 if voiced_frames >= min_voiced_frames:
                                     text = self._transcribe_whisper(whisper_model, bytes(speech_buf))
-                                    self._maybe_trigger(text, strict_whisper=True)
+                                    triggered = self._maybe_trigger(text, strict_whisper=True)
                                 speech_buf.clear()
                                 active_speech = False
                                 silence_frames = 0
                                 voiced_frames = 0
                                 early_peeked = False
+                                if triggered:
+                                    break
                     elif rec is not None:
                         if rec.AcceptWaveform(data):
                             res = json.loads(rec.Result() or "{}")
@@ -388,7 +440,8 @@ class WakeWordListener:
                             partial = json.loads(rec.PartialResult() or "{}")
                             if self._maybe_trigger(partial.get("partial", "")):
                                 rec.Reset()
-            except Exception:
+            except Exception as exc:
+                _wake_log(f"_loop inner exception: {exc!r}")
                 time.sleep(0.4)
             finally:
                 if stream is not None:
@@ -397,11 +450,14 @@ class WakeWordListener:
                         stream.close()
                     except Exception:
                         pass
-                try:
-                    pa.terminate()
-                except Exception:
-                    pass
                 self._stream_closed.set()
+                _wake_log("Mic stream closed for wake-word")
+        finally:
+            try:
+                pa.terminate()
+            except Exception:
+                pass
+            _wake_log("_loop exited")
 
 
 class WakeManager:

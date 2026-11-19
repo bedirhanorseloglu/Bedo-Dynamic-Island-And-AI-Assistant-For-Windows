@@ -2414,7 +2414,7 @@ function startSystemWatcher() {
     systemWatcherProc = spawn(
       'powershell.exe',
       ['-WindowStyle', 'Hidden', '-NoProfile', '-STA', '-ExecutionPolicy', 'Bypass', '-File', watcherScript, '-ElectronPid', String(process.pid)],
-      { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] }
+      { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] }
     );
     let buffer = '';
     const watcherStartedAt = Date.now();
@@ -2443,6 +2443,20 @@ function startSystemWatcher() {
               mainWindow.webContents.send('app-context', {
                 app: ev.app || '',
                 category: ev.category || 'desktop',
+              });
+            }
+            continue;
+          }
+          if (ev.event === 'mic-mute') {
+            const isMuted = Boolean(ev.muted);
+            try {
+              getBedoService().setSystemMicMuted(isMuted);
+            } catch {}
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('system-hud', {
+                type: 'mic-mute',
+                muted: isMuted,
+                isInit: true,
               });
             }
             continue;
@@ -3691,6 +3705,68 @@ public class MicMuteQuery {
     });
     if (out === 'true') return true;
     if (out === 'false') return false;
+  } catch {}
+  return null;
+});
+
+ipcMain.handle('set-system-mic-muted', async (_event, muted) => {
+  const target = Boolean(muted);
+  try {
+    if (systemWatcherProc && systemWatcherProc.stdin && !systemWatcherProc.stdin.destroyed) {
+      systemWatcherProc.stdin.write(`set-mic-mute:${target ? 'true' : 'false'}\n`);
+    }
+    const psCmd = `
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+[Guid("5CDF2C82-841E-4546-9722-0CF74078229A"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IAudioEndpointVolume {
+  int f0(); int f1(); int f2(); int f3(); int f4(); int f5(); int f6(); int f7(); int f8(); int f9(); int f10();
+  int SetMute([MarshalAs(UnmanagedType.Bool)] bool bMute, Guid pguidEventContext);
+  int GetMute(out bool pbMute);
+}
+[Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IMMDevice { int Activate(ref Guid iid, int dwClsCtx, IntPtr pActivationParams, out IntPtr ppInterface); }
+[Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IMMDeviceEnumerator { int f0(); int GetDefaultAudioEndpoint(int dataFlow, int role, out IMMDevice ppEndpoint); }
+[ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")] class MMDeviceEnumerator {}
+public class MicMuteSetter {
+  public static bool SetMuted(bool mute) {
+    var enumerator = (IMMDeviceEnumerator)(new MMDeviceEnumerator());
+    var iid = new Guid("5CDF2C82-841E-4546-9722-0CF74078229A");
+    for (int role = 0; role < 3; role++) {
+      IMMDevice dev;
+      enumerator.GetDefaultAudioEndpoint(1, role, out dev);
+      if (dev != null) {
+        IntPtr ptr;
+        dev.Activate(ref iid, 23, IntPtr.Zero, out ptr);
+        var vol = (IAudioEndpointVolume)Marshal.GetObjectForIUnknown(ptr);
+        vol.SetMute(mute, Guid.Empty);
+      }
+    }
+    return mute;
+  }
+}
+"@
+[MicMuteSetter]::SetMuted($${target ? 'true' : 'false'})
+`;
+    await new Promise((resolve) => {
+      execFile(
+        'powershell.exe',
+        ['-WindowStyle', 'Hidden', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', psCmd],
+        { windowsHide: true, timeout: 4000 },
+        () => resolve()
+      );
+    });
+    getBedoService().setSystemMicMuted(target);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('system-hud', {
+        type: 'mic-mute',
+        muted: target,
+        isInit: true,
+      });
+    }
+    return target;
   } catch {}
   return null;
 });

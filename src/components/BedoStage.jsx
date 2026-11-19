@@ -541,10 +541,19 @@ export default function BedoStage({
                 <button
                   type="button"
                   className={`bedo-v2-ctrl-btn ${effectiveMicMuted ? 'is-danger' : !paused ? 'is-live' : ''}`}
-                  onClick={() => (paused ? onTogglePause() : onToggleMute())}
+                  onClick={() => {
+                    if (systemMicMuted || muted) {
+                      onToggleMute?.();
+                      if (paused) onTogglePause?.();
+                    } else if (paused) {
+                      onTogglePause?.();
+                    } else {
+                      onToggleMute?.();
+                    }
+                  }}
                   aria-label={
                     systemMicMuted
-                      ? 'Sistem Mikrofonu Kapalı'
+                      ? 'Sistem Mikrofonunu Aç'
                       : paused
                         ? 'Bedo’yu Uyandır'
                         : muted

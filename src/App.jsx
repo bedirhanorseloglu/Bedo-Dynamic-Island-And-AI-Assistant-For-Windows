@@ -1444,8 +1444,10 @@ export default function App() {
       if (!ev || typeof ev !== 'object') return;
       if (ev.type === 'wake') {
         lastBedoWakeAtRef.current = Date.now();
-        if (hoverOpenTimerRef.current) clearTimeout(hoverOpenTimerRef.current);
-        if (hoverCloseTimerRef.current) clearTimeout(hoverCloseTimerRef.current);
+        if (hoverExpandTimerRef.current) {
+          clearTimeout(hoverExpandTimerRef.current);
+          hoverExpandTimerRef.current = null;
+        }
         pauseMediaForBedo();
         suppressHoverCollapseUntilRef.current = Date.now() + 9000;
         suppressHoverExpandUntilRef.current = Date.now() + 9000;
@@ -3305,6 +3307,10 @@ export default function App() {
 
     const unsubHud = window.twocode.onSystemHud?.((hud) => {
       if (!hud) return;
+      if (hud.type === 'mic-mute') {
+        if (typeof hud.muted === 'boolean') setSystemMicMuted(hud.muted);
+        return;
+      }
       if (hud.isInit || hud.type === 'init-audio') {
         if (typeof hud.value === 'number' && hud.value >= 0) setVolumePercent(hud.value);
         if (typeof hud.muted === 'boolean') setIsMuted(hud.muted);
@@ -6340,7 +6346,18 @@ export default function App() {
                         onOpenSettings={() => {
                           window.twocode?.openSettingsWindow?.('connections');
                         }}
-                        onToggleMute={() => window.twocode?.bedoSetMuted?.(!bedoStatus.muted)}
+                        onToggleMute={() => {
+                          if (systemMicMuted) {
+                            window.twocode?.setSystemMicMuted?.(false).then((res) => {
+                              if (typeof res === 'boolean') setSystemMicMuted(res);
+                              else setSystemMicMuted(false);
+                            });
+                            window.twocode?.bedoSetSystemMicMuted?.(false);
+                            if (bedoStatus.muted) window.twocode?.bedoSetMuted?.(false);
+                            return;
+                          }
+                          window.twocode?.bedoSetMuted?.(!bedoStatus.muted);
+                        }}
                         onTogglePause={() => window.twocode?.bedoSetPaused?.(!bedoStatus.paused)}
                         onToggleWebcam={() => window.twocode?.bedoSetWebcam?.(!bedoStatus.webcamActive)}
                         onStartBuddy={() => window.twocode?.startBedoBuddy?.()}

@@ -159,6 +159,7 @@ contextBridge.exposeInMainWorld('twocode', {
   adjustVolume: (direction) => ipcRenderer.invoke('adjust-volume', direction),
   setVolume: (percent) => ipcRenderer.invoke('set-volume', percent),
   getSystemMicMuted: () => ipcRenderer.invoke('get-system-mic-muted'),
+  setSystemMicMuted: (muted) => ipcRenderer.invoke('set-system-mic-muted', muted),
   onSystemHud: (cb) => {
     const listener = (_event, data) => cb(data);
     ipcRenderer.on('system-hud', listener);

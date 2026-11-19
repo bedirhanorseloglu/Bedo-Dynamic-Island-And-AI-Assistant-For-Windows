@@ -234,11 +234,22 @@ class JarvisLive:
         self.ui.on_webcam_toggle = self._on_webcam_toggle_ui
         self._paused             = False
         self._resume_event       = None
+        self._pause_event        = None
+        self._mic_released       = threading.Event()
+        self._mic_released.set()
+
+    def wait_mic_released(self, timeout: float = 1.5) -> bool:
+        return self._mic_released.wait(timeout=timeout)
 
     def _on_pause_toggle(self, paused: bool):
         self._paused = paused
         if paused:
             self._stop_music()
+            if self._pause_event is not None and self._loop is not None:
+                try:
+                    self._loop.call_soon_threadsafe(self._pause_event.set)
+                except Exception:
+                    pass
         elif self._resume_event is not None and self._loop is not None:
             try:
                 self._loop.call_soon_threadsafe(self._resume_event.set)
@@ -808,12 +819,15 @@ class JarvisLive:
             rate=SEND_SAMPLE_RATE, input=True,
             frames_per_buffer=CHUNK_SIZE,
         )
+        self._mic_released.clear()
         speech_hangover_until = 0.0
         frame_bytes = 960  # 30ms @ 16kHz 16-bit mono
         try:
-            while True:
+            while not self._paused:
                 raw_data = await asyncio.to_thread(
                     stream.read, CHUNK_SIZE, exception_on_overflow=False)
+                if self._paused:
+                    break
                 with self._speaking_lock:
                     jarvis_speaking = self._is_speaking
                 effectively_muted = (
@@ -854,7 +868,15 @@ class JarvisLive:
             print(f"[JARVIS] ❌ Mikrofon: {e}")
             raise
         finally:
-            stream.close()
+            try:
+                stream.stop_stream()
+            except Exception:
+                pass
+            try:
+                stream.close()
+            except Exception:
+                pass
+            self._mic_released.set()
 
     async def _receive_audio(self):
         print("[JARVIS] 👂 Alım başladı")
@@ -979,6 +1001,7 @@ class JarvisLive:
         import gc
         self._loop = asyncio.get_running_loop()
         self._resume_event = asyncio.Event()
+        self._pause_event = asyncio.Event()
         connect_attempts = 0
         was_paused = False
         while True:
@@ -995,6 +1018,7 @@ class JarvisLive:
                         pass
                 continue
             was_paused = False
+            self._pause_event.clear()
 
             try:
                 # Client'ı her bağlanışta yeniden oluştur ve anahtarı tazeden oku.
@@ -1008,12 +1032,9 @@ class JarvisLive:
                 self.ui.set_state("INITIALISING")
                 config = self._build_config()
 
-                async with (
-                    client.aio.live.connect(model=LIVE_MODEL, config=config) as session,
-                    asyncio.TaskGroup() as tg,
-                ):
+                async with client.aio.live.connect(model=LIVE_MODEL, config=config) as session:
                     self.session        = session
-                    self._loop          = asyncio.get_event_loop()
+                    self._loop          = asyncio.get_running_loop()
                     self.audio_in_queue = asyncio.Queue()
                     self.out_queue      = asyncio.Queue(maxsize=10)
 
@@ -1032,14 +1053,33 @@ class JarvisLive:
                                 turn_complete=True,
                             )
 
-                    tg.create_task(self._send_realtime())
-                    tg.create_task(self._listen_audio())
-                    tg.create_task(self._receive_audio())
-                    tg.create_task(self._play_audio())
-                    tg.create_task(self._stream_webcam_frames())
-                    tg.create_task(self._update_ui_webcam_preview())
+                    tasks = [
+                        asyncio.create_task(self._send_realtime()),
+                        asyncio.create_task(self._listen_audio()),
+                        asyncio.create_task(self._receive_audio()),
+                        asyncio.create_task(self._play_audio()),
+                        asyncio.create_task(self._stream_webcam_frames()),
+                        asyncio.create_task(self._update_ui_webcam_preview()),
+                        asyncio.create_task(self._pause_event.wait()),
+                    ]
+                    try:
+                        done, pending_tasks = await asyncio.wait(
+                            tasks, return_when=asyncio.FIRST_COMPLETED
+                        )
+                        for t in done:
+                            if not t.cancelled() and t.exception() is not None:
+                                if not self._paused:
+                                    raise t.exception()
+                    finally:
+                        for t in tasks:
+                            if not t.done():
+                                t.cancel()
+                        await asyncio.gather(*tasks, return_exceptions=True)
+                        self.session = None
 
             except Exception as e:
+                if self._paused:
+                    continue
                 print(f"[JARVIS] ⚠️ {e}")
                 traceback.print_exc()
                 self.set_speaking(False)

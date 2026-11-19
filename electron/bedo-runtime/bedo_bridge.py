@@ -87,7 +87,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     from main import JarvisLive, get_api_key
-    from wake_word import WakeManager
+    from wake_word import WakeManager, _wake_log
 
     stdin_thread = threading.Thread(target=_stdin_loop, args=(ui,), daemon=True, name="BedoStdin")
     stdin_thread.start()
@@ -103,23 +103,30 @@ def main(argv: list[str] | None = None) -> int:
     orig_pause_cb = ui.on_pause_toggle
 
     def _wrapped_pause_toggle(paused: bool) -> None:
+        _wake_log(f"bridge._wrapped_pause_toggle(paused={paused})")
         if orig_pause_cb:
             orig_pause_cb(paused)
         if wake_manager:
             if paused:
-                wake_manager.resume()
+                def _resume_after_mic_release() -> None:
+                    bedo.wait_mic_released(timeout=1.5)
+                    if ui.paused:
+                        wake_manager.resume()
+                threading.Thread(target=_resume_after_mic_release, daemon=True, name="WakeResumeHandoff").start()
             else:
                 wake_manager.pause()
 
     ui.on_pause_toggle = _wrapped_pause_toggle
 
     def _on_mute_change(effectively_muted: bool) -> None:
+        _wake_log(f"bridge._on_mute_change(effectively_muted={effectively_muted})")
         if wake_manager:
             wake_manager.set_muted(effectively_muted)
 
     ui.on_mute_change = _on_mute_change
 
     def _on_wake(source: str, transcript: str) -> None:
+        _wake_log(f"bridge._on_wake(source={source}, transcript={transcript!r}, muted={ui.is_effectively_muted()}, paused={ui.paused})")
         if ui.is_effectively_muted():
             return
         if wake_manager:

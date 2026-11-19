@@ -48,6 +48,7 @@ class MMDeviceEnumeratorComObject { }
 
 public class WinAudioHelper {
     private static IAudioEndpointVolume endpoint;
+    private static IAudioEndpointVolume micEndpoint;
 
     public static int GetVolume(out bool muted) {
         muted = false;
@@ -67,6 +68,45 @@ public class WinAudioHelper {
             return (int)Math.Round(v * 100);
         } catch {
             return -1;
+        }
+    }
+
+    public static int GetMicMuted(out bool muted) {
+        muted = false;
+        try {
+            var enumerator = new MMDeviceEnumeratorComObject() as IMMDeviceEnumerator;
+            IMMDevice dev = null;
+            enumerator.GetDefaultAudioEndpoint(1, 1, out dev);
+            if (dev == null) return -1;
+            Guid epvId = typeof(IAudioEndpointVolume).GUID;
+            IAudioEndpointVolume ep = null;
+            dev.Activate(ref epvId, 23, 0, out ep);
+            if (ep == null) return -1;
+            ep.GetMute(out muted);
+            return 0;
+        } catch {
+            return -1;
+        }
+    }
+
+    public static bool SetMicMuted(bool mute) {
+        try {
+            var enumerator = new MMDeviceEnumeratorComObject() as IMMDeviceEnumerator;
+            for (int role = 0; role < 3; role++) {
+                IMMDevice dev = null;
+                enumerator.GetDefaultAudioEndpoint(1, role, out dev);
+                if (dev != null) {
+                    Guid epvId = typeof(IAudioEndpointVolume).GUID;
+                    IAudioEndpointVolume ep = null;
+                    dev.Activate(ref epvId, 23, 0, out ep);
+                    if (ep != null) {
+                        ep.SetMute(mute, Guid.Empty);
+                    }
+                }
+            }
+            return true;
+        } catch {
+            return false;
         }
     }
 
@@ -530,6 +570,8 @@ public class WinBrightnessHelper {
 
 $lastVol = -1
 $lastMuted = $false
+$lastMicInit = $false
+$lastMicMuted = $false
 $lastAppName = ''
 $lastAppCategory = ''
 $lastBrightness = -1
@@ -585,6 +627,13 @@ while ($true) {
                         $m = $false
                         $v = [WinAudioHelper]::GetVolume([ref]$m)
                         if ($v -ge 0) { $lastVol = $v; $lastMuted = $m }
+                    }
+                } elseif ($trimmedCmd -match '^set-mic-mute:(true|false)$') {
+                    $targetMicMute = ($Matches[1] -eq 'true')
+                    if ([WinAudioHelper]::SetMicMuted($targetMicMute)) {
+                        $lastMicMuted = $targetMicMute
+                        $lastMicInit = $true
+                        Write-Output ((@{ event = 'mic-mute'; muted = [bool]$targetMicMute }) | ConvertTo-Json -Compress)
                     }
                 }
             }
@@ -676,6 +725,14 @@ while ($true) {
                     $lastMuted = $muted
                     $evObj = @{ event = 'volume'; value = $vol; muted = [bool]$muted }
                     Write-Output ($evObj | ConvertTo-Json -Compress)
+                }
+            }
+            $micMuted = $false
+            if ([WinAudioHelper]::GetMicMuted([ref]$micMuted) -ge 0) {
+                if (-not $lastMicInit -or $micMuted -ne $lastMicMuted) {
+                    $lastMicInit = $true
+                    $lastMicMuted = $micMuted
+                    Write-Output ((@{ event = 'mic-mute'; muted = [bool]$micMuted }) | ConvertTo-Json -Compress)
                 }
             }
         }
