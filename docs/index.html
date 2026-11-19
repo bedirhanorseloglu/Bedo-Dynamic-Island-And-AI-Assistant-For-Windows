@@ -2147,17 +2147,17 @@
                   <div style="display:flex;align-items:center;justify-content:space-between;padding:0 2px;">
                     <div style="display:flex;align-items:center;gap:8px;">
                       <span style="width:12px;height:12px;border-radius:999px;background:#38bdf8;box-shadow:0 0 0 2px rgba(255,255,255,0.78),0 0 12px #38bdf8;"></span>
-                      <span style="width:26px;height:26px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.78);background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);box-shadow:inset 0 1px 0 rgba(255,255,255,0.14);font-size:13px;">+</span>
+                      <button type="button" onclick="clearDemoNote(event)" title="Yeni Not" style="width:26px;height:26px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.78);background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);box-shadow:inset 0 1px 0 rgba(255,255,255,0.14);font-size:13px;cursor:pointer;">+</button>
                     </div>
                     <div style="display:flex;align-items:center;gap:7px;">
-                      <span style="width:26px;height:26px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.78);background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);box-shadow:inset 0 1px 0 rgba(255,255,255,0.14);"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg></span>
+                      <button type="button" id="noteVoiceBtn" onclick="toggleNoteVoiceDemo(event)" title="Sesli Not" style="width:26px;height:26px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.78);background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);box-shadow:inset 0 1px 0 rgba(255,255,255,0.14);cursor:pointer;transition:all 0.2s;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg></button>
                       <span style="width:26px;height:26px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.78);background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);box-shadow:inset 0 1px 0 rgba(255,255,255,0.14);"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></span>
                       <span style="width:26px;height:26px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.78);background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);box-shadow:inset 0 1px 0 rgba(255,255,255,0.14);"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="15" y2="12"/><line x1="3" y1="18" x2="18" y2="18"/></svg></span>
-                      <span style="width:26px;height:26px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.78);background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);box-shadow:inset 0 1px 0 rgba(255,255,255,0.14);"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></span>
+                      <button type="button" onclick="copyDemoNote(event)" title="Kopyala" style="width:26px;height:26px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.78);background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);box-shadow:inset 0 1px 0 rgba(255,255,255,0.14);cursor:pointer;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
                     </div>
                   </div>
-                  <div style="flex:1;min-height:0;border-radius:16px;background:linear-gradient(155deg,rgba(255,255,255,0.065) 0%,rgba(255,255,255,0.02) 100%);border:1px solid rgba(255,255,255,0.11);box-shadow:inset 0 1px 0 rgba(255,255,255,0.14),0 10px 28px rgba(0,0,0,0.28);padding:11px 13px;font-size:13.5px;color:rgba(255,255,255,0.28);">
-                    Bir şeyler yaz...
+                  <div style="flex:1;min-height:0;border-radius:16px;background:linear-gradient(155deg,rgba(255,255,255,0.065) 0%,rgba(255,255,255,0.02) 100%);border:1px solid rgba(255,255,255,0.11);box-shadow:inset 0 1px 0 rgba(255,255,255,0.14),0 10px 28px rgba(0,0,0,0.28);padding:11px 13px;display:flex;flex-direction:column;">
+                    <textarea id="noteDemoInput" onclick="event.stopPropagation()" placeholder="Bir şeyler yaz..." style="width:100%;height:100%;flex:1;background:transparent;border:none;outline:none;resize:none;color:rgba(255,255,255,0.94);font-size:13.5px;line-height:1.45;font-family:inherit;"></textarea>
                   </div>
                 </div>
               </div>
@@ -3028,6 +3028,80 @@
     function selectVoicePersona(idx) {
       currentVoiceIdx = idx % VOICE_PERSONAS.length;
       renderVoiceGrid();
+    }
+
+    let noteVoiceRecording = false;
+    let noteRecog = null;
+    let noteFallbackTimer = null;
+    function toggleNoteVoiceDemo(e) {
+      if (e) e.stopPropagation();
+      const btn = document.getElementById('noteVoiceBtn');
+      const input = document.getElementById('noteDemoInput');
+      if (!btn || !input) return;
+
+      const setRecUI = (on) => {
+        noteVoiceRecording = on;
+        btn.style.background = on ? 'rgba(244, 63, 94, 0.24)' : 'rgba(255,255,255,0.06)';
+        btn.style.borderColor = on ? 'rgba(251, 113, 133, 0.55)' : 'rgba(255,255,255,0.12)';
+        btn.style.color = on ? '#fda4af' : 'rgba(255,255,255,0.78)';
+      };
+
+      if (noteVoiceRecording) {
+        setRecUI(false);
+        if (noteRecog) { try { noteRecog.stop(); } catch {} noteRecog = null; }
+        if (noteFallbackTimer) { clearTimeout(noteFallbackTimer); noteFallbackTimer = null; }
+        return;
+      }
+
+      setRecUI(true);
+      showToast('Sesli not dinleniyor...');
+      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      let gotSpeech = false;
+      if (SR) {
+        try {
+          noteRecog = new SR();
+          noteRecog.lang = 'tr-TR';
+          noteRecog.interimResults = false;
+          noteRecog.onresult = (ev) => {
+            gotSpeech = true;
+            const txt = ev.results[0][0].transcript;
+            input.value = input.value ? `${input.value} ${txt}` : txt;
+            setRecUI(false);
+            showToast('Sesli not eklendi ✓');
+          };
+          noteRecog.onerror = () => {
+            if (!gotSpeech) {
+              const sample = 'Toplantı notu: Yarın saat 10:00’da Bedo v1.0.9 yayına alınacak.';
+              input.value = input.value ? `${input.value}\n${sample}` : sample;
+            }
+            setRecUI(false);
+          };
+          noteRecog.onend = () => { setRecUI(false); };
+          noteRecog.start();
+          return;
+        } catch {}
+      }
+      noteFallbackTimer = setTimeout(() => {
+        const sample = 'Toplantı notu: Yarın saat 10:00’da Bedo v1.0.9 yayına alınacak.';
+        input.value = input.value ? `${input.value}\n${sample}` : sample;
+        setRecUI(false);
+        showToast('Sesli not eklendi ✓');
+      }, 1500);
+    }
+
+    function clearDemoNote(e) {
+      if (e) e.stopPropagation();
+      const input = document.getElementById('noteDemoInput');
+      if (input) { input.value = ''; input.focus(); }
+    }
+
+    function copyDemoNote(e) {
+      if (e) e.stopPropagation();
+      const input = document.getElementById('noteDemoInput');
+      if (input && input.value && navigator.clipboard) {
+        navigator.clipboard.writeText(input.value).catch(() => {});
+      }
+      showToast('Not kopyalandı ✓');
     }
 
     window.addEventListener('DOMContentLoaded', () => {
