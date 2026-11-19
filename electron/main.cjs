@@ -1310,6 +1310,7 @@ async function fetchLyricsFromLrclib(title, artist) {
 
 let isPollingMedia = false;
 let pendingMediaRepoll = false;
+let lastMediaPollAt = 0;
 function pollWindowsMedia(action = 'status', value = null) {
   return new Promise((resolve) => {
     if (gameModeActive && action === 'status') return resolve(lastMediaState);
@@ -1318,6 +1319,7 @@ function pollWindowsMedia(action = 'status', value = null) {
       return resolve(lastMediaState);
     }
     isPollingMedia = true;
+    lastMediaPollAt = Date.now();
     const scriptPath = resolveScriptPath('win-media.ps1');
     const args = [
       '-WindowStyle',
@@ -1985,11 +1987,13 @@ function startCursorHoverWatcher() {
         relX <= rightEdge + dropletExtra + 200;
       const inTopBand = relY >= -20 && relY <= 220;
       nextDelay =
-        nearNotch || isHoveringNotch || currentModeKey === 'expanded'
-          ? 16
+        nearNotch || isHoveringNotch
+          ? 20
+          : currentModeKey === 'expanded'
+          ? 28
           : inTopBand
-          ? 24
-          : 40;
+          ? 32
+          : 50;
 
       if (userSettings.islandOpenMode === 'On click' && currentModeKey !== 'expanded') return;
 
@@ -2901,15 +2905,15 @@ ipcMain.on('set-ignore-mouse-events', (_event, ignore) => {
 ipcMain.on('set-expanded', (_event, expanded) => {
   const isExp = Boolean(expanded);
   animateWindowShapeToMode(isExp);
-  if (isExp) {
-    scheduleNextMediaPoll(50);
+  if (isExp && Date.now() - lastMediaPollAt > 5000) {
+    scheduleNextMediaPoll(400);
   }
 });
 
 ipcMain.on('set-island-mode', (_event, mode, customWidth) => {
   animateWindowShapeToMode(mode, customWidth);
-  if (mode === 'expanded' || mode === 'music-bar') {
-    scheduleNextMediaPoll(50);
+  if ((mode === 'expanded' || mode === 'music-bar') && Date.now() - lastMediaPollAt > 5000) {
+    scheduleNextMediaPoll(400);
   }
 });
 

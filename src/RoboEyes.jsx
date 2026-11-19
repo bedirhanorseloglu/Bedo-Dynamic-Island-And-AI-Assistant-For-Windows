@@ -85,25 +85,44 @@ export default function RoboEyes({ mood = 'normal', reaction = null, active = tr
   // Subtle eye tracking toward cursor (disabled in idle to avoid background re-renders)
   useEffect(() => {
     if (!active || !trackCursor) return undefined;
-    const handleMove = (e) => {
+    let cachedCenter = null;
+    let ro = null;
+
+    const updateCenter = () => {
       if (!containerRef.current) return;
-      const now = performance.now();
-      if (now - lastLookUpdateRef.current < 40) return;
-      lastLookUpdateRef.current = now;
       const rect = containerRef.current.getBoundingClientRect();
-      const cx = rect.left + rect.width / 2;
-      const cy = rect.top + rect.height / 2;
-      const dx = Math.max(-3.5, Math.min(3.5, (e.clientX - cx) / 70));
-      const dy = Math.max(-2.5, Math.min(2.5, (e.clientY - cy) / 70));
+      if (rect.width > 0 && rect.height > 0) {
+        cachedCenter = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      }
+    };
+
+    const rafId = requestAnimationFrame(updateCenter);
+    if (typeof ResizeObserver !== 'undefined' && containerRef.current) {
+      ro = new ResizeObserver(updateCenter);
+      ro.observe(containerRef.current);
+    }
+
+    const handleMove = (e) => {
+      const now = performance.now();
+      if (now - lastLookUpdateRef.current < 50) return;
+      lastLookUpdateRef.current = now;
+      if (!cachedCenter) updateCenter();
+      if (!cachedCenter) return;
+      const dx = Math.max(-3.5, Math.min(3.5, (e.clientX - cachedCenter.x) / 70));
+      const dy = Math.max(-2.5, Math.min(2.5, (e.clientY - cachedCenter.y) / 70));
       setLookOffset((current) =>
         Math.abs(current.x - dx) < 0.35 && Math.abs(current.y - dy) < 0.35
           ? current
           : { x: dx, y: dy }
       );
     };
-    window.addEventListener('mousemove', handleMove);
-    return () => window.removeEventListener('mousemove', handleMove);
-  }, [active]);
+    window.addEventListener('mousemove', handleMove, { passive: true });
+    return () => {
+      cancelAnimationFrame(rafId);
+      if (ro) ro.disconnect();
+      window.removeEventListener('mousemove', handleMove);
+    };
+  }, [active, trackCursor]);
 
   const handleClick = (e) => {
     e.stopPropagation();
