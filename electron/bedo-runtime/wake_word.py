@@ -254,9 +254,9 @@ class WakeWordListener:
         )
         valid_texts: list[str] = []
         for seg in segments:
-            if getattr(seg, "no_speech_prob", 0.0) >= 0.65:
+            if getattr(seg, "no_speech_prob", 0.0) >= 0.45:
                 continue
-            if getattr(seg, "avg_logprob", 0.0) <= -1.25:
+            if getattr(seg, "avg_logprob", 0.0) <= -0.90:
                 continue
             t = (seg.text or "").strip()
             if t:
@@ -328,7 +328,7 @@ class WakeWordListener:
         early_peek_bytes = int(0.38 * SAMPLE_RATE * 2)
         max_speech_bytes = int(1.08 * SAMPLE_RATE * 2)
         hangover_frames = 3  # 90ms sessizlik sonrası anında işle
-        min_voiced_frames = 3  # En az 90ms gerçek insan konuşması (kısa "Bedo" seslenişini kaçırma)
+        min_voiced_frames = 4  # En az 120ms gerçek insan konuşması (klavye tıkırtılarını ele)
         pa = pyaudio.PyAudio()
 
         try:
@@ -342,7 +342,7 @@ class WakeWordListener:
             rec = None
             vad = None
             if whisper_model is not None:
-                vad = webrtcvad.Vad(2)
+                vad = webrtcvad.Vad(3)
             else:
                 try:
                     rec = KaldiRecognizer(vosk_model, SAMPLE_RATE, json.dumps(_VOSK_GRAMMAR_PHRASES))
@@ -378,11 +378,11 @@ class WakeWordListener:
                         _wake_log(f"First non-zero audio frame received (rms={rms_val})")
                     if whisper_model is not None and vad is not None:
                         # Gürültü/klavye kapısı: önce RMS, ardından RNNoise insan sesi olasılığı
-                        if not active_speech and rms_val < 90:
+                        if not active_speech and rms_val < 115:
                             continue
                         if denoiser is not None and denoiser.enabled:
                             data, speech_prob = denoiser.process(data)
-                            if not active_speech and speech_prob < 0.25:
+                            if not active_speech and speech_prob < 0.38:
                                 continue
                         residual.extend(data)
                         while len(residual) >= frame_bytes:
