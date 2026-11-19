@@ -39,7 +39,7 @@ function resolveGHelperToast(text) {
     if (/%$/.test(raw) || /parlakl|bright/i.test(raw)) category = 'brightness';
     else if (/backlight|klavye|yüksek|düşük|orta/i.test(raw)) category = 'backlight';
     else if (/mode|mod|silent|turbo|balanced|dengeli|sessiz/i.test(raw)) category = 'mode';
-    else if (/mic|mikrofon|mute|unmute/i.test(raw)) category = /unmute|açık/i.test(raw) ? 'mic' : 'micMute';
+    else if (/\b(mic|mikrofon|mute|unmute)\b/i.test(raw)) category = /\b(unmute|açık)\b/i.test(raw) ? 'mic' : 'micMute';
     else if (/touchpad|touchscreen/i.test(raw)) category = 'touchpad';
     else if (/fn.?lock/i.test(raw)) category = 'fnlock';
     else if (/fps|limit/i.test(raw)) category = 'fps';

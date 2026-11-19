@@ -3328,7 +3328,9 @@ export default function App() {
           return;
         }
         if (hud.ghelper?.category === 'mic') {
-          setSystemMicMuted(Boolean(hud.ghelper.isMuted));
+          window.twocode?.getSystemMicMuted?.().then((realMuted) => {
+            if (typeof realMuted === 'boolean') setSystemMicMuted(realMuted);
+          }).catch(() => {});
           if (Date.now() < suppressMicHudUntilRef.current) {
             return;
           }

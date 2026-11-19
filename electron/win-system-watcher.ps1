@@ -73,19 +73,25 @@ public class WinAudioHelper {
 
     public static int GetMicMuted(out bool muted) {
         muted = false;
+        IMMDeviceEnumerator enumerator = null;
+        IMMDevice dev = null;
+        IAudioEndpointVolume ep = null;
         try {
-            var enumerator = new MMDeviceEnumeratorComObject() as IMMDeviceEnumerator;
-            IMMDevice dev = null;
+            enumerator = new MMDeviceEnumeratorComObject() as IMMDeviceEnumerator;
+            if (enumerator == null) return -1;
             enumerator.GetDefaultAudioEndpoint(1, 1, out dev);
             if (dev == null) return -1;
             Guid epvId = typeof(IAudioEndpointVolume).GUID;
-            IAudioEndpointVolume ep = null;
             dev.Activate(ref epvId, 23, 0, out ep);
             if (ep == null) return -1;
             ep.GetMute(out muted);
             return 0;
         } catch {
             return -1;
+        } finally {
+            if (ep != null) try { Marshal.ReleaseComObject(ep); } catch {}
+            if (dev != null) try { Marshal.ReleaseComObject(dev); } catch {}
+            if (enumerator != null) try { Marshal.ReleaseComObject(enumerator); } catch {}
         }
     }
 
