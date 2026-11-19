@@ -419,6 +419,7 @@ let userSettings = {
   googleEmail: '',
   apps: [],
   islandOpenMode: 'On hover',
+  islandSeeThrough: 4,
   outfit: 'Best',
   eyeColorHex: '#ffffff',
   gameOptEnabled: true,

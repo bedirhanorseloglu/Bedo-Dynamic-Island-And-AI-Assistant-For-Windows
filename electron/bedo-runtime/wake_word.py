@@ -237,6 +237,11 @@ class WakeWordListener:
                 num_workers=1,
                 local_files_only=False,
             )
+            try:
+                # İlk "Bedo" seslenişinde cold-start gecikmesi olmaması için modeli ısıt
+                list(self._whisper_model.transcribe(np.zeros(4800, dtype=np.float32), language="tr", beam_size=1)[0])
+            except Exception:
+                pass
             gc.collect()
         return self._whisper_model
 
@@ -254,9 +259,9 @@ class WakeWordListener:
         )
         valid_texts: list[str] = []
         for seg in segments:
-            if getattr(seg, "no_speech_prob", 0.0) >= 0.45:
+            if getattr(seg, "no_speech_prob", 0.0) >= 0.50:
                 continue
-            if getattr(seg, "avg_logprob", 0.0) <= -0.90:
+            if getattr(seg, "avg_logprob", 0.0) <= -1.05:
                 continue
             t = (seg.text or "").strip()
             if t:
@@ -327,6 +332,7 @@ class WakeWordListener:
         min_speech_bytes = int(0.20 * SAMPLE_RATE * 2)
         early_peek_bytes = int(0.38 * SAMPLE_RATE * 2)
         max_speech_bytes = int(1.08 * SAMPLE_RATE * 2)
+        overlap_bytes = int(0.38 * SAMPLE_RATE * 2)
         hangover_frames = 3  # 90ms sessizlik sonrası anında işle
         min_voiced_frames = 4  # En az 120ms gerçek insan konuşması (klavye tıkırtılarını ele)
         pa = pyaudio.PyAudio()
@@ -342,7 +348,7 @@ class WakeWordListener:
             rec = None
             vad = None
             if whisper_model is not None:
-                vad = webrtcvad.Vad(3)
+                vad = webrtcvad.Vad(2)
             else:
                 try:
                     rec = KaldiRecognizer(vosk_model, SAMPLE_RATE, json.dumps(_VOSK_GRAMMAR_PHRASES))
@@ -350,7 +356,7 @@ class WakeWordListener:
                     rec = KaldiRecognizer(vosk_model, SAMPLE_RATE)
 
             try:
-                read_frames = 960 if (whisper_model is not None and vad is not None) else CHUNK_SIZE
+                read_frames = 1024 if (whisper_model is not None and vad is not None) else CHUNK_SIZE
                 stream = pa.open(
                     format=pyaudio.paInt16,
                     channels=1,
@@ -380,23 +386,24 @@ class WakeWordListener:
                         # Gürültü/klavye kapısı: önce RMS, ardından RNNoise insan sesi olasılığı
                         if not active_speech and rms_val < 115:
                             continue
-                        if denoiser is not None and denoiser.enabled:
-                            data, speech_prob = denoiser.process(data)
-                            if not active_speech and speech_prob < 0.38:
-                                continue
                         residual.extend(data)
                         while len(residual) >= frame_bytes:
-                            frame = bytes(residual[:frame_bytes])
+                            raw_frame = bytes(residual[:frame_bytes])
                             del residual[:frame_bytes]
-                            is_speech = vad.is_speech(frame, SAMPLE_RATE)
+                            clean_frame = raw_frame
+                            if denoiser is not None and denoiser.enabled:
+                                clean_frame, speech_prob = denoiser.process(raw_frame)
+                                if not active_speech and speech_prob < 0.30:
+                                    continue
+                            is_speech = vad.is_speech(raw_frame, SAMPLE_RATE)
                             if is_speech:
                                 active_speech = True
                                 silence_frames = 0
                                 voiced_frames += 1
-                                speech_buf.extend(frame)
+                                speech_buf.extend(clean_frame)
                             elif active_speech:
                                 silence_frames += 1
-                                speech_buf.extend(frame)
+                                speech_buf.extend(clean_frame)
                                 if silence_frames >= hangover_frames:
                                     triggered = False
                                     if voiced_frames >= min_voiced_frames and len(speech_buf) >= min_speech_bytes:
@@ -424,13 +431,19 @@ class WakeWordListener:
                                 if voiced_frames >= min_voiced_frames:
                                     text = self._transcribe_whisper(whisper_model, bytes(speech_buf))
                                     triggered = self._maybe_trigger(text, strict_whisper=True)
-                                speech_buf.clear()
-                                active_speech = False
-                                silence_frames = 0
-                                voiced_frames = 0
-                                early_peeked = False
                                 if triggered:
+                                    speech_buf.clear()
+                                    active_speech = False
+                                    silence_frames = 0
+                                    voiced_frames = 0
+                                    early_peeked = False
                                     break
+                                # Medya/sürekli ses akışında kelime sınırda bölünmesin diye son 0.38sn'yi koru
+                                if len(speech_buf) > overlap_bytes:
+                                    del speech_buf[:-overlap_bytes]
+                                silence_frames = 0
+                                voiced_frames = min_voiced_frames
+                                early_peeked = True
                     elif rec is not None:
                         if rec.AcceptWaveform(data):
                             res = json.loads(rec.Result() or "{}")

@@ -163,7 +163,7 @@ const DEFAULT_SETTINGS = {
   notifDuringGames: false,
   islandSize: 'Normal',
   islandStyle: 'Attached',
-  islandSeeThrough: 0,
+  islandSeeThrough: 4,
   islandMusicColour: true,
   islandOpenMode: 'On hover',
   leftOfRobo: 'Nothing',
@@ -876,7 +876,7 @@ export default function SettingsApp() {
     ...(aiHistory.codexJobs || []),
   ].sort((a, b) => String(b.time || '').localeCompare(String(a.time || ''))).slice(0, 4), [aiHistory]);
 
-  const settingsSeeThrough = Math.min(60, Math.max(0, Number(settings.islandSeeThrough || 0)));
+  const settingsSeeThrough = Math.min(60, Math.max(0, Number(settings.islandSeeThrough ?? 4)));
   const settingsBgOpacity = Math.max(0.32, 1 - (settingsSeeThrough / 100) * 0.95).toFixed(2);
 
   return (
@@ -3722,7 +3722,7 @@ export default function SettingsApp() {
             '24-hour · 18:30': langCode === 'tr' ? '24 saat · 18:30' : '24-hour · 18:30',
           };
           const restingOptions = ['Nothing', 'Time', 'Battery', 'Wi-Fi', 'Bluetooth'];
-          const previewOpacity = Math.max(0.32, 1 - (Math.min(60, Math.max(0, Number(settings.islandSeeThrough || 0))) / 100) * 0.95);
+          const previewOpacity = Math.max(0.32, 1 - (Math.min(60, Math.max(0, Number(settings.islandSeeThrough ?? 4))) / 100) * 0.95);
           const previewScale = settings.islandSize === 'Compact' ? 0.92 : settings.islandSize === 'Large' ? 1.06 : 1;
           const isFloating = settings.islandStyle === 'Floating';
           const renderPreviewSlot = (val) => {
@@ -3756,7 +3756,7 @@ export default function SettingsApp() {
                   <span className="island-lg-sep">·</span>
                   <span>{optMap[settings.islandSize || 'Normal']}</span>
                   <span className="island-lg-sep">·</span>
-                  <span>{settings.islandSeeThrough || 0}%</span>
+                  <span>{settings.islandSeeThrough ?? 4}%</span>
                 </div>
               </div>
 
@@ -3837,12 +3837,12 @@ export default function SettingsApp() {
                     type="range"
                     min="0"
                     max="60"
-                    value={settings.islandSeeThrough}
+                    value={settings.islandSeeThrough ?? 4}
                     onChange={(e) =>
                       updateSetting({ islandSeeThrough: parseInt(e.target.value, 10) })
                     }
                   />
-                  <span>{settings.islandSeeThrough}%</span>
+                  <span>{settings.islandSeeThrough ?? 4}%</span>
                 </div>
               </div>
 

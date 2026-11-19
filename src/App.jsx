@@ -1450,7 +1450,7 @@ export default function App() {
         }
         pauseMediaForBedo();
         suppressHoverCollapseUntilRef.current = Date.now() + 9000;
-        suppressHoverExpandUntilRef.current = Date.now() + 9000;
+        suppressHoverExpandUntilRef.current = Date.now() + 600;
         setShowMenu(false);
         setNotificationHistoryOpen(false);
         setIslandOverlay(null);
@@ -1463,6 +1463,8 @@ export default function App() {
         triggerRoboReaction('happy', 5, 1600);
         playRoboSound('curious', islandSettings.soundEffects !== false);
       } else if (ev.type === 'sleep') {
+        suppressHoverExpandUntilRef.current = 0;
+        suppressHoverCollapseUntilRef.current = 0;
         resumeMediaAfterBedo();
         setRoboLoading(false);
         setBedoThinkingHint('');
@@ -2180,6 +2182,7 @@ export default function App() {
     language: 'English',
     eyeColorHex: '#ffffff',
     islandOpenMode: 'On hover',
+    islandSeeThrough: 4,
     leftOfRobo: 'Nothing',
     rightOfRobo: 'Nothing',
     roboEyesVisible: true,
@@ -3965,7 +3968,7 @@ export default function App() {
     >
       <div
         ref={morphShellRef}
-        className={`notch-morph-shell state-${islandMode} mode-${activeTab} ${hasRestingSlots ? 'has-resting-slots' : ''} ${islandSettings.islandStyle === 'Floating' ? 'style-floating' : 'style-attached'} ${islandSettings.islandSize === 'Compact' ? 'size-compact' : islandSettings.islandSize === 'Large' ? 'size-large' : 'size-normal'} ${Number(islandSettings.islandSeeThrough || 0) > 0 ? 'is-see-through' : ''} ${batteryAlertKind === 'charging' ? 'is-charging' : ''} ${activeTab === 'home' && isCustomizingClock ? 'customizing-clock' : ''
+        className={`notch-morph-shell state-${islandMode} mode-${activeTab} ${hasRestingSlots ? 'has-resting-slots' : ''} ${islandSettings.islandStyle === 'Floating' ? 'style-floating' : 'style-attached'} ${islandSettings.islandSize === 'Compact' ? 'size-compact' : islandSettings.islandSize === 'Large' ? 'size-large' : 'size-normal'} ${Number(islandSettings.islandSeeThrough ?? 4) > 0 ? 'is-see-through' : ''} ${batteryAlertKind === 'charging' ? 'is-charging' : ''} ${activeTab === 'home' && isCustomizingClock ? 'customizing-clock' : ''
           } ${activeTab === 'robo' && !bedoStatus.paused && (roboLoading || bedoStatus.jarvisState === 'THINKING') ? 'is-bedo-thinking' : ''
           } ${musicAccent.hasColor ? 'has-cover-color' : ''} ${islandMode === 'hud' && hudOverlay.ghelper?.category === 'aura'
             ? `has-aura-hud effect-${hudOverlay.ghelper.effectType || 'static'}`
@@ -3973,7 +3976,7 @@ export default function App() {
           }`}
         style={{
           '--island-scale': islandSettings.islandSize === 'Compact' ? 0.92 : islandSettings.islandSize === 'Large' ? 1.06 : 1,
-          '--island-bg-opacity': Math.max(0.32, 1 - (Math.min(60, Math.max(0, Number(islandSettings.islandSeeThrough || 0))) / 100) * 0.95).toFixed(2),
+          '--island-bg-opacity': Math.max(0.32, 1 - (Math.min(60, Math.max(0, Number(islandSettings.islandSeeThrough ?? 4))) / 100) * 0.95).toFixed(2),
           '--music-accent-rgb': musicAccent.rgb,
           '--music-accent-hex': musicAccent.hex,
           '--notif-accent-rgb': notifBrand.rgb,
@@ -4456,6 +4459,8 @@ export default function App() {
               setIslandMode('expanded');
             }}
             onClose={() => {
+              suppressHoverExpandUntilRef.current = Date.now() + 800;
+              suppressHoverCollapseUntilRef.current = 0;
               window.twocode?.bedoSetPaused?.(true);
               resumeMediaAfterBedo();
               setIslandMode(resolvedCollapsedMode);
