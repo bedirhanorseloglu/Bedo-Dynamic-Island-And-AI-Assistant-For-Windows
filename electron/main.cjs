@@ -3267,7 +3267,20 @@ function transcribeWithWarmPythonWorker(wavPath, lang) {
       });
     }
 
-    speechWorkerQueue.push({ resolve });
+    const timer = setTimeout(() => {
+      const idx = speechWorkerQueue.findIndex((q) => q.resolve === resolve);
+      if (idx !== -1) {
+        speechWorkerQueue.splice(idx, 1);
+        resolve({ ok: false, error: 'Ses çözme zaman aşımına uğradı.' });
+      }
+    }, 12000);
+
+    speechWorkerQueue.push({
+      resolve: (res) => {
+        clearTimeout(timer);
+        resolve(res);
+      },
+    });
     try {
       speechWorkerProc.stdin.write(`${wavPath}|${lang}\n`);
     } catch {
@@ -3290,6 +3303,7 @@ ipcMain.handle('transcribe-audio', async (_event, payload = {}) => {
           `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent`,
           {
             method: 'POST',
+            signal: AbortSignal.timeout(12000),
             headers: {
               'Content-Type': 'application/json',
               'x-goog-api-key': geminiKey,

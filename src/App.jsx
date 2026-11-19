@@ -2086,6 +2086,8 @@ export default function App() {
                 const sep = item.text && !item.text.endsWith('\n') && !item.text.endsWith(' ') ? ' ' : '';
                 return { ...item, text: `${item.text || ''}${sep}${res.text}` };
               }));
+            } else if (res?.error) {
+              showNoteHint(res.error);
             }
           }
         } catch {
@@ -2122,7 +2124,7 @@ export default function App() {
           sumSq += data[i] * data[i];
         }
         const rms = Math.sqrt(sumSq / data.length);
-        if (rms > 0.012) {
+        if (rms > 0.005) {
           hasSpeech = true;
           silenceMs = 0;
           speechChunks.push(new Float32Array(data));
