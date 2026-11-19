@@ -1871,9 +1871,6 @@ export default function App() {
     }
   });
   const [activeNoteIndex, setActiveNoteIndex] = useState(0);
-  const [noteRecording, setNoteRecording] = useState(false);
-  const [noteTranscribing, setNoteTranscribing] = useState(false);
-  const [noteStatusHint, setNoteStatusHint] = useState('');
   const [noteSummaryOpen, setNoteSummaryOpen] = useState(false);
   const [noteCopied, setNoteCopied] = useState(false);
   const [noteAttCopiedId, setNoteAttCopiedId] = useState(null);
@@ -1881,12 +1878,6 @@ export default function App() {
   const [noteDragOver, setNoteDragOver] = useState(false);
   const noteFileInputRef = useRef(null);
   const noteTextareaRef = useRef(null);
-  const noteAudioRef = useRef(null);
-
-  const showNoteHint = (msg) => {
-    setNoteStatusHint(msg);
-    setTimeout(() => setNoteStatusHint((curr) => (curr === msg ? '' : curr)), 2400);
-  };
 
   useEffect(() => {
     try {
@@ -1999,155 +1990,6 @@ export default function App() {
     if (ok) {
       setNoteAttCopiedId(att.id);
       setTimeout(() => setNoteAttCopiedId((curr) => (curr === att.id ? null : curr)), 1200);
-    }
-  };
-
-  const encodePcmChunksToWavBase64 = (chunks, inputSampleRate) => {
-    const totalLen = chunks.reduce((acc, c) => acc + c.length, 0);
-    const merged = new Float32Array(totalLen);
-    let offset = 0;
-    for (const chunk of chunks) {
-      merged.set(chunk, offset);
-      offset += chunk.length;
-    }
-    const targetRate = 16000;
-    const ratio = inputSampleRate / targetRate;
-    const outLen = Math.max(1, Math.floor(merged.length / ratio));
-    const buffer = new ArrayBuffer(44 + outLen * 2);
-    const view = new DataView(buffer);
-    const writeStr = (pos, str) => {
-      for (let i = 0; i < str.length; i += 1) view.setUint8(pos + i, str.charCodeAt(i));
-    };
-    writeStr(0, 'RIFF');
-    view.setUint32(4, 36 + outLen * 2, true);
-    writeStr(8, 'WAVE');
-    writeStr(12, 'fmt ');
-    view.setUint32(16, 16, true);
-    view.setUint16(20, 1, true);
-    view.setUint16(22, 1, true);
-    view.setUint32(24, targetRate, true);
-    view.setUint32(28, targetRate * 2, true);
-    view.setUint16(32, 2, true);
-    view.setUint16(34, 16, true);
-    writeStr(36, 'data');
-    view.setUint32(40, outLen * 2, true);
-    for (let i = 0; i < outLen; i += 1) {
-      const sample = Math.max(-1, Math.min(1, merged[Math.floor(i * ratio)] || 0));
-      view.setInt16(44 + i * 2, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
-    }
-    const bytes = new Uint8Array(buffer);
-    let binary = '';
-    for (let i = 0; i < bytes.length; i += 0x8000) {
-      binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-    }
-    return btoa(binary);
-  };
-
-  const toggleNoteVoice = async () => {
-    if (noteRecording && noteAudioRef.current) {
-      const session = noteAudioRef.current;
-      noteAudioRef.current = null;
-      setNoteRecording(false);
-      try { session.proc.disconnect(); session.source.disconnect(); } catch { }
-      try { session.stream.getTracks().forEach((t) => t.stop()); } catch { }
-      try { await session.ctx.close(); } catch { }
-      session.flushChunk(true);
-      return;
-    }
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      const ctx = new AudioCtx();
-      const sampleRate = ctx.sampleRate || 48000;
-      const source = ctx.createMediaStreamSource(stream);
-      const proc = ctx.createScriptProcessor(4096, 1, 1);
-      const targetNoteId = activeNote?.id;
-
-      let speechChunks = [];
-      let speechMs = 0;
-      let silenceMs = 0;
-      let hasSpeech = false;
-      const pendingQueue = [];
-      let draining = false;
-
-      const drainQueue = async () => {
-        if (draining) return;
-        draining = true;
-        setNoteTranscribing(true);
-        try {
-          while (pendingQueue.length > 0) {
-            const wavBase64 = pendingQueue.shift();
-            const res = await window.twocode?.transcribeAudio?.({ wavBase64, lang: 'tr-TR' });
-            if (res?.ok && res.text) {
-              setNoteSummaryOpen(false);
-              setNotesList((prev) => prev.map((item) => {
-                if (item.id !== targetNoteId) return item;
-                const sep = item.text && !item.text.endsWith('\n') && !item.text.endsWith(' ') ? ' ' : '';
-                return { ...item, text: `${item.text || ''}${sep}${res.text}` };
-              }));
-            } else if (res?.error) {
-              showNoteHint(res.error);
-            }
-          }
-        } catch {
-          showNoteHint('Ses yazıya dökülemedi');
-        } finally {
-          draining = false;
-          setNoteTranscribing(false);
-        }
-      };
-
-      const flushChunk = (force = false) => {
-        if (!hasSpeech || speechChunks.length === 0) {
-          speechChunks = [];
-          speechMs = 0;
-          silenceMs = 0;
-          hasSpeech = false;
-          return;
-        }
-        if (!force && speechMs < 280) return;
-        const wavBase64 = encodePcmChunksToWavBase64(speechChunks, sampleRate);
-        speechChunks = [];
-        speechMs = 0;
-        silenceMs = 0;
-        hasSpeech = false;
-        pendingQueue.push(wavBase64);
-        drainQueue();
-      };
-
-      proc.onaudioprocess = (ev) => {
-        const data = ev.inputBuffer.getChannelData(0);
-        const frameMs = (data.length / sampleRate) * 1000;
-        let sumSq = 0;
-        for (let i = 0; i < data.length; i += 1) {
-          sumSq += data[i] * data[i];
-        }
-        const rms = Math.sqrt(sumSq / data.length);
-        if (rms > 0.005) {
-          hasSpeech = true;
-          silenceMs = 0;
-          speechChunks.push(new Float32Array(data));
-          speechMs += frameMs;
-          if (speechMs >= 1800) {
-            flushChunk(true);
-          }
-        } else if (hasSpeech) {
-          speechChunks.push(new Float32Array(data));
-          silenceMs += frameMs;
-          if (silenceMs >= 450) {
-            flushChunk(false);
-          }
-        }
-      };
-
-      source.connect(proc);
-      proc.connect(ctx.destination);
-      noteAudioRef.current = { stream, ctx, proc, source, flushChunk };
-      setNoteRecording(true);
-    } catch {
-      showNoteHint('Mikrofon izni alınamadı');
-      setNoteRecording(false);
     }
   };
 
@@ -6790,31 +6632,9 @@ export default function App() {
                             >
                               <Plus size={13} />
                             </button>
-                            {noteStatusHint && (
-                              <span className="note-status-pill">{noteStatusHint}</span>
-                            )}
                           </div>
 
                           <div className="note-glass-actions">
-                            <button
-                              type="button"
-                              className={`note-glass-orb ${noteRecording ? 'is-recording' : ''} ${noteTranscribing ? 'is-transcribing' : ''}`}
-                              onClick={toggleNoteVoice}
-                              title={noteRecording ? t('notes.stopRecording') : noteTranscribing ? t('notes.transcribing') : t('notes.voiceNote')}
-                              aria-label={t('notes.voiceNote')}
-                            >
-                              {noteRecording ? (
-                                <span className="note-voice-waves" aria-hidden="true">
-                                  <span />
-                                  <span />
-                                  <span />
-                                </span>
-                              ) : noteTranscribing ? (
-                                <RotateCw size={12} className="note-spin-icon" />
-                              ) : (
-                                <Mic size={13} />
-                              )}
-                            </button>
                             <button
                               type="button"
                               className="note-glass-orb"

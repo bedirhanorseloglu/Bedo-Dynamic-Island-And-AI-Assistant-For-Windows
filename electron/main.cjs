@@ -2694,6 +2694,9 @@ app.whenReady().then(() => {
     session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
       callback(permission === 'media');
     });
+    session.defaultSession.setPermissionCheckHandler((_wc, permission) => {
+      return permission === 'media' || permission === 'microphone' || permission === 'audioCapture';
+    });
   } catch {}
   loadSettingsFromDisk();
   ensureDesktopShortcutOnce();
@@ -3208,10 +3211,32 @@ let speechWorkerBuffer = '';
 
 function transcribeWithWarmPythonWorker(wavPath, lang) {
   return new Promise((resolve) => {
-    if (!speechWorkerProc || speechWorkerProc.killed) {
+    if (!speechWorkerProc || speechWorkerProc.killed || !speechWorkerProc.stdin || !speechWorkerProc.stdin.writable) {
       const workerCode = [
-        'import sys, json, speech_recognition as sr',
-        'r = sr.Recognizer()',
+        'import sys, json',
+        'sr = None',
+        'sr_rec = None',
+        'whisper_model = None',
+        'whisper_init_err = None',
+        'try:',
+        '    import speech_recognition as _sr',
+        '    sr = _sr',
+        '    sr_rec = _sr.Recognizer()',
+        'except Exception:',
+        '    pass',
+        'def get_whisper():',
+        '    global whisper_model, whisper_init_err',
+        '    if whisper_model is not None:',
+        '        return whisper_model',
+        '    if whisper_init_err is not None:',
+        '        return None',
+        '    try:',
+        '        from faster_whisper import WhisperModel',
+        '        whisper_model = WhisperModel("tiny", device="cpu", compute_type="int8")',
+        '        return whisper_model',
+        '    except Exception as e:',
+        '        whisper_init_err = str(e)',
+        '        return None',
         'for line in sys.stdin:',
         '    line = line.strip()',
         '    if not line:',
@@ -3219,15 +3244,30 @@ function transcribeWithWarmPythonWorker(wavPath, lang) {
         '    parts = line.split("|", 1)',
         '    wav_path = parts[0]',
         '    lang = parts[1] if len(parts) > 1 else "tr-TR"',
+        '    short_lang = lang.split("-")[0].lower() if lang else "tr"',
         '    try:',
-        '        with sr.AudioFile(wav_path) as src:',
-        '            audio = r.record(src)',
-        '        txt = r.recognize_google(audio, language=lang)',
-        '        print(json.dumps({"ok": True, "text": txt}, ensure_ascii=False), flush=True)',
-        '    except sr.UnknownValueError:',
-        '        print(json.dumps({"ok": False, "error": "Konuşma algılanamadı."}), flush=True)',
+        '        wm = get_whisper()',
+        '        if wm is not None:',
+        '            segs, _ = wm.transcribe(wav_path, language=short_lang, beam_size=1, vad_filter=False)',
+        '            txt = " ".join(s.text.strip() for s in segs if s.text).strip()',
+        '            if txt:',
+        '                print(json.dumps({"ok": True, "text": txt}, ensure_ascii=False), flush=True)',
+        '            else:',
+        '                print(json.dumps({"ok": False, "error": "Konuşma algılanamadı."}), flush=True)',
+        '            continue',
+        '        if sr is not None and sr_rec is not None:',
+        '            with sr.AudioFile(wav_path) as src:',
+        '                audio = sr_rec.record(src)',
+        '            txt = sr_rec.recognize_google(audio, language=lang)',
+        '            print(json.dumps({"ok": True, "text": txt}, ensure_ascii=False), flush=True)',
+        '            continue',
+        '        err = whisper_init_err or "faster-whisper veya SpeechRecognition yüklü değil."',
+        '        print(json.dumps({"ok": False, "error": err}), flush=True)',
         '    except Exception as e:',
-        '        print(json.dumps({"ok": False, "error": str(e)}), flush=True)',
+        '        if sr is not None and isinstance(e, sr.UnknownValueError):',
+        '            print(json.dumps({"ok": False, "error": "Konuşma algılanamadı."}), flush=True)',
+        '        else:',
+        '            print(json.dumps({"ok": False, "error": str(e)}), flush=True)',
       ].join('\n');
 
       const pythonCmd = getAvailablePythonExe(app.getPath('userData')) || 'python';
@@ -3267,25 +3307,31 @@ function transcribeWithWarmPythonWorker(wavPath, lang) {
       });
     }
 
-    const timer = setTimeout(() => {
-      const idx = speechWorkerQueue.findIndex((q) => q.resolve === resolve);
-      if (idx !== -1) {
-        speechWorkerQueue.splice(idx, 1);
-        resolve({ ok: false, error: 'Ses çözme zaman aşımına uğradı.' });
-      }
-    }, 12000);
-
-    speechWorkerQueue.push({
+    let settled = false;
+    const entry = {
       resolve: (res) => {
+        if (settled) return;
+        settled = true;
         clearTimeout(timer);
         resolve(res);
       },
-    });
+    };
+
+    const timer = setTimeout(() => {
+      const idx = speechWorkerQueue.indexOf(entry);
+      if (idx !== -1) {
+        speechWorkerQueue.splice(idx, 1);
+      }
+      entry.resolve({ ok: false, error: 'Ses çözme zaman aşımına uğradı.' });
+    }, 20000);
+
+    speechWorkerQueue.push(entry);
     try {
       speechWorkerProc.stdin.write(`${wavPath}|${lang}\n`);
     } catch {
-      const item = speechWorkerQueue.pop();
-      item?.resolve({ ok: false, error: 'Ses yazıya dökülemedi.' });
+      const idx = speechWorkerQueue.indexOf(entry);
+      if (idx !== -1) speechWorkerQueue.splice(idx, 1);
+      entry.resolve({ ok: false, error: 'Ses yazıya dökülemedi.' });
     }
   });
 }
@@ -3297,7 +3343,7 @@ ipcMain.handle('transcribe-audio', async (_event, payload = {}) => {
 
   const geminiKey = userSettings.geminiApiKey || process.env.GEMINI_API_KEY;
   if (geminiKey) {
-    for (const modelId of ['gemini-3.8-flash', 'gemini-flash-latest']) {
+    for (const modelId of ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-2.0-flash']) {
       try {
         const resp = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent`,
@@ -3322,6 +3368,8 @@ ipcMain.handle('transcribe-audio', async (_event, payload = {}) => {
           const data = await resp.json();
           const text = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
           if (text) return { ok: true, text, provider: modelId };
+        } else {
+          console.warn(`${modelId} audio transcription HTTP ${resp.status}`);
         }
       } catch (error) {
         console.warn(`${modelId} audio transcription failed, trying fallback:`, error.message);
@@ -3333,7 +3381,7 @@ ipcMain.handle('transcribe-audio', async (_event, payload = {}) => {
   try {
     fs.writeFileSync(tmpWav, Buffer.from(wavBase64, 'base64'));
     const res = await transcribeWithWarmPythonWorker(tmpWav, lang);
-    if (res?.ok && res.text) return { ok: true, text: res.text.trim(), provider: 'speech_recognition' };
+    if (res?.ok && res.text) return { ok: true, text: res.text.trim(), provider: 'python-worker' };
     return { ok: false, error: res?.error || 'Konuşma algılanamadı.' };
   } catch {
     return { ok: false, error: 'Ses yazıya dökülemedi.' };
