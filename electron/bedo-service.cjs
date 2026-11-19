@@ -61,6 +61,9 @@ class BedoService extends EventEmitter {
     this._stdoutBuffer = '';
     this._stopping = false;
     this._systemMicMuted = false;
+    this._lastStartOpts = null;
+    this._restartCount = 0;
+    this._restartTimer = null;
     this._state = {
       running: false,
       ready: false,
@@ -120,6 +123,11 @@ class BedoService extends EventEmitter {
     }
 
     this._stopping = false;
+    this._lastStartOpts = { ...opts };
+    if (this._restartTimer) {
+      clearTimeout(this._restartTimer);
+      this._restartTimer = null;
+    }
     this._stdoutBuffer = '';
     this._state = {
       ...this._state,
@@ -164,6 +172,15 @@ class BedoService extends EventEmitter {
       }
       this.emit('status', this.getStatus());
       this.emit('exit', { code, signal, graceful: wasStopping });
+      if (!wasStopping && this._lastStartOpts && this._restartCount < 5) {
+        this._restartCount += 1;
+        this._restartTimer = setTimeout(() => {
+          this._restartTimer = null;
+          if (!this._proc && !this._stopping) {
+            this.start({ ...this._lastStartOpts, startPaused: true });
+          }
+        }, 1500);
+      }
     });
 
     this.emit('status', this.getStatus());
@@ -190,6 +207,7 @@ class BedoService extends EventEmitter {
     if (!msg || typeof msg !== 'object') return;
     switch (msg.type) {
       case 'ready':
+        this._restartCount = 0;
         this._state.ready = true;
         this._state.paused = Boolean(msg.paused);
         this._state.wakeEnabled = msg.wake_enabled !== false;
@@ -279,8 +297,12 @@ class BedoService extends EventEmitter {
   }
 
   stop() {
-    if (!this._proc) return Promise.resolve(true);
     this._stopping = true;
+    if (this._restartTimer) {
+      clearTimeout(this._restartTimer);
+      this._restartTimer = null;
+    }
+    if (!this._proc) return Promise.resolve(true);
     const proc = this._proc;
     return new Promise((resolve) => {
       let settled = false;

@@ -335,6 +335,7 @@ class WakeWordListener:
         overlap_bytes = int(0.38 * SAMPLE_RATE * 2)
         hangover_frames = 3  # 90ms sessizlik sonrası anında işle
         min_voiced_frames = 4  # En az 120ms gerçek insan konuşması (klavye tıkırtılarını ele)
+        denoiser = RealTimeSpeechDenoiser(sample_rate=SAMPLE_RATE) if (whisper_model is not None and RealTimeSpeechDenoiser is not None) else None
         pa = pyaudio.PyAudio()
 
         try:
@@ -343,7 +344,6 @@ class WakeWordListener:
                 time.sleep(0.15)
                 continue
 
-            denoiser = RealTimeSpeechDenoiser(sample_rate=SAMPLE_RATE) if (whisper_model is not None and RealTimeSpeechDenoiser is not None) else None
             stream = None
             rec = None
             vad = None
