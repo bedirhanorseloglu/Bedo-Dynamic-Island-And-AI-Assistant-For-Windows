@@ -1,20 +1,20 @@
 #!/usr/bin/env node
 /**
- * TwoCode CLI Hook Helper
+ * Bedo CLI Hook Helper
  * Claude Code / Codex veya herhangi bir terminal betiğinden Dynamic Island'a
  * canlı durum ve onay (Allow / Deny) isteği göndermek için kullanılır.
  *
  * Kullanım:
- *   node twocode-cli.cjs working "src/App.jsx okunuyor..."
- *   node twocode-cli.cjs approve "npm run deploy"
- *   node twocode-cli.cjs done "Derleme tamamlandı!"
+ *   node bedo-cli.cjs working "src/App.jsx okunuyor..."
+ *   node bedo-cli.cjs approve "npm run deploy"
+ *   node bedo-cli.cjs done "Derleme tamamlandı!"
  */
 const http = require('http');
 
 const [, , mode = 'working', message = 'Processing...', extra = ''] = process.argv;
 
 const payload = JSON.stringify({
-  agent: process.env.TWOCODE_AGENT || 'Claude Code',
+  agent: process.env.BEDO_AGENT || 'Claude Code',
   type: mode === 'approve' ? 'approval' : mode === 'done' ? 'done' : 'working',
   title:
     mode === 'approve'
@@ -44,14 +44,14 @@ const req = http.request(
         const data = JSON.parse(body);
         if (mode === 'approve') {
           if (data.approved) {
-            console.log('✓ TwoCode Ada üzerinden ONAYLANDI (Allowed).');
+            console.log('✓ Bedo Ada üzerinden ONAYLANDI (Allowed).');
             process.exit(0);
           } else {
-            console.error('✗ TwoCode Ada üzerinden REDDEDİLDİ (Denied).');
+            console.error('✗ Bedo Ada üzerinden REDDEDİLDİ (Denied).');
             process.exit(1);
           }
         } else {
-          console.log('✓ TwoCode Ada güncellendi:', data);
+          console.log('✓ Bedo Ada güncellendi:', data);
         }
       } catch {
         console.log(body);
@@ -61,7 +61,7 @@ const req = http.request(
 );
 
 req.on('error', (err) => {
-  console.error('TwoCode Dynamic Island çalışmıyor olabilir (127.0.0.1:4242):', err.message);
+  console.error('Bedo Dynamic Island çalışmıyor olabilir (127.0.0.1:4242):', err.message);
   process.exit(1);
 });
 
