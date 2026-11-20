@@ -1,62 +1,109 @@
 <div align="center">
 
-<img src="build/icon.png" alt="Bedo App Icon" width="88" height="88" />
+<br/>
+
+<img src="build/icon.png" alt="Bedo" width="84" height="84" />
 
 # Bedo
 
-### The Obsidian Liquid Glass Dynamic Island & Multimodal AI Companion for Windows
+**A weightless Dynamic Island and multimodal AI companion for Windows.**
 
 <br/>
 
-<a href="https://github.com/bedirhanorseloglu/Bedo-Dynamic-Island-And-AI-Assistant-For-Windows/releases/latest">
-  <img src="https://img.shields.io/badge/Download-Windows%20Installer-ffffff?style=for-the-badge&logo=windows&logoColor=050507" alt="Download for Windows" />
-</a>
-<a href="https://bedirhanorseloglu.github.io/Bedo-Dynamic-Island-And-AI-Assistant-For-Windows/">
-  <img src="https://img.shields.io/badge/Website-Live%20Preview-0a0d14?style=for-the-badge" alt="Live Website" />
-</a>
-<a href="https://github.com/bedirhanorseloglu/Bedo-Dynamic-Island-And-AI-Assistant-For-Windows/releases/latest">
-  <img src="https://img.shields.io/github/v/release/bedirhanorseloglu/Bedo-Dynamic-Island-And-AI-Assistant-For-Windows?style=for-the-badge&color=18181b&label=Release" alt="Latest Release" />
-</a>
+[Download for Windows](https://github.com/bedirhanorseloglu/Bedo-Dynamic-Island-And-AI-Assistant-For-Windows/releases/latest) &nbsp;·&nbsp; [Website](https://bedirhanorseloglu.github.io/Bedo-Dynamic-Island-And-AI-Assistant-For-Windows/) &nbsp;·&nbsp; [Release Notes](https://github.com/bedirhanorseloglu/Bedo-Dynamic-Island-And-AI-Assistant-For-Windows/releases)
 
-<br/><br/>
-
-[![Electron](https://img.shields.io/badge/Electron-35-47848F?style=flat-square&logo=electron&logoColor=white)](https://www.electronjs.org/)
-[![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=black)](https://react.dev/)
-[![Motion](https://img.shields.io/badge/Motion-Spring%20Physics-0055FF?style=flat-square)](https://motion.dev/)
-[![Vite](https://img.shields.io/badge/Vite-6-646CFF?style=flat-square&logo=vite&logoColor=white)](https://vite.dev/)
-[![Platform](https://img.shields.io/badge/Windows-10%20%2F%2011%20(64--bit)-0078D6?style=flat-square&logo=windows&logoColor=white)](#)
-
-**Bedo** transforms the top edge of your Windows desktop into a living **Obsidian Liquid Glass Dynamic Island**—uniting hands-free voice AI, live camera vision, screen-aware intelligence, full PC & folder control, synchronized karaoke media, and live AI coding agent tracking in one weightless surface.
+<br/>
 
 </div>
 
 ---
 
-## Bedo in Motion
+<div align="center">
 
 https://github.com/bedirhanorseloglu/Bedo-Dynamic-Island-And-AI-Assistant-For-Windows/raw/main/docs/bedo-launch.mp4
 
-<div align="center">
-  <sub><a href="docs/bedo-launch.mp4">Watch Launch Film (MP4)</a> · <a href="https://bedirhanorseloglu.github.io/Bedo-Dynamic-Island-And-AI-Assistant-For-Windows/">Interactive Web Showcase</a></sub>
+<sub><a href="docs/bedo-launch.mp4">Watch Launch Film</a> &nbsp;·&nbsp; Windows 10 & 11 (64-bit) &nbsp;·&nbsp; Open Source</sub>
+
 </div>
 
 ---
 
-## What Bedo Does
+## Designed to Stay Out of Your Way
 
-| Pillar | Capabilities |
-| :--- | :--- |
-| **Obsidian Liquid Glass** | Translucent glass surfaces (`blur(28px) saturate(180%)`), **Attached** & **Floating** Island styles, customizable resting telemetry (*Time, Battery, Wi-Fi, Bluetooth*), and `Inter` / `Oswald` / `JetBrains Mono` typography. |
-| **Hands-Free Voice & PC Control** | Say **“Bedo”** without touching the mouse to open folders and apps, adjust volume or brightness, start focus timers, send WhatsApp messages, and execute 20+ system actions. |
-| **6 Gemini Live Voice Personas** | Switch effortlessly between **Charon** *(Default • Deep)*, **Fenrir** *(Crisp • Strong)*, **Puck** *(Dynamic • Youthful)*, **Aoede** *(Soft • Natural)*, **Kore** *(Warm • Calm)*, and **Zephyr** *(Light • Fluid)*. |
-| **Bedo Buddy (Screen Intelligence)** | Select or drag onto any math equation, error log, financial table, medical term, or foreign text on your screen for instant context-aware explanations inside the Island. |
-| **Media & Live Karaoke** | Bottom-edge ambient glow that adapts dynamically to the playing album cover, paired with real-time synchronized lyrics (`lrclib.net` / NetEase) and SMTC playback controls. |
-| **Live AI Agent Tracking** | Monitors **Claude Code**, **Antigravity**, **OpenAI Codex CLI**, and **Gemini CLI** in the background—notifying you the moment a task completes or awaits approval. |
-| **9 Native Island Tabs** | **Home (`ANA`)**, **Music (`MÜZİK`)**, **QR Drop (`DROP`)**, **Bedo AI**, **Focus Ruler (`ODAK`)**, **Modes (`MODLAR`)**, **Quick Notes (`NOT`)**, **Calendar (`AJANDA`)**, and **System Telemetry (`PERF`)**. |
+Bedo lives quietly along the top edge of your screen. Rendered in translucent **Obsidian Liquid Glass** with spring-physics motion, it expands only when you need it—uniting voice, vision, media, system control, and AI agent telemetry in a single fluid surface.
+
+<br/>
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <h3>Just Say “Bedo.”</h3>
+      <p>Wake your desktop hands-free. Start a focus timer, launch apps, adjust volume or brightness, open folders, send WhatsApp messages, and trigger 20+ system actions—without touching your mouse.</p>
+    </td>
+    <td width="50%" valign="top">
+      <h3>Multimodal Intelligence</h3>
+      <p>Converse naturally with live voice and camera vision powered by <strong>Gemini</strong>, <strong>OpenAI</strong>, or <strong>Claude</strong>. Switch between six distinct Gemini Live voice personas: <em>Charon, Fenrir, Puck, Aoede, Kore,</em> and <em>Zephyr</em>.</p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <h3>Bedo Buddy</h3>
+      <p>Point at anything on your screen—a stack trace, a math equation, a financial table, or foreign text—and get an instant, context-aware explanation right inside the Island.</p>
+    </td>
+    <td width="50%" valign="top">
+      <h3>Live AI Agent Tracking</h3>
+      <p>Keep your flow while <strong>Claude Code</strong>, <strong>Antigravity</strong>, <strong>OpenAI Codex CLI</strong>, and <strong>Gemini CLI</strong> work in the background. Bedo notifies you the moment a task finishes or needs approval.</p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <h3>Media & Live Karaoke</h3>
+      <p>An ambient glow along the bottom edge adapts to your album art in real time, paired with synchronized lyrics and native Windows SMTC playback controls.</p>
+    </td>
+    <td width="50%" valign="top">
+      <h3>Instant LAN QR Drop</h3>
+      <p>Move files between your phone and PC over your local network in seconds. Scan the QR code inside the Island—no cables, no cloud uploads, no friction.</p>
+    </td>
+  </tr>
+</table>
+
+<br/>
+
+### Nine Spaces. One Surface.
+
+> **Home (`ANA`)** &nbsp;·&nbsp; **Music (`MÜZİK`)** &nbsp;·&nbsp; **QR Drop (`DROP`)** &nbsp;·&nbsp; **Bedo AI** &nbsp;·&nbsp; **Focus (`ODAK`)** &nbsp;·&nbsp; **Modes (`MODLAR`)** &nbsp;·&nbsp; **Notes (`NOT`)** &nbsp;·&nbsp; **Calendar (`AJANDA`)** &nbsp;·&nbsp; **Telemetry (`PERF`)**
+
+Choose between **Attached** and **Floating** Island styles, and customize your resting telemetry (*Time, Battery, Wi-Fi, Bluetooth*) to match your workspace.
 
 ---
 
-## Architecture
+## Get Started in Seconds
+
+1. **Download** the latest `Bedo-Setup-*.exe` from [**GitHub Releases**](https://github.com/bedirhanorseloglu/Bedo-Dynamic-Island-And-AI-Assistant-For-Windows/releases/latest).
+2. **Launch** the installer. Bedo anchors itself cleanly at the top of your screen—Python and all runtime dependencies are bundled and configured silently on first start.
+3. **Connect** your **Gemini**, **OpenAI**, or **Anthropic** API key in **Settings → AI & Chat** to unlock live voice, vision, and Bedo Buddy.
+
+---
+
+## For Developers
+
+Built with **Electron 35**, **React 19**, **Motion** (spring physics), and **Vite 6**.
+
+```bash
+# Install dependencies
+npm install
+
+# Start development mode (Vite + Electron)
+npm run dev
+
+# Build production Windows installer
+npm run dist
+```
+
+<details>
+<summary><strong>Architecture & Project Structure</strong></summary>
+
+<br/>
 
 ```mermaid
 flowchart LR
@@ -90,41 +137,14 @@ flowchart LR
     IPC <--> Apps
 ```
 
----
-
-## Getting Started
-
-### For Users (Windows Installer)
-1. Download the latest **`Bedo-Setup-*.exe`** from [**GitHub Releases**](https://github.com/bedirhanorseloglu/Bedo-Dynamic-Island-And-AI-Assistant-For-Windows/releases/latest).
-2. Run the installer—Bedo launches cleanly at the top edge of your screen.
-3. Add your **Gemini**, **OpenAI**, or **Anthropic** API key in **Settings → AI & Chat** to unlock live voice, vision, and Bedo Buddy.
-   *(No manual Python or dependency setup required—handled automatically on first launch.)*
-
-### For Developers
-
-```bash
-# 1. Install dependencies
-npm install
-
-# 2. Run in development mode (Vite + Electron)
-npm run dev
-
-# 3. Build production Windows installer
-npm run dist
-```
-
----
-
-## Project Structure
-
 ```text
 ├── build/                 # App icons (.ico, .png) & installer assets
-├── docs/                  # Interactive marketing website & launch video (GitHub Pages)
+├── docs/                  # Interactive marketing website & launch film (GitHub Pages)
 ├── electron/
 │   ├── main.cjs           # Electron lifecycle, IPC, atomic settings & single-instance lock
 │   ├── preload.cjs        # Secure contextBridge API
 │   ├── bedo-service.cjs   # Voice, vision & action runtime manager
-│   └── bedo-runtime/      # Python assistant runtime, actions & SFX
+│   └── bedo-runtime/      # Embedded Python assistant runtime, actions & SFX
 └── src/
     ├── App.jsx            # Dynamic Island (9 tabs & spring-physics morphing)
     ├── SettingsApp.jsx    # Obsidian Liquid Glass Settings window
@@ -132,8 +152,15 @@ npm run dist
     └── styles.css         # Core Dynamic Island & Liquid Glass design system
 ```
 
+</details>
+
 ---
 
 <div align="center">
-  <sub>Built with craft by <a href="https://github.com/bedirhanorseloglu">Bedirhan Örseloğlu</a></sub>
+
+<br/>
+
+Crafted by [**Bedirhan Örseloğlu**](https://github.com/bedirhanorseloglu)  
+<sub>If Bedo helps your workflow, consider starring the repository or opening an issue with your feedback.</sub>
+
 </div>
