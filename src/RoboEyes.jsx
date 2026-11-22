@@ -44,7 +44,7 @@ function resolveEffectiveOutfit(outfit, seasonalOutfits) {
   return outfit || 'None';
 }
 
-export default function RoboEyes({ mood = 'normal', reaction = null, active = true, trackCursor = true, blinkingEnabled = true, outfit = 'None', seasonalOutfits = false, onPoke, size = 'normal', micLevel = 0, showMouth = false, batteryPercent, batteryCharging = false, unreadNotificationCount = 0, pendingAgendaCount = 0 }) {
+export default function RoboEyes({ mood = 'normal', reaction = null, active = true, trackCursor = true, blinkingEnabled = true, outfit = 'None', seasonalOutfits = false, onPoke, size = 'normal', micLevel = 0, showMouth = false, batteryPercent, batteryCharging = false, unreadNotificationCount = 0, pendingAgendaCount = 0, forcedLook = null, demoEyeState = null }) {
   const [blink, setBlink] = useState(false);
   const [wakePhase, setWakePhase] = useState('closed'); // 'closed' | 'flutter' | 'look-left' | 'look-right' | 'happy' | 'done'
   const [lookOffset, setLookOffset] = useState({ x: 0, y: 0 });
@@ -82,9 +82,9 @@ export default function RoboEyes({ mood = 'normal', reaction = null, active = tr
     return subscribeBlink(setBlink);
   }, [active, blinkingEnabled, mood]);
 
-  // Subtle eye tracking toward cursor (disabled in idle to avoid background re-renders)
+  // Subtle eye tracking toward cursor (disabled in idle or when forcedLook overrides gaze)
   useEffect(() => {
-    if (!active || !trackCursor) return undefined;
+    if (!active || !trackCursor || forcedLook) return undefined;
     let cachedCenter = null;
     let ro = null;
 
@@ -122,7 +122,7 @@ export default function RoboEyes({ mood = 'normal', reaction = null, active = tr
       if (ro) ro.disconnect();
       window.removeEventListener('mousemove', handleMove);
     };
-  }, [active, trackCursor]);
+  }, [active, trackCursor, forcedLook]);
 
   const handleClick = (e) => {
     e.stopPropagation();
@@ -160,9 +160,22 @@ export default function RoboEyes({ mood = 'normal', reaction = null, active = tr
 
   const scale = size === 'mini' ? 0.58 : size === 'large' ? 1.6 : size === 'small' ? 0.82 : 1;
 
+  const hasForcedLook = Boolean(
+    forcedLook && Number.isFinite(forcedLook.x) && Number.isFinite(forcedLook.y)
+  );
+  const clampedForcedX = hasForcedLook ? Math.max(-5, Math.min(5, forcedLook.x)) : 0;
+  const clampedForcedY = hasForcedLook ? Math.max(-3.5, Math.min(3.5, forcedLook.y)) : 0;
+
   const wakeShiftX =
-    wakePhase === 'look-left' ? -3.5 : wakePhase === 'look-right' ? 3.5 : lookOffset.x;
-  const wakeShiftY = wakePhase === 'closed' ? 1.5 : lookOffset.y;
+    wakePhase === 'look-left'
+      ? -3.5
+      : wakePhase === 'look-right'
+      ? 3.5
+      : hasForcedLook
+      ? clampedForcedX
+      : lookOffset.x;
+  const wakeShiftY =
+    wakePhase === 'closed' ? 1.5 : hasForcedLook ? clampedForcedY : lookOffset.y;
 
   const isHeartEyes = activeMood === 'inlove' || activeMood === 'love';
   const isLowBattery = !batteryCharging && Number.isFinite(batteryPercent) && batteryPercent <= 20;
@@ -185,8 +198,13 @@ export default function RoboEyes({ mood = 'normal', reaction = null, active = tr
   const hasUnread = unreadNotificationCount > 0;
   const hasPendingAgenda = pendingAgendaCount > 0;
 
+  const effectiveCharging = demoEyeState ? demoEyeState === 'charging' : batteryCharging;
+  const effectiveLowBattery = demoEyeState ? demoEyeState === 'low-battery' : isLowBattery;
+  const effectiveUnread = demoEyeState ? demoEyeState === 'unread' : hasUnread;
+  const effectivePendingAgenda = demoEyeState ? demoEyeState === 'agenda' : hasPendingAgenda;
+
   const statusHints = [];
-  if (batteryCharging) statusHints.push('Şarj oluyor');
+  if (effectiveCharging) statusHints.push('Şarj oluyor');
   if (hasUnread) statusHints.push(`${unreadNotificationCount} açılmamış bildirim`);
   if (hasPendingAgenda) statusHints.push(`${pendingAgendaCount} bekleyen ajanda`);
   const roboTitle = statusHints.length ? `Robo · ${statusHints.join(' · ')}` : 'Robo';
@@ -194,11 +212,12 @@ export default function RoboEyes({ mood = 'normal', reaction = null, active = tr
   return (
     <div
       ref={containerRef}
-      className={`robo-eyes-wrap ${activeMood} ${activeReaction ? `reaction-${activeReaction}` : ''} ${!active ? 'is-inactive' : ''} ${batteryCharging ? 'is-charging' : ''} ${isLowBattery ? 'is-low-battery' : ''} ${hasUnread ? 'has-unread' : ''} ${hasPendingAgenda ? 'has-pending-agenda' : ''}`}
+      className={`robo-eyes-wrap ${activeMood} ${activeReaction ? `reaction-${activeReaction}` : ''} ${!active ? 'is-inactive' : ''} ${effectiveCharging ? 'is-charging' : ''} ${effectiveLowBattery ? 'is-low-battery' : ''} ${effectiveUnread ? 'has-unread' : ''} ${effectivePendingAgenda ? 'has-pending-agenda' : ''}`}
       onClick={handleClick}
       title={roboTitle}
       style={{
         transform: `scale(${scale}) translate(${wakeShiftX}px, ${wakeShiftY}px)`,
+        transition: hasForcedLook ? 'transform 0.34s cubic-bezier(0.22, 1, 0.36, 1)' : undefined,
       }}
     >
       <span className="robo-mood-spark" aria-hidden="true" />

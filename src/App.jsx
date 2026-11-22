@@ -83,6 +83,7 @@ import DropShareTab from './components/DropShareTab';
 import NotifToastContent from './components/NotifToastContent';
 import BedoStage from './components/BedoStage';
 import BedoIslandOverlay from './components/BedoIslandOverlay';
+import BedoTourOverlay from './components/BedoTourOverlay';
 import {
   HomeLiveAndContextStrip,
 } from './components/LiveActivityBar';
@@ -2105,12 +2106,37 @@ export default function App() {
   const [appContext, setAppContext] = useState({ app: '', category: 'desktop' });
   const [focusGuardPrompt, setFocusGuardPrompt] = useState(null);
   const [showIslandWelcome, setShowIslandWelcome] = useState(false);
+  const [tourActive, setTourActive] = useState(false);
+  const [tourStep, setTourStep] = useState(0);
   const [updateBanner, setUpdateBanner] = useState(null);
   const [updateState, setUpdateState] = useState({ state: 'idle', version: '', percent: 0 });
   const [pythonBootstrapStatus, setPythonBootstrapStatus] = useState({ state: 'idle', detail: '' });
   const wasOnboardingIncompleteRef = useRef(false);
+  const lastReplayTourNonceRef = useRef(0);
   const focusGuardCooldownRef = useRef({});
   const focusGuardLastAppRef = useRef('');
+
+  const startIslandTour = () => {
+    setShowIslandWelcome(false);
+    setTourStep(0);
+    setTourActive(true);
+    setIsMiniProgressBar(false);
+    setIslandMode('expanded');
+    suppressHoverCollapseUntilRef.current = Date.now() + 10 * 60 * 1000;
+  };
+
+  const finishIslandTour = () => {
+    setTourActive(false);
+    setTourStep(0);
+    setIsMiniProgressBar(false);
+    suppressHoverCollapseUntilRef.current = 0;
+    window.twocode?.saveSettings?.({
+      onboardingCompleted: true,
+      islandTourCompleted: true,
+      replayIslandTour: 0,
+    });
+    setIslandMode(resolvedCollapsedMode);
+  };
 
   const recordFocusGuardStat = (field) => {
     try {
@@ -2852,12 +2878,18 @@ export default function App() {
         if (saved.language) {
           try { localStorage.setItem('twocode_lang', normalizeLanguage(saved.language)); } catch {}
         }
+        if (saved.replayIslandTour) {
+          lastReplayTourNonceRef.current = Number(saved.replayIslandTour) || 0;
+        }
         if (saved.onboardingCompleted === false) {
           // Keep the Dynamic Island calmly tucked in its compact pill while the
           // dedicated Setup Assistant in the Settings window is active, preventing
           // overlapping always-on-top welcome UIs.
           wasOnboardingIncompleteRef.current = true;
           setShowIslandWelcome(false);
+          setTourActive(false);
+        } else if (saved.onboardingCompleted === true && saved.islandTourCompleted === false) {
+          setTimeout(() => startIslandTour(), 550);
         }
       }
     });
@@ -2870,6 +2902,19 @@ export default function App() {
         setIslandSettings((prev) => ({ ...prev, ...updated }));
         if (updated.language) {
           try { localStorage.setItem('twocode_lang', normalizeLanguage(updated.language)); } catch {}
+        }
+        if (updated.onboardingCompleted === false) {
+          wasOnboardingIncompleteRef.current = true;
+          setShowIslandWelcome(false);
+          setTourActive(false);
+        }
+        if (
+          updated.replayIslandTour &&
+          Number(updated.replayIslandTour) !== lastReplayTourNonceRef.current &&
+          updated.onboardingCompleted !== false
+        ) {
+          lastReplayTourNonceRef.current = Number(updated.replayIslandTour);
+          startIslandTour();
         }
         if (updated.onboardingCompleted === true) {
           setShowIslandWelcome(false);
@@ -2884,6 +2929,9 @@ export default function App() {
               setPreviewEmotion('');
               setRoboMood('normal');
             }, 3200);
+            if (updated.islandTourCompleted !== true) {
+              setTimeout(() => startIslandTour(), 650);
+            }
           }
         }
       }
@@ -5154,6 +5202,18 @@ export default function App() {
                 </button>
               </div>
             </div>
+          ) : tourActive ? (
+            <BedoTourOverlay
+              open={tourActive}
+              langCode={langCode}
+              soundEffects={islandSettings.soundEffects !== false}
+              outfit={islandSettings.outfit || 'Best'}
+              seasonalOutfits={Boolean(islandSettings.seasonalOutfits)}
+              step={tourStep}
+              onStepChange={setTourStep}
+              onComplete={finishIslandTour}
+              onSkip={finishIslandTour}
+            />
           ) : showIslandWelcome ? (
             <div className="island-welcome-screen">
               <div className="island-welcome-glow" aria-hidden="true" />

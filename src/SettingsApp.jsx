@@ -3218,6 +3218,16 @@ export default function SettingsApp() {
                     <SlidersHorizontal size={14} />
                     <span>{langCode === 'tr' ? 'Karşılama Ekranı' : 'Welcome Setup'}</span>
                   </button>
+                  <button
+                    type="button"
+                    className="agents-lg-connect-btn"
+                    onClick={() => {
+                      updateSetting({ replayIslandTour: Date.now(), islandTourCompleted: false });
+                    }}
+                  >
+                    <Eye size={14} />
+                    <span>{langCode === 'tr' ? 'Ada Tanıtım Turu' : 'Island Walkthrough'}</span>
+                  </button>
                 </div>
               </section>
 
