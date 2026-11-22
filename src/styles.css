@@ -17608,8 +17608,7 @@ body.game-mode-no-blur *::after {
   width: 100%;
   box-sizing: border-box;
   overflow: hidden;
-  background: rgba(8, 10, 16, 0.55);
-  border-radius: inherit;
+  background: transparent;
 }
 
 .bedo-tour-aura {

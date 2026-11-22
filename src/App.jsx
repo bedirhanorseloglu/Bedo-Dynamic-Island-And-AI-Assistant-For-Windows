@@ -2130,6 +2130,7 @@ export default function App() {
     setTourStep(0);
     setIsMiniProgressBar(false);
     suppressHoverCollapseUntilRef.current = 0;
+    suppressHoverExpandUntilRef.current = Date.now() + 900;
     window.twocode?.saveSettings?.({
       onboardingCompleted: true,
       islandTourCompleted: true,

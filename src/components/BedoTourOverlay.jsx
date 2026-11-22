@@ -265,12 +265,15 @@ export default function BedoTourOverlay({
         <button
           type="button"
           className="bedo-tour-skip"
-          onClick={() => {
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
             playRoboSound('tap', soundEffects);
             onSkip?.();
           }}
           title={isTr ? 'Turu Kapat' : 'Close Tour'}
-          aria-label={isTr ? 'Atla' : 'Skip'}
+          aria-label={isTr ? 'Turu Kapat' : 'Close Tour'}
         >
           <X size={14} />
         </button>
