@@ -17693,7 +17693,7 @@ body.game-mode-no-blur *::after {
   justify-content: center;
   gap: 6px;
   padding: 2px 0;
-  min-height: 78px;
+  height: 98px;
 }
 
 .bedo-tour-eyes-box {
@@ -17707,7 +17707,7 @@ body.game-mode-no-blur *::after {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 36px;
+  height: 52px;
   width: 100%;
 }
 
@@ -17759,19 +17759,31 @@ body.game-mode-no-blur *::after {
   background: rgba(255, 255, 255, 0.72);
 }
 
+.bedo-tour-sim-stage {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .bedo-tour-pointer {
   position: absolute;
-  right: -18px;
-  bottom: -4px;
+  right: -14px;
+  bottom: -6px;
   color: #ffffff;
   filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.7));
   pointer-events: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .bedo-tour-click-ring {
   position: absolute;
-  width: 28px;
-  height: 28px;
+  top: -4px;
+  right: -4px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   border: 2px solid #38bdf8;
   pointer-events: none;
@@ -17886,9 +17898,11 @@ body.game-mode-no-blur *::after {
 .bedo-tour-copy {
   display: flex;
   flex-direction: column;
+  justify-content: center;
   gap: 2px;
   text-align: center;
   padding: 0 10px;
+  height: 54px;
 }
 
 .bedo-tour-copy h3 {

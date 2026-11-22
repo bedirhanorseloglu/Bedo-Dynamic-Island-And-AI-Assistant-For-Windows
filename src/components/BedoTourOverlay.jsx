@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import {
   ArrowLeft,
   ArrowRight,
+  BellOff,
   Mic,
   MousePointer2,
   Timer,
@@ -19,8 +20,8 @@ const EYE_DEMO_STATES = [
     glow: 'rgba(255, 255, 255, 0.22)',
     labelTr: 'Hazır',
     labelEn: 'Ready',
-    detailTr: 'Her şey yolunda, beklemede',
-    detailEn: 'All clear, standing by',
+    detailTr: 'Beklemede',
+    detailEn: 'Standing by',
   },
   {
     id: 'charging',
@@ -28,7 +29,7 @@ const EYE_DEMO_STATES = [
     glow: 'rgba(73, 227, 154, 0.34)',
     labelTr: 'Şarj Oluyor',
     labelEn: 'Charging',
-    detailTr: 'Cihaz güce bağlı',
+    detailTr: 'Güce bağlı',
     detailEn: 'Connected to power',
   },
   {
@@ -37,8 +38,8 @@ const EYE_DEMO_STATES = [
     glow: 'rgba(255, 77, 94, 0.36)',
     labelTr: 'Düşük Pil',
     labelEn: 'Low Battery',
-    detailTr: 'Pil %20 ve altında',
-    detailEn: 'Battery at 20% or below',
+    detailTr: '%20 ve altı',
+    detailEn: '20% or below',
   },
   {
     id: 'unread',
@@ -46,8 +47,8 @@ const EYE_DEMO_STATES = [
     glow: 'rgba(251, 191, 36, 0.34)',
     labelTr: 'Bildirim',
     labelEn: 'Notification',
-    detailTr: 'Okunmamış bildirim · Sağ göz kırpar',
-    detailEn: 'Unread notification · Right eye winks',
+    detailTr: 'Sağ göz kırpar',
+    detailEn: 'Right-eye wink',
   },
   {
     id: 'agenda',
@@ -55,8 +56,8 @@ const EYE_DEMO_STATES = [
     glow: 'rgba(56, 189, 248, 0.34)',
     labelTr: 'Ajanda',
     labelEn: 'Agenda',
-    detailTr: 'Yaklaşan etkinlik hatırlatması',
-    detailEn: 'Upcoming calendar event',
+    detailTr: 'Sıradaki etkinlik',
+    detailEn: 'Up next',
   },
 ];
 
@@ -66,40 +67,50 @@ const TOUR_SCENES = [
     mood: 'happy',
     look: { x: 0, y: 0 },
     aura: 'rgba(148, 163, 184, 0.2)',
-    titleTr: 'Üzerine gel, canlansın.',
-    titleEn: 'Hover to wake.',
-    descTr: 'Ekranın tepesinde sessizce beklerim. Fareyi yaklaştırdığında açılır, işin bitince geri toplanırım.',
-    descEn: 'I rest quietly at the top of your screen. Hover to expand, and I’ll tuck back in when you’re done.',
+    titleTr: 'Yaklaş, açılsın.',
+    titleEn: 'Right at the top.',
+    descTr: 'İhtiyacın olduğunda genişler. İşin bittiğinde sessizce toplanır.',
+    descEn: 'Expands when you need it. Fades back when you don’t.',
   },
   {
     id: 'right-click',
     mood: 'normal',
     look: { x: 0, y: -2.6 },
     aura: 'rgba(56, 189, 248, 0.22)',
-    titleTr: 'Sağ tıkla, incecik kal.',
-    titleEn: 'Right-click to shrink.',
-    descTr: 'Film izlerken veya odaklanırken üzerime sağ tıkla — mini çubuğa küçülürüm. Tekrar sağ tıkla geri büyürüm.',
-    descEn: 'Right-click anytime to collapse into a slim bar. Right-click again to restore.',
+    titleTr: 'Tek sağ tıkla incelir.',
+    titleEn: 'Slim down in one click.',
+    descTr: 'Tam odaklanmak istediğinde ince bir çizgiye dönüşür. Tekrar sağ tıkla geri gelsin.',
+    descEn: 'Right-click to tuck into a minimal bar. Right-click again to return.',
   },
   {
     id: 'eye-colors',
     mood: 'normal',
     look: { x: 0, y: 0 },
     aura: 'rgba(255, 255, 255, 0.2)',
-    titleTr: 'Tek bakışta durum.',
-    titleEn: 'Status at a glance.',
-    descTr: 'Gözlerimin rengi sana her şeyi sessizce söyler.',
-    descEn: 'My eye color silently tells you what’s happening.',
+    titleTr: 'Her rengin bir anlamı var.',
+    titleEn: 'Every color speaks.',
+    descTr: 'Tek bir bakış, durumu anlatmaya yeter.',
+    descEn: 'One glance tells you everything.',
+  },
+  {
+    id: 'dnd-tip',
+    mood: 'normal',
+    look: { x: 3.4, y: 2.2 },
+    aura: 'rgba(251, 191, 36, 0.2)',
+    titleTr: 'Tek yerden, daha temiz.',
+    titleEn: 'One place. Zero clutter.',
+    descTr: 'Sağ alttan Windows’u Rahatsız Etme moduna al. Bildirimler sadece Bedo’da görünsün.',
+    descEn: 'Enable Windows Do Not Disturb from the bottom-right so alerts shine only in Bedo.',
   },
   {
     id: 'ai-and-secret',
     mood: 'inlove',
     look: { x: 0, y: 2.8 },
     aura: 'rgba(244, 114, 182, 0.22)',
-    titleTr: 'Konuş, paylaş… ya da dürt.',
-    titleEn: 'Talk, share… or poke.',
-    descTr: 'Bana yazabilir, seslenebilir veya DropShare ile dosya atabilirsin. Gözlerime 4 kez tıklarsan başım döner.',
-    descEn: 'Type, speak, or drop files with DropShare. Tap my eyes 4 times for a dizzy surprise.',
+    titleTr: 'Yaz, konuş, paylaş.',
+    titleEn: 'Type, speak, share.',
+    descTr: 'Bedo her an yanında. Küçük bir sır: Gözlerine 4 kez dokun.',
+    descEn: 'Always ready to help. One secret: tap the eyes four times.',
   },
 ];
 
@@ -146,24 +157,29 @@ export default function BedoTourOverlay({
   // Scene 1: cursor-glide + pill-to-island breathing loop
   useEffect(() => {
     if (!open || scene.id !== 'presence') return undefined;
+    const timers = [];
+    const schedule = (fn, ms) => {
+      const id = setTimeout(fn, ms);
+      timers.push(id);
+      return id;
+    };
     setMorphPhase('pill');
     setPresenceLook({ x: -3.2, y: 0 });
-    const t1 = setTimeout(() => {
+    schedule(() => {
       setMorphPhase('expanded');
       setPresenceLook({ x: 3.0, y: 0 });
     }, 650);
-    const t2 = setTimeout(() => setPresenceLook({ x: 0, y: 0 }), 1250);
+    schedule(() => setPresenceLook({ x: 0, y: 0 }), 1250);
     const loop = setInterval(() => {
       setMorphPhase('pill');
       setPresenceLook({ x: -2.4, y: 0 });
-      setTimeout(() => {
+      schedule(() => {
         setMorphPhase('expanded');
         setPresenceLook({ x: 0, y: 0 });
       }, 950);
     }, 3400);
     return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
+      timers.forEach(clearTimeout);
       clearInterval(loop);
     };
   }, [open, scene.id]);
@@ -171,21 +187,33 @@ export default function BedoTourOverlay({
   // Scene 2: right-click -> shrink to slim mini bar -> restore loop
   useEffect(() => {
     if (!open || scene.id !== 'right-click') return undefined;
+    const timers = [];
+    const schedule = (fn, ms) => {
+      const id = setTimeout(fn, ms);
+      timers.push(id);
+      return id;
+    };
     setMorphPhase('expanded');
     const runCycle = () => {
       setMorphPhase('expanded');
-      setTimeout(() => setMorphPhase('mini'), 1100);
-      setTimeout(() => setMorphPhase('expanded'), 2600);
+      schedule(() => setMorphPhase('mini'), 1100);
+      schedule(() => setMorphPhase('expanded'), 2600);
     };
-    const initTimer = setTimeout(runCycle, 250);
+    schedule(runCycle, 250);
     const loop = setInterval(runCycle, 3800);
     return () => {
-      clearTimeout(initTimer);
+      timers.forEach(clearTimeout);
       clearInterval(loop);
     };
   }, [open, scene.id]);
 
   // Scene 3: smooth 1-by-1 eye color showcase
+  useEffect(() => {
+    if (!open || scene.id !== 'eye-colors') return undefined;
+    setEyeAutoCycle(true);
+    return undefined;
+  }, [open, scene.id]);
+
   useEffect(() => {
     if (!open || scene.id !== 'eye-colors' || !eyeAutoCycle) return undefined;
     const id = setInterval(() => {
@@ -351,31 +379,54 @@ export default function BedoTourOverlay({
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -6 }}
               >
-                <motion.div
-                  className="bedo-tour-island-sim is-mini-capable"
-                  animate={{
-                    width: morphPhase === 'mini' ? 92 : 168,
-                    height: morphPhase === 'mini' ? 10 : 32,
-                    borderRadius: 999,
-                  }}
-                  transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-                >
-                  {morphPhase !== 'mini' ? (
-                    <span className="bedo-tour-sim-text">
-                      {isTr ? 'Normal Ada' : 'Full Island'}
-                    </span>
-                  ) : (
-                    <span className="bedo-tour-sim-slimline" />
-                  )}
-                </motion.div>
-                <motion.div
-                  className="bedo-tour-click-ring"
-                  animate={{
-                    scale: morphPhase === 'mini' ? [0.6, 1.55] : 0.6,
-                    opacity: morphPhase === 'mini' ? [0.85, 0] : 0,
-                  }}
-                  transition={{ duration: 0.55 }}
-                />
+                <div className="bedo-tour-sim-stage">
+                  <motion.div
+                    className="bedo-tour-island-sim is-mini-capable"
+                    animate={{
+                      width: morphPhase === 'mini' ? 92 : 168,
+                      height: morphPhase === 'mini' ? 10 : 32,
+                      borderRadius: 999,
+                    }}
+                    transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                  >
+                    {morphPhase !== 'mini' ? (
+                      <span className="bedo-tour-sim-text">
+                        {isTr ? 'Normal Ada' : 'Full Island'}
+                      </span>
+                    ) : (
+                      <span className="bedo-tour-sim-slimline" />
+                    )}
+                  </motion.div>
+
+                  <motion.div
+                    className="bedo-tour-pointer is-rightclick"
+                    animate={{
+                      x: morphPhase === 'mini' ? -4 : 10,
+                      y: morphPhase === 'mini' ? 2 : 10,
+                      scale: morphPhase === 'mini' ? 0.9 : 1,
+                    }}
+                    transition={{ type: 'spring', stiffness: 320, damping: 24 }}
+                  >
+                    <motion.div
+                      className="bedo-tour-click-ring"
+                      animate={{
+                        scale: morphPhase === 'mini' ? [0.5, 1.8] : 0.5,
+                        opacity: morphPhase === 'mini' ? [0.9, 0] : 0,
+                      }}
+                      transition={{ duration: 0.55 }}
+                    />
+                    <svg width="20" height="26" viewBox="0 0 20 26" fill="none" aria-hidden="true">
+                      <rect x="1.5" y="1.5" width="17" height="23" rx="8.5" fill="#0b0f19" stroke="rgba(255,255,255,0.65)" strokeWidth="1.5" />
+                      <line x1="10" y1="2" x2="10" y2="11.5" stroke="rgba(255,255,255,0.35)" strokeWidth="1.2" />
+                      <line x1="2" y1="11.5" x2="18" y2="11.5" stroke="rgba(255,255,255,0.35)" strokeWidth="1.2" />
+                      <path
+                        d="M10.6 2.2H11.5C15.1 2.2 17.8 4.9 17.8 8.5V10.9H10.6V2.2Z"
+                        fill={morphPhase === 'mini' ? '#38bdf8' : 'rgba(56, 189, 248, 0.35)'}
+                      />
+                    </svg>
+                  </motion.div>
+                </div>
+
                 <span className="bedo-tour-gesture-pill">
                   {isTr ? 'Sağ Tık' : 'Right Click'}
                 </span>
@@ -432,6 +483,23 @@ export default function BedoTourOverlay({
                     </button>
                   ))}
                 </div>
+              </motion.div>
+            )}
+
+            {scene.id === 'dnd-tip' && (
+              <motion.div
+                key="vis-dnd-tip"
+                className="bedo-tour-feature-pills"
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+              >
+                <span className="bedo-tour-feat-pill is-highlight">
+                  <BellOff size={12} />
+                  <span>
+                    {isTr ? 'Sağ Alt → Windows Rahatsız Etme' : 'Bottom-Right → Windows DND'}
+                  </span>
+                </span>
               </motion.div>
             )}
 
