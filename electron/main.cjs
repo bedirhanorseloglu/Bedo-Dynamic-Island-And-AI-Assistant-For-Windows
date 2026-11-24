@@ -162,7 +162,7 @@ function trimWorkingSetAndGC({ trimWorkingSet = false } = {}) {
 }
 
 const CANVAS_WIDTH = 700;
-const CANVAS_HEIGHT = 320;
+const CANVAS_HEIGHT = 396;
 
 const MODE_DIMENSIONS = {
   idle: { bodyWidth: 136, height: 22, earRadius: 8, bottomRadius: 11, droplet: 0 },
@@ -1894,7 +1894,7 @@ function updateWindowMouseIgnore(shouldIgnore) {
   } catch {}
 }
 
-function animateWindowShapeToMode(modeOrExpanded, customBodyWidth) {
+function animateWindowShapeToMode(modeOrExpanded, customBodyWidth, customHeight) {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   const modeKey =
     typeof modeOrExpanded === 'string' && MODE_DIMENSIONS[modeOrExpanded]
@@ -1917,6 +1917,10 @@ function animateWindowShapeToMode(modeOrExpanded, customBodyWidth) {
         : modeKey === 'battery' && typeof customBodyWidth === 'number' && customBodyWidth >= 300
         ? Math.min(460, Math.max(366, Math.round(customBodyWidth)))
         : baseTarget.bodyWidth,
+    height:
+      modeKey === 'expanded' && typeof customHeight === 'number' && customHeight >= 240
+        ? Math.min(CANVAS_HEIGHT - 16, Math.max(baseTarget.height, Math.round(customHeight)))
+        : baseTarget.height,
   };
 
   if (gameModeActive && userSettings.gameOptDeepHideWindow === true) {
@@ -2910,8 +2914,8 @@ ipcMain.on('set-expanded', (_event, expanded) => {
   }
 });
 
-ipcMain.on('set-island-mode', (_event, mode, customWidth) => {
-  animateWindowShapeToMode(mode, customWidth);
+ipcMain.on('set-island-mode', (_event, mode, customWidth, customHeight) => {
+  animateWindowShapeToMode(mode, customWidth, customHeight);
   if ((mode === 'expanded' || mode === 'music-bar') && Date.now() - lastMediaPollAt > 5000) {
     scheduleNextMediaPoll(400);
   }

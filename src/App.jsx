@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import RealAppIcon from './RealAppIcon';
-import { shouldPersistNotification } from './notification-history-policy.mjs';
+import { shouldPersistNotification, shouldSuppressPowerNotificationToast } from './notification-history-policy.mjs';
 import MusicTabView, { formatMMSS, useIsolatedMediaPosition } from './components/MusicTabView.jsx';
 import {
   Home,
@@ -1162,6 +1162,10 @@ export default function App() {
   const [batteryPercent, setBatteryPercent] = useState(80);
   const [batteryCharging, setBatteryCharging] = useState(false);
   const [batteryAlertKind, setBatteryAlertKind] = useState('charging');
+  const batteryPercentRef = useRef(batteryPercent);
+  batteryPercentRef.current = batteryPercent;
+  const batteryChargingRef = useRef(batteryCharging);
+  batteryChargingRef.current = batteryCharging;
   const [isCustomizingClock, setIsCustomizingClock] = useState(false);
   const [clockFontIndex, setClockFontIndex] = useState(() => {
     const value = Number(readClockPreferences().fontIndex);
@@ -2178,6 +2182,7 @@ export default function App() {
   const suppressHoverCollapseUntilRef = useRef(0);
   const suppressGHelperHudUntilRef = useRef(0);
   const suppressMicHudUntilRef = useRef(0);
+  const suppressPowerNotifToastUntilRef = useRef(0);
 
   // Live Windows System HUD (Volume & Screen Brightness) and Windows Notification Toast state
   const [hudOverlay, setHudOverlay] = useState({
@@ -2518,6 +2523,14 @@ export default function App() {
     return islandSettings.roboEyesVisible === false ? 96 : 146;
   }, [resolvedCollapsedMode, dynamicMusicBarWidth, hasRestingSlots, hasLeftRestingSlot, hasRightRestingSlot, islandSettings.roboEyesVisible]);
 
+  const hasBedoFeed = Boolean(
+    activeTab === 'robo' &&
+    (roboReply ||
+      bedoUserTranscript ||
+      (roboLoading && !bedoStatus.paused) ||
+      (!bedoStatus.paused && bedoStatus.running && bedoStatus.jarvisState === 'THINKING'))
+  );
+
   // Sync window shape & 60fps animation with Electron main process whenever islandMode or dynamic widths change
   useEffect(() => {
     if (islandMode === 'music-bar') {
@@ -2532,10 +2545,12 @@ export default function App() {
       window.twocode?.setIslandMode('bedo-live');
     } else if (islandMode === 'idle' && hasRestingSlots) {
       window.twocode?.setIslandMode('idle-live');
+    } else if (islandMode === 'expanded' && hasBedoFeed) {
+      window.twocode?.setIslandMode('expanded', undefined, 354);
     } else {
       window.twocode?.setIslandMode(islandMode);
     }
-  }, [islandMode, dynamicMusicBarWidth, dynamicNotifToastWidth, dynamicHudSize.width, hasRestingSlots]);
+  }, [islandMode, dynamicMusicBarWidth, dynamicNotifToastWidth, dynamicHudSize.width, hasRestingSlots, hasBedoFeed]);
 
   // Keep collapsed notch updated if media starts/pauses/stops while collapsed
   useEffect(() => {
@@ -2667,7 +2682,18 @@ export default function App() {
     let batteryObj = null;
     let wasCharging = null;
 
+    const clearActiveToastTimer = () => {
+      if (notifTimerRef.current) {
+        clearTimeout(notifTimerRef.current);
+        notifTimerRef.current = null;
+      }
+      notifRemainingMsRef.current = 0;
+      isShowingNotifToastRef.current = false;
+    };
+
     const triggerBatteryAlert = (pct) => {
+      suppressPowerNotifToastUntilRef.current = Date.now() + 10000;
+      clearActiveToastTimer();
       setBatteryPercent(pct);
       setBatteryCharging(false);
       setBatteryAlertKind('low');
@@ -2679,6 +2705,8 @@ export default function App() {
     };
 
     const triggerChargingAlert = () => {
+      suppressPowerNotifToastUntilRef.current = Date.now() + 10000;
+      clearActiveToastTimer();
       setBatteryCharging(true);
       setBatteryAlertKind('charging');
       setIslandMode((current) => (current === 'expanded' ? current : 'battery'));
@@ -2824,6 +2852,18 @@ export default function App() {
         targetUrl: notif.targetUrl || '',
         isAgentActivity: Boolean(notif.isAgentActivity),
       };
+
+      if (
+        shouldSuppressPowerNotificationToast(notification, {
+          islandMode: islandModeRef.current,
+          suppressUntil: suppressPowerNotifToastUntilRef.current,
+          batteryPercent: batteryPercentRef.current,
+          batteryCharging: batteryChargingRef.current,
+          hasShown20Alert: hasShown20AlertRef.current,
+        })
+      ) {
+        return;
+      }
 
       setToastBanner(notification);
       if (shouldPersistNotification(notification)) {
@@ -3432,6 +3472,13 @@ export default function App() {
   }, [now, timerSeconds]);
 
   const showBatteryPopup = () => {
+    suppressPowerNotifToastUntilRef.current = Date.now() + 10000;
+    if (notifTimerRef.current) {
+      clearTimeout(notifTimerRef.current);
+      notifTimerRef.current = null;
+    }
+    notifRemainingMsRef.current = 0;
+    isShowingNotifToastRef.current = false;
     setBatteryAlertKind('low');
     setIslandMode('battery');
     playRoboSound('surprised', islandSettings.soundEffects !== false);
@@ -3880,7 +3927,7 @@ export default function App() {
         ref={morphShellRef}
         className={`notch-morph-shell state-${islandMode} mode-${activeTab} ${isShellMorphing ? 'is-morphing' : ''} ${hasRestingSlots ? 'has-resting-slots' : ''} ${islandSettings.islandStyle === 'Floating' ? 'style-floating' : 'style-attached'} ${islandSettings.islandSize === 'Compact' ? 'size-compact' : islandSettings.islandSize === 'Large' ? 'size-large' : 'size-normal'} ${Number(islandSettings.islandSeeThrough ?? 4) >= 10 ? 'is-see-through' : ''} ${batteryAlertKind === 'charging' ? 'is-charging' : ''} ${activeTab === 'home' && isCustomizingClock ? 'customizing-clock' : ''
           } ${activeTab === 'robo' && !bedoStatus.paused && (roboLoading || bedoStatus.jarvisState === 'THINKING') ? 'is-bedo-thinking' : ''
-          } ${musicAccent.hasColor ? 'has-cover-color' : ''} ${islandMode === 'hud' && hudOverlay.ghelper?.category === 'aura'
+          } ${hasBedoFeed ? 'has-bedo-feed' : ''} ${musicAccent.hasColor ? 'has-cover-color' : ''} ${islandMode === 'hud' && hudOverlay.ghelper?.category === 'aura'
             ? `has-aura-hud effect-${hudOverlay.ghelper.effectType || 'static'}`
             : ''
           }`}
@@ -4510,6 +4557,7 @@ export default function App() {
           {shouldRenderExpanded && (
             <>
           {/* TOP STATUS BAR */}
+          {(activeTab !== 'robo' || Boolean(islandOverlay)) && (
           <header className="island-topbar">
             <div className="topbar-left">
               {islandOverlay === 'all-apps' ? (
@@ -4982,6 +5030,7 @@ export default function App() {
               </>
             )}
           </header>
+          )}
 
           {notificationHistoryOpen && (
             <section

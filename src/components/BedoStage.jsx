@@ -122,6 +122,18 @@ export default function BedoStage({
   const [activatingKey, setActivatingKey] = useState(false);
   const [keyError, setKeyError] = useState('');
   const prevPausedRef = useRef(paused);
+  const replyScrollRef = useRef(null);
+  const autoScrollPinnedRef = useRef(true);
+
+  useEffect(() => {
+    autoScrollPinnedRef.current = true;
+  }, [userTranscript]);
+
+  useEffect(() => {
+    const el = replyScrollRef.current;
+    if (!el || !reply || !autoScrollPinnedRef.current) return;
+    el.scrollTop = el.scrollHeight;
+  }, [reply]);
 
   const needsApiKey = !hasApiKey && !running;
   const isTextOnlyMode = !running && (activeProvider === 'openai' || activeProvider === 'claude');
@@ -606,7 +618,15 @@ export default function BedoStage({
                   </div>
                 )}
                 {(reply || isThinking) && (
-                  <div className="bedo-v2-reply-scroll">
+                  <div
+                    ref={replyScrollRef}
+                    className="bedo-v2-reply-scroll"
+                    onScroll={(e) => {
+                      const el = e.currentTarget;
+                      const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+                      autoScrollPinnedRef.current = distFromBottom <= 24;
+                    }}
+                  >
                     {reply ? (
                       <RoboMarkdown content={reply} />
                     ) : (
