@@ -23,7 +23,7 @@ window.addEventListener(
 contextBridge.exposeInMainWorld('twocode', {
   setIgnoreMouseEvents: (ignore) => ipcRenderer.send('set-ignore-mouse-events', ignore),
   setExpanded: (expanded) => ipcRenderer.send('set-expanded', expanded),
-  setIslandMode: (mode, customWidth, customHeight) => ipcRenderer.send('set-island-mode', mode, customWidth, customHeight),
+  setIslandMode: (mode, customWidth, customHeight, hasDroplet) => ipcRenderer.send('set-island-mode', mode, customWidth, customHeight, hasDroplet),
   onNotchHoverChange: (cb) => {
     const listener = (_event, hovering) => cb(hovering);
     ipcRenderer.on('notch-hover-change', listener);

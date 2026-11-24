@@ -2199,6 +2199,20 @@ export default function App() {
     title: '',
     body: '',
   });
+  const [expandedNotifDroplet, setExpandedNotifDroplet] = useState(null);
+  const expandedNotifDropletTimerRef = useRef(null);
+  useEffect(() => {
+    if (islandMode !== 'expanded') {
+      if (expandedNotifDropletTimerRef.current) {
+        clearTimeout(expandedNotifDropletTimerRef.current);
+        expandedNotifDropletTimerRef.current = null;
+      }
+      setExpandedNotifDroplet(null);
+    }
+  }, [islandMode]);
+  useEffect(() => () => {
+    if (expandedNotifDropletTimerRef.current) clearTimeout(expandedNotifDropletTimerRef.current);
+  }, []);
   useEffect(() => {
     try { localStorage.setItem('twocode-notification-history', JSON.stringify(notificationHistory.slice(0, 100))); } catch { }
   }, [notificationHistory]);
@@ -2238,6 +2252,10 @@ export default function App() {
   const notifBrand = useMemo(
     () => resolveNotifBrand(toastBanner, notifLogoAccent),
     [toastBanner, notifLogoAccent]
+  );
+  const expandedNotifDropletBrand = useMemo(
+    () => resolveNotifBrand(expandedNotifDroplet || {}, null),
+    [expandedNotifDroplet]
   );
   const notifPresentation = useMemo(
     () => resolveNotificationPresentation(toastBanner),
@@ -2545,12 +2563,17 @@ export default function App() {
       window.twocode?.setIslandMode('bedo-live');
     } else if (islandMode === 'idle' && hasRestingSlots) {
       window.twocode?.setIslandMode('idle-live');
-    } else if (islandMode === 'expanded' && hasBedoFeed) {
-      window.twocode?.setIslandMode('expanded', undefined, 354);
+    } else if (islandMode === 'expanded') {
+      window.twocode?.setIslandMode(
+        'expanded',
+        undefined,
+        hasBedoFeed ? 354 : undefined,
+        Boolean(expandedNotifDroplet)
+      );
     } else {
       window.twocode?.setIslandMode(islandMode);
     }
-  }, [islandMode, dynamicMusicBarWidth, dynamicNotifToastWidth, dynamicHudSize.width, hasRestingSlots, hasBedoFeed]);
+  }, [islandMode, dynamicMusicBarWidth, dynamicNotifToastWidth, dynamicHudSize.width, hasRestingSlots, hasBedoFeed, expandedNotifDroplet]);
 
   // Keep collapsed notch updated if media starts/pauses/stops while collapsed
   useEffect(() => {
@@ -2873,6 +2896,7 @@ export default function App() {
         resolveCachedAppLogo(notification.app, notification.appId, notification.title).then((dataUri) => {
           if (!dataUri) return;
           setToastBanner((curr) => (curr && curr.id === notifId && !curr.logo ? { ...curr, logo: dataUri } : curr));
+          setExpandedNotifDroplet((curr) => (curr && curr.id === notifId && !curr.logo ? { ...curr, logo: dataUri } : curr));
           setNotificationHistory((items) =>
             items.map((item) => (item.id === notifId && !item.logo ? { ...item, logo: dataUri } : item))
           );
@@ -2884,6 +2908,15 @@ export default function App() {
       setTimeout(() => setRoboMood('normal'), 2600);
 
       const stayMs = Math.max(3000, (Number(islandSettings.notifDurationSec) || 5) * 1000);
+      if (islandModeRef.current === 'expanded') {
+        setExpandedNotifDroplet(notification);
+        if (expandedNotifDropletTimerRef.current) clearTimeout(expandedNotifDropletTimerRef.current);
+        expandedNotifDropletTimerRef.current = setTimeout(() => {
+          expandedNotifDropletTimerRef.current = null;
+          setExpandedNotifDroplet(null);
+        }, stayMs);
+        return;
+      }
       isShowingNotifToastRef.current = true;
       setIslandMode((curr) => {
         const prevMode =
@@ -7158,7 +7191,7 @@ export default function App() {
       <div
         className={`detached-media-droplet ${islandMode === 'focus-bar-media' ? 'is-visible' : ''
           }`}
-        style={{ left: 418, width: 48, height: 26 }}
+        style={{ left: 'calc(50% + 68px)', width: 48, height: 26 }}
         onClick={() => {
           setActiveTab('music');
           setIslandMode('expanded');
@@ -7168,6 +7201,36 @@ export default function App() {
           <img src={currentMedia.thumbnail} alt="" className="droplet-cover-img" />
         ) : (
           <Music size={14} />
+        )}
+      </div>
+
+      {/* Detached Side Notification Logo Droplet when Island is expanded */}
+      <div
+        className={`detached-notif-droplet ${
+          islandMode === 'expanded' && expandedNotifDroplet ? 'is-visible' : ''
+        } ${islandSettings.islandStyle === 'Floating' ? 'is-floating' : 'is-attached'}`}
+        style={{
+          '--notif-droplet-rgb': expandedNotifDropletBrand.rgb || '97, 152, 255',
+        }}
+        title={expandedNotifDroplet?.app || expandedNotifDroplet?.title || ''}
+        onClick={() => {
+          if (!expandedNotifDroplet) return;
+          const targetItem = expandedNotifDroplet;
+          if (expandedNotifDropletTimerRef.current) {
+            clearTimeout(expandedNotifDropletTimerRef.current);
+            expandedNotifDropletTimerRef.current = null;
+          }
+          setExpandedNotifDroplet(null);
+          openNotification(targetItem);
+        }}
+      >
+        {expandedNotifDroplet && (
+          <NotifBrandIcon
+            brand={expandedNotifDropletBrand.brand}
+            logo={expandedNotifDroplet.logo}
+            appName={expandedNotifDroplet.app}
+            banner={expandedNotifDroplet}
+          />
         )}
       </div>
 

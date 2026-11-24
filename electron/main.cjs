@@ -161,7 +161,7 @@ function trimWorkingSetAndGC({ trimWorkingSet = false } = {}) {
   }
 }
 
-const CANVAS_WIDTH = 700;
+const CANVAS_WIDTH = 780;
 const CANVAS_HEIGHT = 396;
 
 const MODE_DIMENSIONS = {
@@ -1894,7 +1894,7 @@ function updateWindowMouseIgnore(shouldIgnore) {
   } catch {}
 }
 
-function animateWindowShapeToMode(modeOrExpanded, customBodyWidth, customHeight) {
+function animateWindowShapeToMode(modeOrExpanded, customBodyWidth, customHeight, hasDroplet) {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   const modeKey =
     typeof modeOrExpanded === 'string' && MODE_DIMENSIONS[modeOrExpanded]
@@ -1921,6 +1921,7 @@ function animateWindowShapeToMode(modeOrExpanded, customBodyWidth, customHeight)
       modeKey === 'expanded' && typeof customHeight === 'number' && customHeight >= 240
         ? Math.min(CANVAS_HEIGHT - 16, Math.max(baseTarget.height, Math.round(customHeight)))
         : baseTarget.height,
+    droplet: hasDroplet ? 1 : baseTarget.droplet,
   };
 
   if (gameModeActive && userSettings.gameOptDeepHideWindow === true) {
@@ -2914,8 +2915,8 @@ ipcMain.on('set-expanded', (_event, expanded) => {
   }
 });
 
-ipcMain.on('set-island-mode', (_event, mode, customWidth, customHeight) => {
-  animateWindowShapeToMode(mode, customWidth, customHeight);
+ipcMain.on('set-island-mode', (_event, mode, customWidth, customHeight, hasDroplet) => {
+  animateWindowShapeToMode(mode, customWidth, customHeight, hasDroplet);
   if ((mode === 'expanded' || mode === 'music-bar') && Date.now() - lastMediaPollAt > 5000) {
     scheduleNextMediaPoll(400);
   }
@@ -4578,6 +4579,8 @@ const APP_ICON_ALIASES = {
   'windows defender': ['securityhealthsystray'],
   'dosya yöneticisi': ['explorer'],
   'file explorer': ['explorer'],
+  'windows powershell': ['powershell', 'windows powershell'],
+  powershell: ['powershell', 'pwsh'],
 };
 
 function getStartMenuShortcuts() {
@@ -4626,7 +4629,7 @@ function buildAppLogoCandidates(appName, appId) {
   };
 
   if (appId && !/^twocode\./i.test(appId) && !/^com\.google\.gmail$/i.test(appId)) {
-    const idTail = appId.split(/[!\\/.]/).pop();
+    const idTail = appId.replace(/\.exe$/i, '').split(/[!\\/.]/).pop();
     if (idTail && idTail.toLowerCase() !== 'app') push(idTail);
     const idClean = appId.replace(/^electron\.app\./i, '');
     if (idClean && !idClean.includes('!')) push(idClean);
@@ -4768,6 +4771,27 @@ if ($pfn) {
   });
 }
 
+function resolveKnownFolderAppIdPath(appId) {
+  const raw = String(appId || '').trim();
+  if (!raw) return '';
+  if (/^[a-zA-Z]:[/\\]/.test(raw)) return raw;
+  const match = raw.match(/^(\{[0-9a-fA-F-]{36}\})[/\\](.+)$/);
+  if (!match) return '';
+  const guid = match[1].toUpperCase();
+  const rel = match[2];
+  const winDir = process.env.SystemRoot || 'C:\\Windows';
+  const knownFolders = {
+    '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}': path.join(winDir, 'System32'),
+    '{D65231B0-B2F1-4857-A4CE-A8E7C6EA7D27}': path.join(winDir, 'SysWOW64'),
+    '{F38BF404-1D43-42F2-9305-67DE0B28FC23}': winDir,
+    '{6D809377-6AF0-444B-8957-A3773F02200E}': process.env.ProgramFiles || 'C:\\Program Files',
+    '{905E63B6-C1BF-494E-B29C-65B732D3D21A}': process.env.ProgramFiles || 'C:\\Program Files',
+    '{7C5A40EF-A0FB-4BFC-874A-C0F2E0B9FA8E}': process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)',
+  };
+  const base = knownFolders[guid];
+  return base ? path.join(base, rel) : '';
+}
+
 ipcMain.handle('resolve-app-logo', async (_event, payload) => {
   try {
     const appName = String(payload?.app || '').trim();
@@ -4786,9 +4810,10 @@ ipcMain.handle('resolve-app-logo', async (_event, payload) => {
     }
 
     const promise = (async () => {
-      if (appId && /^[a-zA-Z]:[/\\]/.test(appId) && fs.existsSync(appId)) {
+      const directExePath = resolveKnownFolderAppIdPath(appId);
+      if (directExePath && fs.existsSync(directExePath)) {
         try {
-          const icon = await app.getFileIcon(appId, { size: 'normal' });
+          const icon = await app.getFileIcon(directExePath, { size: 'normal' });
           const dataUri = icon ? icon.toDataURL() : null;
           if (dataUri) {
             appLogoCache.set(cacheKey, { dataUri, ts: Date.now() });
