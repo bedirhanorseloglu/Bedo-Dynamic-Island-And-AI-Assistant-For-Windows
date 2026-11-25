@@ -1,11 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const { computeBatteryChargeEta } = require('../electron/battery-eta.cjs');
+const { computeBatteryChargeEta, readGHelperChargeLimit } = require('../electron/battery-eta.cjs');
 
-test('computes realistic CC-CV adjusted ETA below 80% SoC', () => {
+test('computes exact sensor-based ETA to 100% without arbitrary multipliers', () => {
   const result = computeBatteryChargeEta({
     instanceName: 'ACPI\\PNP0C0A\\0_0',
     charging: true,
@@ -17,29 +20,50 @@ test('computes realistic CC-CV adjusted ETA below 80% SoC', () => {
 
   assert.equal(result.status, 'ok');
   assert.equal(result.source, 'wmi');
+  assert.equal(result.targetPercent, 100);
   assert.equal(result.percent, 6);
   assert.equal(result.chargeRateW, 81.4);
-  assert.equal(result.linearMinutes, 51);
-  // CC-CV taper above 80% should make ETA longer than linear (~60 min vs 51 min)
-  assert.ok(result.minutes > result.linearMinutes);
-  assert.ok(result.minutes >= 58 && result.minutes <= 63);
+  // (73215 - 4393) / 81448 * 60 = 50.70 -> 51 min
+  assert.equal(result.minutes, 51);
 });
 
-test('computes mild residual taper when already above 80% SoC', () => {
-  const result = computeBatteryChargeEta([
+test('computes exact ETA to an active 80% charge limit', () => {
+  const result = computeBatteryChargeEta(
     {
       instanceName: 'ACPI\\PNP0C0A\\0_0',
       charging: true,
-      chargeRateMw: 20000,
-      remainingCapacityMwh: 64000,
-      fullChargedCapacityMwh: 72000,
-      percent: 89,
+      chargeRateMw: 81400,
+      remainingCapacityMwh: 27090, // 37% of 73215
+      fullChargedCapacityMwh: 73215,
+      percent: 37,
     },
-  ]);
+    { targetPercent: 80 }
+  );
 
   assert.equal(result.status, 'ok');
-  assert.equal(result.linearMinutes, 24);
-  assert.ok(result.minutes >= 24 && result.minutes <= 32);
+  assert.equal(result.targetPercent, 80);
+  assert.equal(result.chargeRateW, 81.4);
+  // (73215 * 0.80 - 27090) / 81400 * 60 = 23.21 -> 23 min
+  assert.equal(result.minutes, 23);
+});
+
+test('returns limit-reached when battery is at or above active 80% limit', () => {
+  const result = computeBatteryChargeEta(
+    {
+      instanceName: 'BAT0',
+      charging: true,
+      chargeRateMw: 0,
+      remainingCapacityMwh: 58572,
+      fullChargedCapacityMwh: 73215,
+      percent: 80,
+    },
+    { targetPercent: 80 }
+  );
+
+  assert.equal(result.status, 'limit-reached');
+  assert.equal(result.targetPercent, 80);
+  assert.equal(result.minutes, 0);
+  assert.equal(result.percent, 80);
 });
 
 test('aggregates dual-battery systems (e.g. ThinkPad internal + external)', () => {
@@ -65,9 +89,8 @@ test('aggregates dual-battery systems (e.g. ThinkPad internal + external)', () =
   assert.equal(result.status, 'ok');
   assert.equal(result.percent, 50);
   assert.equal(result.chargeRateW, 30);
-  // Missing 24000 mWh at 30000 mW -> 48 min linear, 64 min with CC-CV taper (28.8 + 35.52)
-  assert.equal(result.linearMinutes, 48);
-  assert.equal(result.minutes, 64);
+  // Missing 24000 mWh at 30000 mW -> 48 min exact
+  assert.equal(result.minutes, 48);
 });
 
 test('returns full when battery is at 100%', () => {
@@ -83,21 +106,6 @@ test('returns full when battery is at 100%', () => {
   assert.equal(result.status, 'full');
   assert.equal(result.minutes, 0);
   assert.equal(result.percent, 100);
-});
-
-test('returns unavailable when AC is connected with 80% charge limit (0 mW rate)', () => {
-  const result = computeBatteryChargeEta({
-    instanceName: 'BAT0',
-    charging: true,
-    chargeRateMw: 0,
-    remainingCapacityMwh: 58572,
-    fullChargedCapacityMwh: 73215,
-    percent: 80,
-  });
-
-  assert.equal(result.status, 'unavailable');
-  assert.equal(result.minutes, null);
-  assert.equal(result.percent, 80);
 });
 
 test('filters ACPI unknown sentinel values (0xFFFFFFFF, 0x80000000) and garbage rates', () => {
@@ -121,14 +129,14 @@ test('filters ACPI unknown sentinel values (0xFFFFFFFF, 0x80000000) and garbage 
 
   const noiseRate = computeBatteryChargeEta({
     charging: true,
-    chargeRateMw: 100, // 0.1 W noise
+    chargeRateMw: 100,
     remainingCapacityMwh: 30000,
     fullChargedCapacityMwh: 60000,
   });
   assert.equal(noiseRate.status, 'unavailable');
 });
 
-test('returns unavailable when discharging or empty input', () => {
+test('returns unavailable when discharging, empty, or absurdly long (>12h)', () => {
   assert.equal(computeBatteryChargeEta([]).status, 'unavailable');
   assert.equal(
     computeBatteryChargeEta({
@@ -139,16 +147,28 @@ test('returns unavailable when discharging or empty input', () => {
     }).status,
     'unavailable'
   );
+  assert.equal(
+    computeBatteryChargeEta({
+      charging: true,
+      chargeRateMw: 1000,
+      remainingCapacityMwh: 10000,
+      fullChargedCapacityMwh: 70000,
+    }).status,
+    'unavailable'
+  );
 });
 
-test('rejects absurdly long ETA (>12 hours)', () => {
-  const result = computeBatteryChargeEta({
-    charging: true,
-    chargeRateMw: 1000, // 1 W on a 70 Wh battery -> ~70 hours
-    remainingCapacityMwh: 10000,
-    fullChargedCapacityMwh: 70000,
-  });
+test('readGHelperChargeLimit reads charge_limit and respects charge_full override', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bedo-ghelper-test-'));
+  const gDir = path.join(tmpDir, 'GHelper');
+  fs.mkdirSync(gDir, { recursive: true });
+  try {
+    fs.writeFileSync(path.join(gDir, 'config.json'), JSON.stringify({ charge_limit: 80, charge_full: 0 }));
+    assert.equal(readGHelperChargeLimit(tmpDir), 80);
 
-  assert.equal(result.status, 'unavailable');
-  assert.equal(result.minutes, null);
+    fs.writeFileSync(path.join(gDir, 'config.json'), JSON.stringify({ charge_limit: 80, charge_full: 1 }));
+    assert.equal(readGHelperChargeLimit(tmpDir), 100);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
 });

@@ -1,3 +1,5 @@
+const fs = require('fs');
+const path = require('path');
 const { execFile } = require('child_process');
 
 const MAX_VALID_U32 = 0x7fffffff; // Filter ACPI unknown sentinels (0x80000000, 0xFFFFFFFF)
@@ -5,9 +7,8 @@ const MIN_VALID_CHARGE_RATE_MW = 500; // 0.5 W minimum to ignore noise / trickle
 const MAX_VALID_CHARGE_RATE_MW = 500000; // 500 W upper sanity bound
 const MIN_ETA_MINUTES = 1;
 const MAX_ETA_MINUTES = 720; // 12 hours upper sanity bound
-const CC_CV_KNEE = 0.8; // Li-ion constant-current to constant-voltage transition (~80%)
-const CV_TAPER_MULTIPLIER = 1.85; // Average slow-down factor for 80%->100% relative to CC rate
-const CV_RESIDUAL_MAX_FACTOR = 0.35; // Mild residual taper when already inside 80%->100%
+const MIN_CHARGE_LIMIT_PCT = 40;
+const MAX_CHARGE_LIMIT_PCT = 100;
 
 const WMI_QUERY_SCRIPT = [
   '$ErrorActionPreference = "SilentlyContinue"',
@@ -44,7 +45,16 @@ const WMI_QUERY_SCRIPT = [
   '    }',
   '  }',
   '}',
-  '@($items) | ConvertTo-Json -Compress -Depth 3',
+  '$oemLimit = $null',
+  '$lenovoKeys = Get-ChildItem "HKLM:\\SOFTWARE\\Lenovo\\PWRMGRV\\ConfKeys\\Data" -ErrorAction SilentlyContinue',
+  'foreach ($k in $lenovoKeys) {',
+  '  $props = Get-ItemProperty $k.PSPath -ErrorAction SilentlyContinue',
+  '  if ($props.ChargeStopControl -eq 1 -and $props.ChargeStopThreshold -ge 40 -and $props.ChargeStopThreshold -lt 100) {',
+  '    $oemLimit = [int]$props.ChargeStopThreshold',
+  '    break',
+  '  }',
+  '}',
+  '[PSCustomObject]@{ batteries = @($items); oemChargeLimit = $oemLimit } | ConvertTo-Json -Compress -Depth 4',
 ].join('\n');
 
 function isValidCapacity(val) {
@@ -64,17 +74,58 @@ function isValidChargeRate(val) {
   );
 }
 
+function normalizeTargetPercent(limit) {
+  const n = Number(limit);
+  if (!Number.isFinite(n)) return 100;
+  const rounded = Math.round(n);
+  if (rounded >= MIN_CHARGE_LIMIT_PCT && rounded <= MAX_CHARGE_LIMIT_PCT) {
+    return rounded;
+  }
+  return 100;
+}
+
 /**
- * Pure, deterministic ETA calculator for single or multi-battery Windows systems.
- * Applies a smooth Li-ion CC-CV taper model above 80% SoC so estimates stay realistic.
- *
- * @param {Array<object>} batteries
- * @returns {{ status: 'ok'|'full'|'unavailable', minutes: number|null, linearMinutes: number|null, chargeRateW: number|null, percent: number|null, source: 'wmi'|'none' }}
+ * Reads user-configured battery charge limit from G-Helper if present.
+ * Returns null if G-Helper is not installed or has no active limit (< 100%).
  */
-function computeBatteryChargeEta(batteries) {
+function readGHelperChargeLimit(appDataDir = process.env.APPDATA || '') {
+  if (!appDataDir) return null;
+  try {
+    const cfgPath = path.join(appDataDir, 'GHelper', 'config.json');
+    if (!fs.existsSync(cfgPath)) return null;
+    const json = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+    if (Number(json.charge_full) === 1) return 100;
+    const limit = Number(json.charge_limit);
+    if (Number.isFinite(limit) && limit >= MIN_CHARGE_LIMIT_PCT && limit < 100) {
+      return Math.round(limit);
+    }
+    return 100;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Exact, deterministic sensor-based ETA calculator for single or multi-battery Windows systems.
+ * Uses direct hardware Watt-hour / Watt physics (no arbitrary/invented multipliers) and respects
+ * active charge limits (e.g. 80% battery health limit).
+ *
+ * @param {Array<object>|object} batteries
+ * @param {{ targetPercent?: number }} [options]
+ * @returns {{ status: 'ok'|'full'|'limit-reached'|'unavailable', minutes: number|null, targetPercent: number, chargeRateW: number|null, percent: number|null, source: 'wmi'|'none' }}
+ */
+function computeBatteryChargeEta(batteries, options = {}) {
+  const targetPercent = normalizeTargetPercent(options?.targetPercent);
   const list = Array.isArray(batteries) ? batteries : batteries ? [batteries] : [];
   if (list.length === 0) {
-    return { status: 'unavailable', minutes: null, linearMinutes: null, chargeRateW: null, percent: null, source: 'none' };
+    return {
+      status: 'unavailable',
+      minutes: null,
+      targetPercent,
+      chargeRateW: null,
+      percent: null,
+      source: 'none',
+    };
   }
 
   let totalFullMwh = 0;
@@ -118,13 +169,26 @@ function computeBatteryChargeEta(batteries) {
         ? Math.min(100, Math.max(0, Math.round(fallbackPercentSum / fallbackPercentCount)))
         : null;
 
+  const chargeRateW = totalChargeRateMw > 0 ? Math.round((totalChargeRateMw / 1000) * 10) / 10 : null;
+
   if (computedPercent !== null && computedPercent >= 100) {
     return {
       status: 'full',
       minutes: 0,
-      linearMinutes: 0,
-      chargeRateW: totalChargeRateMw > 0 ? Math.round((totalChargeRateMw / 1000) * 10) / 10 : null,
+      targetPercent: 100,
+      chargeRateW,
       percent: 100,
+      source: 'wmi',
+    };
+  }
+
+  if (computedPercent !== null && targetPercent < 100 && computedPercent >= targetPercent) {
+    return {
+      status: 'limit-reached',
+      minutes: 0,
+      targetPercent,
+      chargeRateW,
+      percent: computedPercent,
       source: 'wmi',
     };
   }
@@ -133,47 +197,34 @@ function computeBatteryChargeEta(batteries) {
     return {
       status: 'unavailable',
       minutes: null,
-      linearMinutes: null,
-      chargeRateW: totalChargeRateMw > 0 ? Math.round((totalChargeRateMw / 1000) * 10) / 10 : null,
+      targetPercent,
+      chargeRateW,
       percent: computedPercent,
       source: 'none',
     };
   }
 
-  const missingMwh = Math.max(0, totalFullMwh - totalRemainingMwh);
+  const targetMwh = totalFullMwh * (targetPercent / 100);
+  const missingMwh = Math.max(0, targetMwh - totalRemainingMwh);
   if (missingMwh <= totalFullMwh * 0.005) {
     return {
-      status: 'full',
+      status: targetPercent < 100 ? 'limit-reached' : 'full',
       minutes: 0,
-      linearMinutes: 0,
-      chargeRateW: Math.round((totalChargeRateMw / 1000) * 10) / 10,
-      percent: 100,
+      targetPercent,
+      chargeRateW,
+      percent: computedPercent !== null ? computedPercent : targetPercent,
       source: 'wmi',
     };
   }
 
-  const linearHours = missingMwh / totalChargeRateMw;
-  const linearMinutes = Math.round(linearHours * 60);
-
-  const soc = totalRemainingMwh / totalFullMwh;
-  let adjustedHours;
-  if (soc < CC_CV_KNEE) {
-    const ccMwh = totalFullMwh * CC_CV_KNEE - totalRemainingMwh;
-    const cvMwh = totalFullMwh * (1 - CC_CV_KNEE);
-    adjustedHours = ccMwh / totalChargeRateMw + (cvMwh / totalChargeRateMw) * CV_TAPER_MULTIPLIER;
-  } else {
-    const remainingFractionOfCv = Math.max(0, Math.min(1, (1 - soc) / (1 - CC_CV_KNEE)));
-    const residualMultiplier = 1 + CV_RESIDUAL_MAX_FACTOR * remainingFractionOfCv;
-    adjustedHours = (missingMwh / totalChargeRateMw) * residualMultiplier;
-  }
-
-  const minutes = Math.round(adjustedHours * 60);
+  // Exact physical time based on live hardware mWh and mW readings
+  const minutes = Math.round((missingMwh / totalChargeRateMw) * 60);
   if (!Number.isFinite(minutes) || minutes < MIN_ETA_MINUTES || minutes > MAX_ETA_MINUTES) {
     return {
       status: 'unavailable',
       minutes: null,
-      linearMinutes: null,
-      chargeRateW: Math.round((totalChargeRateMw / 1000) * 10) / 10,
+      targetPercent,
+      chargeRateW,
       percent: computedPercent,
       source: 'none',
     };
@@ -182,8 +233,8 @@ function computeBatteryChargeEta(batteries) {
   return {
     status: 'ok',
     minutes,
-    linearMinutes: Math.max(1, linearMinutes),
-    chargeRateW: Math.round((totalChargeRateMw / 1000) * 10) / 10,
+    targetPercent,
+    chargeRateW,
     percent: computedPercent,
     source: 'wmi',
   };
@@ -199,7 +250,7 @@ function queryWindowsBatteryEta(options = {}) {
     return Promise.resolve({
       status: 'unavailable',
       minutes: null,
-      linearMinutes: null,
+      targetPercent: 100,
       chargeRateW: null,
       percent: null,
       source: 'none',
@@ -217,6 +268,7 @@ function queryWindowsBatteryEta(options = {}) {
   }
 
   inFlightPromise = new Promise((resolve) => {
+    const ghelperLimit = readGHelperChargeLimit();
     execFile(
       'powershell.exe',
       ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-Command', WMI_QUERY_SCRIPT],
@@ -227,7 +279,7 @@ function queryWindowsBatteryEta(options = {}) {
           resolve({
             status: 'unavailable',
             minutes: null,
-            linearMinutes: null,
+            targetPercent: ghelperLimit || 100,
             chargeRateW: null,
             percent: null,
             source: 'none',
@@ -237,7 +289,10 @@ function queryWindowsBatteryEta(options = {}) {
 
         try {
           const parsed = JSON.parse(stdout.trim());
-          const result = computeBatteryChargeEta(parsed);
+          const batteries = parsed && typeof parsed === 'object' && 'batteries' in parsed ? parsed.batteries : parsed;
+          const oemLimit = parsed && typeof parsed === 'object' ? parsed.oemChargeLimit : null;
+          const targetPercent = ghelperLimit !== null ? ghelperLimit : oemLimit !== null ? oemLimit : 100;
+          const result = computeBatteryChargeEta(batteries, { targetPercent });
           lastResult = result;
           lastFetchedAt = Date.now();
           resolve(result);
@@ -245,7 +300,7 @@ function queryWindowsBatteryEta(options = {}) {
           resolve({
             status: 'unavailable',
             minutes: null,
-            linearMinutes: null,
+            targetPercent: ghelperLimit || 100,
             chargeRateW: null,
             percent: null,
             source: 'none',
@@ -260,5 +315,6 @@ function queryWindowsBatteryEta(options = {}) {
 
 module.exports = {
   computeBatteryChargeEta,
+  readGHelperChargeLimit,
   queryWindowsBatteryEta,
 };

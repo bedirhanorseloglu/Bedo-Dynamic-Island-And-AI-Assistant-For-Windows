@@ -1178,7 +1178,7 @@ export default function App() {
   const [userPickedClockColor, setUserPickedClockColor] = useState(() => readClockPreferences().customColor === true);
   const [clockScale, setClockScale] = useState(() => {
     const value = Number(readClockPreferences().scale);
-    return Number.isFinite(value) ? Math.min(1.12, Math.max(0.78, value)) : 1;
+    return Number.isFinite(value) ? Math.min(1, Math.max(0.78, value)) : 1;
   });
   const [clock24Hour, setClock24Hour] = useState(() => readClockPreferences().clock24Hour !== false);
   const [clockShowSeconds, setClockShowSeconds] = useState(() => readClockPreferences().showSeconds === true);
@@ -2705,16 +2705,17 @@ export default function App() {
   // entry path (battery API or the manual preview) dismisses consistently.
   useEffect(() => {
     if (islandMode !== 'battery') return undefined;
+    const durationMs = batteryAlertKind === 'charging' ? 6500 : 4800;
     batteryTimerRef.current = setTimeout(() => {
       setIslandMode((current) =>
         current === 'battery' ? resolvedCollapsedModeRef.current : current
       );
-    }, 4800);
+    }, durationMs);
     return () => {
       clearTimeout(batteryTimerRef.current);
       batteryTimerRef.current = null;
     };
-  }, [islandMode]);
+  }, [islandMode, batteryAlertKind]);
 
   // Read real Windows battery percentage, charging ETA, and alert only at exactly 20%.
   useEffect(() => {
@@ -2743,7 +2744,9 @@ export default function App() {
       return null;
     };
 
-    const refreshChargeEta = (bat, allowRampRetry = false) => {
+    const RAMP_RETRY_DELAYS_MS = [600, 1800, 3400, 5000];
+
+    const refreshChargeEta = (bat, retryIndex = -1) => {
       clearEtaRetry();
       const reqId = ++batteryEtaReqIdRef.current;
       const browserFallback = getBrowserFallbackEta(bat);
@@ -2760,17 +2763,18 @@ export default function App() {
       fetchEta({ force: true })
         .then((res) => {
           if (isDisposed || reqId !== batteryEtaReqIdRef.current || !bat?.charging) return;
-          if (res && (res.status === 'ok' || res.status === 'full')) {
+          if (res && (res.status === 'ok' || res.status === 'full' || res.status === 'limit-reached')) {
             setBatteryChargeEta(res);
             return;
           }
-          if (allowRampRetry) {
+          if (retryIndex >= 0 && retryIndex < RAMP_RETRY_DELAYS_MS.length) {
+            const delay = RAMP_RETRY_DELAYS_MS[retryIndex];
             etaRetryTimer = setTimeout(() => {
               etaRetryTimer = null;
               if (!isDisposed && bat?.charging) {
-                refreshChargeEta(bat, false);
+                refreshChargeEta(bat, retryIndex + 1);
               }
-            }, 1800);
+            }, delay);
           } else {
             const fallback = getBrowserFallbackEta(bat);
             setBatteryChargeEta(fallback);
@@ -2829,11 +2833,11 @@ export default function App() {
       if (nextCharging) {
         setBatteryCharging(true);
         const justPluggedIn = wasCharging === false;
-        if (justPluggedIn && !isStartup) {
+        if (justPluggedIn) {
           setBatteryChargeEta(null);
           triggerChargingAlert();
         }
-        refreshChargeEta(batteryObj, justPluggedIn);
+        refreshChargeEta(batteryObj, justPluggedIn ? 0 : -1);
         wasCharging = true;
         hasShown20AlertRef.current = false;
         return;
@@ -2878,7 +2882,7 @@ export default function App() {
             previousBatteryLowRef.current = pct <= 20 && !wasCharging;
           }
           if (wasCharging) {
-            refreshChargeEta(bat, false);
+            refreshChargeEta(bat, -1);
           }
           bat.addEventListener('levelchange', handleBatteryChange);
           bat.addEventListener('chargingchange', handleBatteryChange);
@@ -2897,6 +2901,32 @@ export default function App() {
       if (batteryTimerRef.current) clearTimeout(batteryTimerRef.current);
     };
   }, []);
+
+  // Refresh live charging ETA only while expanded and charging (zero background cost when collapsed)
+  useEffect(() => {
+    if (islandMode !== 'expanded' || !batteryCharging) return undefined;
+    const fetchEta = window.twocode?.getBatteryChargeEta;
+    if (typeof fetchEta !== 'function') return undefined;
+    let cancelled = false;
+
+    const pull = () => {
+      fetchEta({ force: true })
+        .then((res) => {
+          if (cancelled || !res) return;
+          if (res.status === 'ok' || res.status === 'full' || res.status === 'limit-reached') {
+            setBatteryChargeEta(res);
+          }
+        })
+        .catch(() => {});
+    };
+
+    pull();
+    const timer = setInterval(pull, 15000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [islandMode, batteryCharging]);
 
   // Synchronize clock when expanded only if minute/hour/date changed to avoid redundant re-render
   useEffect(() => {
@@ -3453,6 +3483,7 @@ export default function App() {
       hudVisibleTimerRef.current = setTimeout(() => setIsSystemHudVisible(false), hudDuration);
       setIslandMode((curr) => {
         if (curr === 'expanded') return curr;
+        if (curr === 'battery' && hud.type === 'ghelper') return curr;
         if (hudTimerRef.current) clearTimeout(hudTimerRef.current);
         hudTimerRef.current = setTimeout(() => {
           setIslandMode((c) => (c === 'hud' ? resolvedCollapsedModeRef.current : c));
@@ -3612,20 +3643,64 @@ export default function App() {
   }, [now, timerSeconds]);
 
   const batteryChargingSubtext = useMemo(() => {
+    const target = Number.isFinite(Number(batteryChargeEta?.targetPercent))
+      ? Math.round(Number(batteryChargeEta.targetPercent))
+      : 100;
     if (batteryPercent >= 100 || batteryChargeEta?.status === 'full') {
       return t('battery.fullyCharged');
+    }
+    if (batteryChargeEta?.status === 'limit-reached' || (target < 100 && batteryPercent >= target)) {
+      return t('battery.limitReached', { target });
     }
     const mins = batteryChargeEta?.status === 'ok' ? Number(batteryChargeEta.minutes) : NaN;
     if (Number.isFinite(mins) && mins >= 1) {
       if (mins < 60) {
-        return t('battery.etaMinutes', { minutes: mins });
+        return t('battery.etaMinutes', { minutes: mins, target });
       }
       const hours = Math.floor(mins / 60);
       const remMins = mins % 60;
       if (remMins === 0) {
-        return t('battery.etaHours', { hours });
+        return t('battery.etaHours', { hours, target });
       }
-      return t('battery.etaHoursMinutes', { hours, minutes: remMins });
+      return t('battery.etaHoursMinutes', { hours, minutes: remMins, target });
+    }
+    return t('battery.powerConnected');
+  }, [batteryPercent, batteryChargeEta, t]);
+
+  const batteryChargingCompactEta = useMemo(() => {
+    if (batteryPercent >= 100 || batteryChargeEta?.status === 'full') return null;
+    const target = Number.isFinite(Number(batteryChargeEta?.targetPercent))
+      ? Math.round(Number(batteryChargeEta.targetPercent))
+      : 100;
+    if (batteryChargeEta?.status === 'limit-reached' || (target < 100 && batteryPercent >= target)) {
+      return null;
+    }
+    const mins = batteryChargeEta?.status === 'ok' ? Number(batteryChargeEta.minutes) : NaN;
+    if (!Number.isFinite(mins) || mins < 1) return null;
+    if (mins < 60) return t('battery.shortMinutes', { minutes: mins });
+    const hours = Math.floor(mins / 60);
+    const remMins = mins % 60;
+    if (remMins === 0) return t('battery.shortHours', { hours });
+    return t('battery.shortHoursMinutes', { hours, minutes: remMins });
+  }, [batteryPercent, batteryChargeEta, t]);
+
+  const batteryChargingPopoverEta = useMemo(() => {
+    const target = Number.isFinite(Number(batteryChargeEta?.targetPercent))
+      ? Math.round(Number(batteryChargeEta.targetPercent))
+      : 100;
+    if (batteryPercent >= 100 || batteryChargeEta?.status === 'full') {
+      return t('battery.fullyCharged');
+    }
+    if (batteryChargeEta?.status === 'limit-reached' || (target < 100 && batteryPercent >= target)) {
+      return t('battery.limitReached', { target });
+    }
+    const mins = batteryChargeEta?.status === 'ok' ? Number(batteryChargeEta.minutes) : NaN;
+    if (Number.isFinite(mins) && mins >= 1) {
+      if (mins < 60) return t('battery.etaToTargetMinutes', { minutes: mins, target });
+      const hours = Math.floor(mins / 60);
+      const remMins = mins % 60;
+      if (remMins === 0) return t('battery.etaToTargetHours', { hours, target });
+      return t('battery.etaToTargetHoursMinutes', { hours, minutes: remMins, target });
     }
     return t('battery.powerConnected');
   }, [batteryPercent, batteryChargeEta, t]);
@@ -4334,7 +4409,9 @@ export default function App() {
                     </div>
                   </div>
                   <span className="battery-mini-bar-label">
-                    {batteryAlertKind === 'charging' ? t('battery.chargingPill') : t('battery.criticalPill')}
+                    {batteryAlertKind === 'charging'
+                      ? (batteryChargeEta?.chargeRateW >= 1 ? `${Math.round(batteryChargeEta.chargeRateW)}W` : t('battery.chargingPill'))
+                      : t('battery.criticalPill')}
                   </span>
                 </div>
               </div>
@@ -4920,18 +4997,84 @@ export default function App() {
             <div className="topbar-right">
               {activeTab === 'home' && !islandOverlay && (
                 <>
+                  {batteryCharging && (
+                    <div
+                      className="topbar-charge-pill-wrap"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <button
+                        type="button"
+                        className="topbar-charge-pill"
+                        aria-label={`${batteryPercent}% · ${batteryChargingPopoverEta}`}
+                      >
+                        <svg className="topbar-charge-svg" width="16" height="10" viewBox="0 0 18 10" fill="none" aria-hidden="true">
+                          <rect x="0.75" y="0.75" width="14" height="8.5" rx="2.4" stroke="#30D158" strokeWidth="1.35" />
+                          <rect
+                            x="2.25"
+                            y="2.25"
+                            width={Math.max(1.8, (11 * Math.min(100, Math.max(0, batteryPercent))) / 100)}
+                            height="5.5"
+                            rx="1.2"
+                            fill="#30D158"
+                          />
+                          <path d="M16.2 3.3V6.7" stroke="#30D158" strokeWidth="1.4" strokeLinecap="round" />
+                        </svg>
+                        <span className="topbar-charge-pct">
+                          {langCode === 'tr' ? `%${batteryPercent}` : `${batteryPercent}%`}
+                        </span>
+                        {batteryChargingCompactEta && (
+                          <>
+                            <span className="topbar-charge-dot" aria-hidden="true">·</span>
+                            <span className="topbar-charge-eta">{batteryChargingCompactEta}</span>
+                          </>
+                        )}
+                      </button>
+
+                      <div className="topbar-charge-popover" role="status">
+                        <div className="topbar-charge-popover-head">
+                          <span className="topbar-charge-popover-pct">
+                            {langCode === 'tr' ? `%${batteryPercent}` : `${batteryPercent}%`}
+                          </span>
+                          {batteryChargeEta?.chargeRateW >= 1 && (
+                            <span className="topbar-charge-popover-watt">
+                              ⚡ {batteryChargeEta.chargeRateW.toLocaleString(locale, { maximumFractionDigits: 1 })}W
+                            </span>
+                          )}
+                        </div>
+                        <div className="topbar-charge-popover-bar">
+                          <div
+                            className="topbar-charge-popover-fill"
+                            style={{ width: `${Math.min(100, Math.max(4, batteryPercent))}%` }}
+                          >
+                            {batteryChargeEta?.status === 'ok' && <div className="battery-bar-shimmer" />}
+                          </div>
+                          {Number(batteryChargeEta?.targetPercent) > 0 && Number(batteryChargeEta?.targetPercent) < 100 && (
+                            <span
+                              className="topbar-charge-popover-limit-tick"
+                              style={{ left: `${Number(batteryChargeEta.targetPercent)}%` }}
+                              title={`%${Number(batteryChargeEta.targetPercent)}`}
+                            />
+                          )}
+                        </div>
+                        <div className="topbar-charge-popover-foot">
+                          <span>{batteryChargingPopoverEta}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   {(ghelperStatus.ghelperInstalled !== false) && (
                   <div className="topbar-ghelper-group" role="group" aria-label={t('topbar.ghelperGroup')}>
                     {(() => {
                       const perfMeta = GHELPER_PERF_MODES[ghelperStatus.performanceMode] || GHELPER_PERF_MODES[0];
                       const PerfIcon = perfMeta.icon;
+                      const perfLabel = t('topbar.ghelperPerf', { name: t(`ghelper.perf.${ghelperStatus.performanceMode in GHELPER_PERF_MODES ? ghelperStatus.performanceMode : 0}`) });
                       return (
                         <button
                           type="button"
                           className={`topbar-ghelper-btn perf-mode-${ghelperStatus.performanceMode}`}
                           style={{ '--gh-color': perfMeta.color }}
-                          aria-label={t('topbar.ghelperPerf', { name: t(`ghelper.perf.${ghelperStatus.performanceMode in GHELPER_PERF_MODES ? ghelperStatus.performanceMode : 0}`) })}
-                          data-no-tooltip="true"
+                          aria-label={perfLabel}
+                          data-tooltip={perfLabel}
                           onClick={(event) => {
                             event.stopPropagation();
                             suppressGHelperHudUntilRef.current = Date.now() + 6000;
@@ -4939,20 +5082,21 @@ export default function App() {
                             window.twocode?.openGHelper?.();
                           }}
                         >
-                          <PerfIcon size={15} strokeWidth={2.2} />
+                          <PerfIcon size={13} strokeWidth={2.2} />
                         </button>
                       );
                     })()}
                     {(() => {
                       const gpuMeta = GHELPER_GPU_MODES[ghelperStatus.gpuMode] || GHELPER_GPU_MODES[0];
                       const GpuIcon = gpuMeta.icon;
+                      const gpuLabel = t('topbar.ghelperGpu', { name: t(`ghelper.gpu.${ghelperStatus.gpuMode in GHELPER_GPU_MODES ? ghelperStatus.gpuMode : 0}`) });
                       return (
                         <button
                           type="button"
                           className={`topbar-ghelper-btn gpu-mode-${ghelperStatus.gpuMode}`}
                           style={{ '--gh-color': gpuMeta.color }}
-                          aria-label={t('topbar.ghelperGpu', { name: t(`ghelper.gpu.${ghelperStatus.gpuMode in GHELPER_GPU_MODES ? ghelperStatus.gpuMode : 0}`) })}
-                          data-no-tooltip="true"
+                          aria-label={gpuLabel}
+                          data-tooltip={gpuLabel}
                           onClick={(event) => {
                             event.stopPropagation();
                             suppressGHelperHudUntilRef.current = Date.now() + 6000;
@@ -4960,7 +5104,7 @@ export default function App() {
                             window.twocode?.openGHelper?.();
                           }}
                         >
-                          <GpuIcon size={15} strokeWidth={2.2} />
+                          <GpuIcon size={13} strokeWidth={2.2} />
                         </button>
                       );
                     })()}
@@ -4974,7 +5118,7 @@ export default function App() {
                     aria-label={t('topbar.openMode', { name: t(`mode.${selectedModeName === 'Serbest' ? 'Free' : selectedModeName}`) })}
                     title={`${t(`mode.${selectedModeName === 'Serbest' ? 'Free' : selectedModeName}`)} · ${activeModeSummary}`}
                   >
-                    <ActiveModeIcon size={16} strokeWidth={2.2} />
+                    <ActiveModeIcon size={14} strokeWidth={2.2} />
                   </button>
                   <button
                     ref={notificationHistoryTriggerRef}
@@ -4990,7 +5134,7 @@ export default function App() {
                     aria-controls="notification-history-panel"
                     title={t('notif.historyAria')}
                   >
-                    <Bell size={16} strokeWidth={2} />
+                    <Bell size={14} strokeWidth={2} />
                     {unreadNotificationCount > 0 && <span className="notification-count-badge">{unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}</span>}
                   </button>
                 </>
@@ -5851,7 +5995,7 @@ export default function App() {
                                 <input
                                   type="range"
                                   min="0.78"
-                                  max="1.12"
+                                  max="1"
                                   step="0.01"
                                   value={clockScale}
                                   onChange={(e) => setClockScale(parseFloat(e.target.value))}
