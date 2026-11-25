@@ -4816,34 +4816,75 @@ export default function App() {
                 <>
                   {activeTab === 'home' && !islandOverlay && (
                     <div
-                      className="topbar-sys-icons"
-                      title="Control Center (Wi-Fi & Bluetooth)"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        playRoboSound('tap', islandSettings.soundEffects !== false);
-                        if (!showControlCenter) {
-                          window.twocode?.getNetworkInfo?.().then((info) => {
-                            if (info) setNetworkInfo(info);
-                          });
-                          refreshRadioStates();
-                        }
-                        setShowControlCenter((s) => !s);
-                      }}
+                      className={`topbar-charge-pill-wrap ${batteryCharging ? 'is-charging' : ''} ${batteryPercent <= 20 && !batteryCharging ? 'is-low' : ''}`}
+                      onClick={(event) => event.stopPropagation()}
                     >
                       <button
                         type="button"
-                        className="topbar-icon-btn"
-                        title="Wi-Fi"
+                        className="topbar-charge-pill"
+                        aria-label={batteryCharging ? `${batteryPercent}% · ${batteryChargingPopoverEta}` : `${batteryPercent}%`}
                       >
-                        <Wifi size={13} strokeWidth={2.4} color={networkInfo.wifiConnected ? '#55e6a5' : networkInfo.wifiState === 'On' ? '#f4f4f5' : '#777780'} />
+                        <svg className="topbar-charge-svg" width="17" height="10" viewBox="0 0 18 10" fill="none" aria-hidden="true">
+                          <rect
+                            x="0.75"
+                            y="0.75"
+                            width="14"
+                            height="8.5"
+                            rx="2.4"
+                            stroke={batteryCharging ? '#30D158' : batteryPercent <= 20 ? '#FF453A' : 'rgba(255,255,255,0.68)'}
+                            strokeWidth="1.35"
+                          />
+                          <rect
+                            x="2.25"
+                            y="2.25"
+                            width={Math.max(1.8, (11 * Math.min(100, Math.max(0, batteryPercent))) / 100)}
+                            height="5.5"
+                            rx="1.2"
+                            fill={batteryCharging ? '#30D158' : batteryPercent <= 20 ? '#FF453A' : 'rgba(255,255,255,0.88)'}
+                          />
+                          <path
+                            d="M16.2 3.3V6.7"
+                            stroke={batteryCharging ? '#30D158' : batteryPercent <= 20 ? '#FF453A' : 'rgba(255,255,255,0.68)'}
+                            strokeWidth="1.4"
+                            strokeLinecap="round"
+                          />
+                        </svg>
+                        <span className="topbar-charge-pct">
+                          {batteryCharging && batteryChargingCompactEta
+                            ? batteryChargingCompactEta
+                            : langCode === 'tr' ? `%${batteryPercent}` : `${batteryPercent}%`}
+                        </span>
                       </button>
-                      <button
-                        type="button"
-                        className="topbar-icon-btn"
-                        title="Bluetooth"
-                      >
-                        <Bluetooth size={13} strokeWidth={2.4} color={networkInfo.bluetoothState === 'On' ? '#8dbbff' : '#777780'} />
-                      </button>
+
+                      {batteryCharging && (
+                        <div className="topbar-charge-popover" role="status">
+                          <div className="topbar-charge-popover-head">
+                            <span className="topbar-charge-popover-pct">
+                              {langCode === 'tr' ? `%${batteryPercent}` : `${batteryPercent}%`}
+                            </span>
+                            {batteryChargeEta?.chargeRateW >= 1 && (
+                              <span className="topbar-charge-popover-watt">
+                                {batteryChargeEta.chargeRateW.toLocaleString(locale, { maximumFractionDigits: 1 })} W
+                              </span>
+                            )}
+                          </div>
+                          <div className="topbar-charge-popover-bar">
+                            <div
+                              className="topbar-charge-popover-fill"
+                              style={{ width: `${Math.min(100, Math.max(4, batteryPercent))}%` }}
+                            />
+                            {Number(batteryChargeEta?.targetPercent) > 0 && Number(batteryChargeEta?.targetPercent) < 100 && (
+                              <span
+                                className="topbar-charge-popover-limit-tick"
+                                style={{ left: `${Number(batteryChargeEta.targetPercent)}%` }}
+                              />
+                            )}
+                          </div>
+                          <div className="topbar-charge-popover-foot">
+                            <span>{batteryChargingPopoverEta}</span>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                   {renderDateTop(now)}
@@ -4997,71 +5038,6 @@ export default function App() {
             <div className="topbar-right">
               {activeTab === 'home' && !islandOverlay && (
                 <>
-                  {batteryCharging && (
-                    <div
-                      className="topbar-charge-pill-wrap"
-                      onClick={(event) => event.stopPropagation()}
-                    >
-                      <button
-                        type="button"
-                        className="topbar-charge-pill"
-                        aria-label={`${batteryPercent}% · ${batteryChargingPopoverEta}`}
-                      >
-                        <svg className="topbar-charge-svg" width="16" height="10" viewBox="0 0 18 10" fill="none" aria-hidden="true">
-                          <rect x="0.75" y="0.75" width="14" height="8.5" rx="2.4" stroke="#30D158" strokeWidth="1.35" />
-                          <rect
-                            x="2.25"
-                            y="2.25"
-                            width={Math.max(1.8, (11 * Math.min(100, Math.max(0, batteryPercent))) / 100)}
-                            height="5.5"
-                            rx="1.2"
-                            fill="#30D158"
-                          />
-                          <path d="M16.2 3.3V6.7" stroke="#30D158" strokeWidth="1.4" strokeLinecap="round" />
-                        </svg>
-                        <span className="topbar-charge-pct">
-                          {langCode === 'tr' ? `%${batteryPercent}` : `${batteryPercent}%`}
-                        </span>
-                        {batteryChargingCompactEta && (
-                          <>
-                            <span className="topbar-charge-dot" aria-hidden="true">·</span>
-                            <span className="topbar-charge-eta">{batteryChargingCompactEta}</span>
-                          </>
-                        )}
-                      </button>
-
-                      <div className="topbar-charge-popover" role="status">
-                        <div className="topbar-charge-popover-head">
-                          <span className="topbar-charge-popover-pct">
-                            {langCode === 'tr' ? `%${batteryPercent}` : `${batteryPercent}%`}
-                          </span>
-                          {batteryChargeEta?.chargeRateW >= 1 && (
-                            <span className="topbar-charge-popover-watt">
-                              ⚡ {batteryChargeEta.chargeRateW.toLocaleString(locale, { maximumFractionDigits: 1 })}W
-                            </span>
-                          )}
-                        </div>
-                        <div className="topbar-charge-popover-bar">
-                          <div
-                            className="topbar-charge-popover-fill"
-                            style={{ width: `${Math.min(100, Math.max(4, batteryPercent))}%` }}
-                          >
-                            {batteryChargeEta?.status === 'ok' && <div className="battery-bar-shimmer" />}
-                          </div>
-                          {Number(batteryChargeEta?.targetPercent) > 0 && Number(batteryChargeEta?.targetPercent) < 100 && (
-                            <span
-                              className="topbar-charge-popover-limit-tick"
-                              style={{ left: `${Number(batteryChargeEta.targetPercent)}%` }}
-                              title={`%${Number(batteryChargeEta.targetPercent)}`}
-                            />
-                          )}
-                        </div>
-                        <div className="topbar-charge-popover-foot">
-                          <span>{batteryChargingPopoverEta}</span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
                   {(ghelperStatus.ghelperInstalled !== false) && (
                   <div className="topbar-ghelper-group" role="group" aria-label={t('topbar.ghelperGroup')}>
                     {(() => {
