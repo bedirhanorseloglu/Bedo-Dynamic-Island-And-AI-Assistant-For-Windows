@@ -33,6 +33,12 @@ class BridgeUI:
 
         self.muted: bool = False
         self.system_mic_muted: bool = False
+        try:
+            _init_vol = float(os.environ.get("BEDO_SPEAKER_VOLUME", "1.0"))
+        except Exception:
+            _init_vol = 1.0
+        self.speaker_volume: float = max(0.0, min(1.0, _init_vol))
+        self.speaker_muted: bool = os.environ.get("BEDO_SPEAKER_MUTED", "0").strip().lower() in ("1", "true", "yes")
         self.paused: bool = False
         self.speaking: bool = False
         self.webcam_active: bool = False
@@ -225,6 +231,20 @@ class BridgeUI:
             if self.on_mute_change:
                 self.on_mute_change(self.is_effectively_muted())
             self.emit("system_mic_mute_state", system_mic_muted=self.system_mic_muted)
+            return True
+
+        if action == "set_speaker_volume":
+            try:
+                vol = float(cmd.get("volume", 1.0))
+            except Exception:
+                vol = 1.0
+            self.speaker_volume = max(0.0, min(1.0, vol))
+            self.emit("speaker_state", volume=round(self.speaker_volume, 3), muted=self.speaker_muted)
+            return True
+
+        if action == "set_speaker_muted":
+            self.speaker_muted = bool(cmd.get("muted", False))
+            self.emit("speaker_state", volume=round(self.speaker_volume, 3), muted=self.speaker_muted)
             return True
 
         if action == "set_paused":

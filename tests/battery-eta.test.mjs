@@ -172,3 +172,66 @@ test('readGHelperChargeLimit reads charge_limit and respects charge_full overrid
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+
+test('computes exact sensor-based discharging ETA when unplugged', () => {
+  const result = computeBatteryChargeEta(
+    {
+      instanceName: 'ACPI\\PNP0C0A\\0_0',
+      charging: false,
+      discharging: true,
+      chargeRateMw: 0,
+      dischargeRateMw: 15000,
+      remainingCapacityMwh: 39500,
+      fullChargedCapacityMwh: 73215,
+      percent: 54,
+    },
+    { targetPercent: 80 }
+  );
+
+  assert.equal(result.status, 'ok');
+  assert.equal(result.mode, 'discharging');
+  assert.equal(result.source, 'wmi');
+  assert.equal(result.dischargeRateW, 15);
+  assert.equal(result.chargeRateW, null);
+  assert.equal(result.percent, 54);
+  // 39500 / 15000 * 60 = 158 min
+  assert.equal(result.minutes, 158);
+});
+
+test('discharging at 85% with active 80% charge limit computes discharging ETA instead of limit-reached', () => {
+  const result = computeBatteryChargeEta(
+    {
+      instanceName: 'BAT0',
+      charging: false,
+      discharging: true,
+      dischargeRateMw: 12000,
+      remainingCapacityMwh: 62233,
+      fullChargedCapacityMwh: 73215,
+      percent: 85,
+    },
+    { targetPercent: 80 }
+  );
+
+  assert.equal(result.status, 'ok');
+  assert.equal(result.mode, 'discharging');
+  // 62233 / 12000 * 60 = 311.16 -> 311 min
+  assert.equal(result.minutes, 311);
+});
+
+test('falls back to Win32_Battery EstimatedRunTime when dischargeRateMw is unavailable', () => {
+  const result = computeBatteryChargeEta({
+    instanceName: 'BAT0',
+    charging: false,
+    discharging: true,
+    dischargeRateMw: 0,
+    remainingCapacityMwh: 30000,
+    fullChargedCapacityMwh: 60000,
+    percent: 50,
+    estimatedRunTimeMin: 135,
+  });
+
+  assert.equal(result.status, 'ok');
+  assert.equal(result.mode, 'discharging');
+  assert.equal(result.minutes, 135);
+  assert.equal(result.dischargeRateW, null);
+});

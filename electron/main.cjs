@@ -5810,6 +5810,16 @@ ipcMain.handle('bedo:start', async (_event, opts = {}) => {
     openaiApiKey: opts.openaiApiKey || userSettings.codexApiKey || process.env.OPENAI_API_KEY || '',
     anthropicApiKey: opts.anthropicApiKey || userSettings.claudeApiKey || process.env.ANTHROPIC_API_KEY || '',
     voice: opts.voice || userSettings.bedoVoice || 'Charon',
+    speakerVolume:
+      opts.speakerVolume !== undefined
+        ? Number(opts.speakerVolume)
+        : Number.isFinite(Number(userSettings.bedoSpeakerVolume))
+          ? Number(userSettings.bedoSpeakerVolume)
+          : 1,
+    speakerMuted:
+      opts.speakerMuted !== undefined
+        ? Boolean(opts.speakerMuted)
+        : Boolean(userSettings.bedoSpeakerMuted),
     startPaused: Boolean(opts.startPaused),
     enableWake: opts.enableWake !== undefined ? opts.enableWake !== false : userSettings.bedoEnableWake !== false,
     enableClap: Boolean(opts.enableClap),
@@ -5835,6 +5845,22 @@ ipcMain.handle('bedo:send-text', async (_event, text) => {
 ipcMain.handle('bedo:set-muted', async (_event, muted) => {
   const ok = getBedoService().setMuted(Boolean(muted));
   return { ok };
+});
+
+ipcMain.handle('bedo:set-speaker-volume', async (_event, volume) => {
+  const clamped = Math.max(0, Math.min(1, Number.isFinite(Number(volume)) ? Number(volume) : 1));
+  userSettings.bedoSpeakerVolume = clamped;
+  try { saveSettingsToDisk(userSettings); } catch {}
+  const ok = getBedoService().setSpeakerVolume(clamped);
+  return { ok, volume: clamped };
+});
+
+ipcMain.handle('bedo:set-speaker-muted', async (_event, muted) => {
+  const flag = Boolean(muted);
+  userSettings.bedoSpeakerMuted = flag;
+  try { saveSettingsToDisk(userSettings); } catch {}
+  const ok = getBedoService().setSpeakerMuted(flag);
+  return { ok, muted: flag };
 });
 
 ipcMain.handle('bedo:set-system-mic-muted', async (_event, muted) => {
@@ -5939,6 +5965,59 @@ ipcMain.handle('bedo:preview-voice', async (_event, opts = {}) => {
 
 let buddyOverlayWindow = null;
 
+function captureWindowsRegionFast(physRect) {
+  return new Promise((resolve) => {
+    const x = Math.round(physRect.x);
+    const y = Math.round(physRect.y);
+    const w = Math.max(10, Math.round(physRect.width));
+    const h = Math.max(10, Math.round(physRect.height));
+    const ps = [
+      'Add-Type -AssemblyName System.Drawing',
+      'Add-Type -MemberDefinition "[DllImport(\\"user32.dll\\")] public static extern bool SetProcessDPIAware();" -Name Win32Dpi -Namespace BedoBuddy',
+      '[void][BedoBuddy.Win32Dpi]::SetProcessDPIAware()',
+      `$bmp = New-Object System.Drawing.Bitmap(${w}, ${h})`,
+      '$g = [System.Drawing.Graphics]::FromImage($bmp)',
+      `$g.CopyFromScreen(${x}, ${y}, 0, 0, $bmp.Size, [System.Drawing.CopyPixelOperation]::SourceCopy)`,
+      '$g.Dispose()',
+      '$maxDim = 1600',
+      '$outBmp = $bmp',
+      'if ($bmp.Width -gt $maxDim -or $bmp.Height -gt $maxDim) {',
+      '  $sc = [Math]::Min($maxDim / $bmp.Width, $maxDim / $bmp.Height)',
+      '  $nw = [Math]::Max(1, [int][Math]::Round($bmp.Width * $sc))',
+      '  $nh = [Math]::Max(1, [int][Math]::Round($bmp.Height * $sc))',
+      '  $outBmp = New-Object System.Drawing.Bitmap($nw, $nh)',
+      '  $rg = [System.Drawing.Graphics]::FromImage($outBmp)',
+      '  $rg.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic',
+      '  $rg.DrawImage($bmp, 0, 0, $nw, $nh)',
+      '  $rg.Dispose()',
+      '  $bmp.Dispose()',
+      '}',
+      '$ms = New-Object System.IO.MemoryStream',
+      '$codec = [System.Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() | Where-Object { $_.MimeType -eq "image/jpeg" } | Select-Object -First 1',
+      '$ep = New-Object System.Drawing.Imaging.EncoderParameters(1)',
+      '$ep.Param[0] = New-Object System.Drawing.Imaging.EncoderParameter([System.Drawing.Imaging.Encoder]::Quality, [long]86)',
+      'if ($codec) { $outBmp.Save($ms, $codec, $ep) } else { $outBmp.Save($ms, [System.Drawing.Imaging.ImageFormat]::Jpeg) }',
+      '$outBmp.Dispose()',
+      '$b64 = [Convert]::ToBase64String($ms.ToArray())',
+      '$ms.Dispose()',
+      '[Console]::Out.Write($b64)',
+    ].join('\n');
+
+    execFile(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-Command', ps],
+      { windowsHide: true, timeout: 4000, maxBuffer: 12 * 1024 * 1024 },
+      (err, stdout) => {
+        if (err || !stdout || !stdout.trim()) {
+          resolve(null);
+          return;
+        }
+        resolve(`data:image/jpeg;base64,${stdout.trim()}`);
+      }
+    );
+  });
+}
+
 ipcMain.handle('bedo-buddy:start', async () => {
   if (buddyOverlayWindow && !buddyOverlayWindow.isDestroyed()) {
     buddyOverlayWindow.focus();
@@ -5971,10 +6050,10 @@ ipcMain.handle('bedo-buddy:start', async () => {
   buddyOverlayWindow.setAlwaysOnTop(true, 'screen-saver');
 
   const html = `<!doctype html><html><head><meta charset="utf-8"><style>
-    html,body{margin:0;width:100%;height:100%;overflow:hidden;background:rgba(6,9,18,0.16);cursor:none;user-select:none;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;}
-    .hint{position:fixed;top:18px;left:50%;transform:translateX(-50%);padding:8px 16px;border-radius:999px;background:rgba(12,15,24,0.86);border:1px solid rgba(255,255,255,0.2);color:#fff;font-size:12.5px;font-weight:600;backdrop-filter:blur(14px);box-shadow:0 8px 24px rgba(0,0,0,0.4);pointer-events:none;}
-    .sel{position:fixed;border:2px solid #38bdf8;background:rgba(56,189,248,0.14);border-radius:10px;display:none;pointer-events:none;box-shadow:0 0 0 9999px rgba(4,7,14,0.24);}
-    .orb{position:fixed;width:42px;height:28px;border-radius:16px 16px 8px 8px;background:rgba(14,18,28,0.92);border:1.5px solid rgba(255,255,255,0.35);display:flex;align-items:center;justify-content:center;gap:6px;transform:translate(-50%,-50%);pointer-events:none;box-shadow:0 8px 22px rgba(0,0,0,0.5);}
+    html,body{margin:0;width:100%;height:100%;overflow:hidden;background:rgba(6,9,18,0.14);cursor:none;user-select:none;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;}
+    .hint{position:fixed;top:18px;left:50%;transform:translateX(-50%);padding:8px 16px;border-radius:999px;background:rgba(12,15,24,0.9);border:1px solid rgba(255,255,255,0.2);color:#fff;font-size:12.5px;font-weight:600;box-shadow:0 8px 20px rgba(0,0,0,0.35);pointer-events:none;}
+    .sel{position:fixed;border:2px solid #38bdf8;background:rgba(56,189,248,0.14);border-radius:10px;display:none;pointer-events:none;box-shadow:0 0 0 1px rgba(56,189,248,0.35);}
+    .orb{position:fixed;left:0;top:0;width:42px;height:28px;border-radius:16px 16px 8px 8px;background:rgba(14,18,28,0.92);border:1.5px solid rgba(255,255,255,0.35);display:flex;align-items:center;justify-content:center;gap:6px;will-change:transform;pointer-events:none;box-shadow:0 6px 16px rgba(0,0,0,0.45);}
     .eye{width:5.5px;height:9px;border-radius:50%;background:${eyeHex};box-shadow:0 0 8px ${eyeHex};}
   </style></head><body>
     <div class="hint">Bedo Buddy: Ekranda bir yere tıklayın veya sürükleyip bölge seçin (Esc: İptal)</div>
@@ -5984,7 +6063,7 @@ ipcMain.handle('bedo-buddy:start', async () => {
       const orb=document.getElementById('orb'), sel=document.getElementById('sel');
       let start=null;
       window.addEventListener('mousemove',e=>{
-        orb.style.left=e.clientX+'px'; orb.style.top=e.clientY+'px';
+        orb.style.transform='translate3d('+(e.clientX-21)+'px,'+(e.clientY-14)+'px,0)';
         if(start){
           const x=Math.min(start.x,e.clientX), y=Math.min(start.y,e.clientY);
           const w=Math.abs(e.clientX-start.x), h=Math.abs(e.clientY-start.y);
@@ -6015,37 +6094,65 @@ ipcMain.handle('bedo-buddy:start', async () => {
   buddyOverlayWindow.on('page-title-updated', async (_ev, title) => {
     if (!buddyOverlayWindow || buddyOverlayWindow.isDestroyed()) return;
     if (title === 'BUDDY_CANCEL') {
-      buddyOverlayWindow.close();
+      const win = buddyOverlayWindow;
       buddyOverlayWindow = null;
+      win.hide();
+      setTimeout(() => { if (!win.isDestroyed()) win.destroy(); }, 30);
       return;
     }
     if (title.startsWith('BUDDY_PICK:')) {
       let box = null;
       try { box = JSON.parse(title.slice('BUDDY_PICK:'.length)); } catch {}
-      buddyOverlayWindow.close();
+      const win = buddyOverlayWindow;
       buddyOverlayWindow = null;
+      win.hide();
+      setTimeout(() => { if (!win.isDestroyed()) win.destroy(); }, 30);
       if (!box) return;
-      await new Promise((r) => setTimeout(r, 90));
+      await new Promise((r) => setTimeout(r, 45));
       try {
-        const sources = await desktopCapturer.getSources({
-          types: ['screen'],
-          thumbnailSize: {
-            width: Math.round(dw * scaleFactor),
-            height: Math.round(dh * scaleFactor),
-          },
-        });
-        const match =
-          sources.find((s) => String(s.display_id) === String(display.id)) || sources[0];
-        if (!match) return;
-        const cropRect = {
-          x: Math.max(0, Math.round(box.x * scaleFactor)),
-          y: Math.max(0, Math.round(box.y * scaleFactor)),
-          width: Math.max(10, Math.round(box.width * scaleFactor)),
-          height: Math.max(10, Math.round(box.height * scaleFactor)),
-        };
-        const cropped = match.thumbnail.crop(cropRect);
-        const imageDataUrl = cropped.toDataURL();
-        if (mainWindow && !mainWindow.isDestroyed()) {
+        let imageDataUrl = null;
+        if (process.platform === 'win32') {
+          const dipRect = {
+            x: Math.round(dx + box.x),
+            y: Math.round(dy + box.y),
+            width: Math.max(10, Math.round(box.width)),
+            height: Math.max(10, Math.round(box.height)),
+          };
+          const physRect = typeof screen.dipToScreenRect === 'function'
+            ? screen.dipToScreenRect(null, dipRect)
+            : {
+                x: Math.round(dipRect.x * scaleFactor),
+                y: Math.round(dipRect.y * scaleFactor),
+                width: Math.round(dipRect.width * scaleFactor),
+                height: Math.round(dipRect.height * scaleFactor),
+              };
+          imageDataUrl = await captureWindowsRegionFast(physRect);
+        }
+
+        if (!imageDataUrl) {
+          const capScale = Math.min(scaleFactor, 1920 / Math.max(dw, 1));
+          const sources = await desktopCapturer.getSources({
+            types: ['screen'],
+            thumbnailSize: {
+              width: Math.round(dw * capScale),
+              height: Math.round(dh * capScale),
+            },
+          });
+          const match =
+            sources.find((s) => String(s.display_id) === String(display.id)) || sources[0];
+          if (!match) return;
+          const cropRect = {
+            x: Math.max(0, Math.round(box.x * capScale)),
+            y: Math.max(0, Math.round(box.y * capScale)),
+            width: Math.max(10, Math.round(box.width * capScale)),
+            height: Math.max(10, Math.round(box.height * capScale)),
+          };
+          const cropped = match.thumbnail.crop(cropRect);
+          const jpgBuf = cropped.toJPEG(86);
+          imageDataUrl = `data:image/jpeg;base64,${jpgBuf.toString('base64')}`;
+        }
+
+        if (imageDataUrl && mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.show();
           mainWindow.webContents.send('buddy-captured', { imageDataUrl });
         }
@@ -6073,6 +6180,8 @@ ipcMain.handle('ask-robo-vision', async (_event, payload = {}) => {
     };
   }
   const dataUrl = String(payload.imageDataUrl || '');
+  const mimeMatch = dataUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,/);
+  const mimeType = mimeMatch ? mimeMatch[1] : 'image/png';
   const base64 = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
   if (!base64) return { ok: false, error: 'Görüntü verisi bulunamadı.' };
 
@@ -6090,7 +6199,7 @@ ipcMain.handle('ask-robo-vision', async (_event, payload = {}) => {
       {
         parts: [
           { text: prompt },
-          { inlineData: { mimeType: 'image/png', data: base64 } },
+          { inlineData: { mimeType, data: base64 } },
         ],
       },
     ],

@@ -1,6 +1,8 @@
-import React, { useMemo, useState } from 'react';
-import { Calendar, Check, ChevronLeft, ChevronRight, Plus, Trash2, X } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Calendar, Check, ChevronLeft, ChevronRight, Clock, Plus, Trash2, X } from 'lucide-react';
 import { useI18n } from './i18n';
+
+const HOUR_OFFSETS = [-2, -1, 0, 1, 2];
 
 function toLocalDateKey(date) {
   const year = date.getFullYear();
@@ -21,6 +23,87 @@ export default function AgendaCalendar({ events = [], onAddEvent, onDeleteEvent,
   const [isAdding, setIsAdding] = useState(false);
   const [eventTitle, setEventTitle] = useState('');
   const [eventTime, setEventTime] = useState(makeDefaultEventTime);
+  const [timePickerOpen, setTimePickerOpen] = useState(false);
+  const timePickerRef = useRef(null);
+  const hourColRef = useRef(null);
+  const minColRef = useRef(null);
+  const wheelAccumRef = useRef({ hour: 0, minute: 0, lastAt: 0 });
+
+  const [selectedHour, selectedMinute] = useMemo(() => {
+    const [h = '09', m = '00'] = String(eventTime || '09:00').split(':');
+    return [h.padStart(2, '0'), m.padStart(2, '0')];
+  }, [eventTime]);
+
+  const stepHour = (delta) => {
+    setEventTime((prev) => {
+      const [h = '09', m = '00'] = String(prev || '09:00').split(':');
+      const next = (Number(h) + delta + 24) % 24;
+      return `${String(next).padStart(2, '0')}:${m.padStart(2, '0')}`;
+    });
+  };
+
+  const stepMinute = (delta) => {
+    setEventTime((prev) => {
+      const [h = '09', m = '00'] = String(prev || '09:00').split(':');
+      const next = (Number(m) + delta + 60) % 60;
+      return `${h.padStart(2, '0')}:${String(next).padStart(2, '0')}`;
+    });
+  };
+
+  useEffect(() => {
+    if (!timePickerOpen) return undefined;
+    const handleOutside = (e) => {
+      if (timePickerRef.current && !timePickerRef.current.contains(e.target)) {
+        setTimePickerOpen(false);
+      }
+    };
+    const handleKey = (e) => {
+      if (e.key === 'Escape') setTimePickerOpen(false);
+    };
+    document.addEventListener('mousedown', handleOutside);
+    document.addEventListener('keydown', handleKey);
+
+    const makeWheelHandler = (kind, stepFn) => (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const dy = e.deltaY;
+      if (!dy) return;
+      const now = performance.now();
+      const acc = wheelAccumRef.current;
+      // Mouse wheel notches are typically >= 50px; trackpads send small deltas.
+      if (Math.abs(dy) >= 40) {
+        if (now - acc.lastAt < 45) return;
+        acc.lastAt = now;
+        acc[kind] = 0;
+        stepFn(dy > 0 ? 1 : -1);
+        return;
+      }
+      acc[kind] += dy;
+      if (Math.abs(acc[kind]) >= 28) {
+        const dir = acc[kind] > 0 ? 1 : -1;
+        acc[kind] = 0;
+        stepFn(dir);
+      }
+    };
+
+    const hEl = hourColRef.current;
+    const mEl = minColRef.current;
+    const onHourWheel = makeWheelHandler('hour', stepHour);
+    const onMinWheel = makeWheelHandler('minute', stepMinute);
+    hEl?.addEventListener('wheel', onHourWheel, { passive: false });
+    mEl?.addEventListener('wheel', onMinWheel, { passive: false });
+
+    return () => {
+      document.removeEventListener('mousedown', handleOutside);
+      document.removeEventListener('keydown', handleKey);
+      hEl?.removeEventListener('wheel', onHourWheel);
+      mEl?.removeEventListener('wheel', onMinWheel);
+    };
+  }, [timePickerOpen]);
+
+  useEffect(() => {
+    if (!isAdding) setTimePickerOpen(false);
+  }, [isAdding]);
 
   const todayKey = toLocalDateKey(new Date());
   const selectedDateObject = new Date(`${selectedDate}T12:00:00`);
@@ -122,9 +205,79 @@ export default function AgendaCalendar({ events = [], onAddEvent, onDeleteEvent,
           </div>
           {isAdding && (
             <form className="agenda-quick-add" onSubmit={addEvent}>
-              <input autoFocus value={eventTitle} onChange={(event) => setEventTitle(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') setIsAdding(false); }} placeholder={t('agenda.eventNamePlaceholder')} aria-label={t('agenda.eventNamePlaceholder')} />
-              <input type="time" value={eventTime} onChange={(event) => setEventTime(event.target.value)} aria-label={t('agenda.eventTimeAria')} />
-              <button type="submit" disabled={!eventTitle.trim()}><Check size={14} /> {t('agenda.add')}</button>
+              <input
+                autoFocus
+                value={eventTitle}
+                onChange={(event) => setEventTitle(event.target.value)}
+                onKeyDown={(event) => { if (event.key === 'Escape') setIsAdding(false); }}
+                placeholder={t('agenda.eventNamePlaceholder')}
+                aria-label={t('agenda.eventNamePlaceholder')}
+              />
+              <div className="agenda-time-picker-wrap" ref={timePickerRef}>
+                <button
+                  type="button"
+                  className={`agenda-time-trigger ${timePickerOpen ? 'is-open' : ''}`}
+                  onClick={() => setTimePickerOpen((v) => !v)}
+                  onWheel={(e) => {
+                    e.preventDefault();
+                    const total = Number(selectedHour) * 60 + Number(selectedMinute);
+                    const step = e.deltaY < 0 ? -1 : 1;
+                    const next = (total + step + 1440) % 1440;
+                    const nh = String(Math.floor(next / 60)).padStart(2, '0');
+                    const nm = String(next % 60).padStart(2, '0');
+                    setEventTime(`${nh}:${nm}`);
+                  }}
+                  aria-label={t('agenda.eventTimeAria')}
+                  aria-expanded={timePickerOpen}
+                >
+                  <span className="agenda-time-value">{selectedHour}:{selectedMinute}</span>
+                  <Clock size={12} strokeWidth={2} />
+                </button>
+                {timePickerOpen && (
+                  <div className="agenda-time-popover" role="dialog" aria-label={t('agenda.eventTimeAria')}>
+                    <div className="agenda-time-lens" aria-hidden="true" />
+                    <div className="agenda-time-col" ref={hourColRef}>
+                      {HOUR_OFFSETS.map((off) => {
+                        const val = (Number(selectedHour) + off + 24) % 24;
+                        const label = String(val).padStart(2, '0');
+                        return (
+                          <button
+                            key={off}
+                            type="button"
+                            className={`agenda-time-opt ${off === 0 ? 'is-selected' : Math.abs(off) === 2 ? 'is-far' : ''}`}
+                            onClick={() => setEventTime(`${label}:${selectedMinute}`)}
+                          >
+                            {label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <span className="agenda-time-col-sep" aria-hidden="true">:</span>
+                    <div className="agenda-time-col" ref={minColRef}>
+                      {HOUR_OFFSETS.map((off) => {
+                        const val = (Number(selectedMinute) + off + 60) % 60;
+                        const label = String(val).padStart(2, '0');
+                        return (
+                          <button
+                            key={off}
+                            type="button"
+                            className={`agenda-time-opt ${off === 0 ? 'is-selected' : Math.abs(off) === 2 ? 'is-far' : ''}`}
+                            onClick={() => {
+                              setEventTime(`${selectedHour}:${label}`);
+                              if (off === 0) setTimePickerOpen(false);
+                            }}
+                          >
+                            {label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+              <button type="submit" className="agenda-submit-btn" disabled={!eventTitle.trim()}>
+                <Check size={14} /> {t('agenda.add')}
+              </button>
             </form>
           )}
           <div className="agenda-event-list">

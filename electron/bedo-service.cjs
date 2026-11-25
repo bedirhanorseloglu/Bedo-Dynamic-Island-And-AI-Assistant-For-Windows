@@ -69,6 +69,8 @@ class BedoService extends EventEmitter {
       ready: false,
       jarvisState: 'INITIALISING',
       muted: false,
+      speakerVolume: 1,
+      speakerMuted: false,
       paused: false,
       webcamActive: false,
       wakeEnabled: true,
@@ -121,6 +123,17 @@ class BedoService extends EventEmitter {
     if (opts.voice) {
       env.BEDO_VOICE = String(opts.voice).trim();
     }
+    if (opts.speakerVolume !== undefined && Number.isFinite(Number(opts.speakerVolume))) {
+      const clampedVol = Math.max(0, Math.min(1, Number(opts.speakerVolume)));
+      this._state.speakerVolume = clampedVol;
+      env.BEDO_SPEAKER_VOLUME = String(clampedVol);
+    } else {
+      env.BEDO_SPEAKER_VOLUME = String(this._state.speakerVolume ?? 1);
+    }
+    if (opts.speakerMuted !== undefined) {
+      this._state.speakerMuted = Boolean(opts.speakerMuted);
+    }
+    env.BEDO_SPEAKER_MUTED = this._state.speakerMuted ? '1' : '0';
 
     this._stopping = false;
     this._lastStartOpts = { ...opts };
@@ -224,6 +237,13 @@ class BedoService extends EventEmitter {
         this._state.muted = Boolean(msg.muted);
         this.emit('status', this.getStatus());
         break;
+      case 'speaker_state':
+        if (Number.isFinite(Number(msg.volume))) {
+          this._state.speakerVolume = Math.max(0, Math.min(1, Number(msg.volume)));
+        }
+        this._state.speakerMuted = Boolean(msg.muted);
+        this.emit('status', this.getStatus());
+        break;
       case 'pause_state':
         this._state.paused = Boolean(msg.paused);
         this.emit('status', this.getStatus());
@@ -258,6 +278,19 @@ class BedoService extends EventEmitter {
 
   setMuted(muted) {
     return this.sendCommand({ cmd: 'set_muted', muted: Boolean(muted) });
+  }
+
+  setSpeakerVolume(volume) {
+    const clamped = Math.max(0, Math.min(1, Number.isFinite(Number(volume)) ? Number(volume) : 1));
+    this._state.speakerVolume = clamped;
+    this.emit('status', this.getStatus());
+    return this.sendCommand({ cmd: 'set_speaker_volume', volume: clamped });
+  }
+
+  setSpeakerMuted(muted) {
+    this._state.speakerMuted = Boolean(muted);
+    this.emit('status', this.getStatus());
+    return this.sendCommand({ cmd: 'set_speaker_muted', muted: this._state.speakerMuted });
   }
 
   setSystemMicMuted(muted) {

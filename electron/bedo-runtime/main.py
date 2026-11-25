@@ -189,7 +189,7 @@ FORMAT           = pyaudio.paInt16
 CHANNELS         = 1
 SEND_SAMPLE_RATE = 16000
 RECV_SAMPLE_RATE = 24000
-PLAYBACK_SPEED   = 1.15
+PLAYBACK_SPEED   = 1.16
 PLAYBACK_RATE    = RECV_SAMPLE_RATE
 CHUNK_SIZE       = 960  # 60ms @ 16kHz (RNNoise 160-örnek ve WebRTC VAD 480-örnek ile tam hizalı)
 pya              = pyaudio.PyAudio()
@@ -1004,6 +1004,26 @@ class JarvisLive:
             traceback.print_exc()
             raise
 
+    @staticmethod
+    def _apply_speaker_gain(pcm_bytes: bytes, volume: float, muted: bool) -> bytes:
+        if muted or volume <= 0.001 or not pcm_bytes:
+            return b""
+        if volume >= 0.999:
+            return pcm_bytes
+        try:
+            import numpy as _np
+            samples = _np.frombuffer(pcm_bytes, dtype=_np.int16).astype(_np.float32)
+            _np.clip(samples * volume, -32768.0, 32767.0, out=samples)
+            return samples.astype(_np.int16).tobytes()
+        except Exception:
+            import array as _array
+            arr = _array.array("h")
+            arr.frombytes(pcm_bytes)
+            for i in range(len(arr)):
+                v = int(arr[i] * volume)
+                arr[i] = 32767 if v > 32767 else (-32768 if v < -32768 else v)
+            return arr.tobytes()
+
     async def _play_audio(self):
         print("[JARVIS] 🔊 Ses çalma başladı")
         scaler = PitchPreservingTimeScaler(
@@ -1022,13 +1042,21 @@ class JarvisLive:
                     # turn_complete sentinel — kalan tamponu çal, dinlemeye geç
                     tail = scaler.flush()
                     if tail:
-                        await asyncio.to_thread(stream.write, tail)
+                        vol = float(getattr(self.ui, "speaker_volume", 1.0))
+                        spk_muted = bool(getattr(self.ui, "speaker_muted", False))
+                        out = self._apply_speaker_gain(tail, vol, spk_muted)
+                        if out:
+                            await asyncio.to_thread(stream.write, out)
                     self.set_speaking(False)
                     continue
                 self.set_speaking(True)
                 scaled = scaler.process(chunk)
                 if scaled:
-                    await asyncio.to_thread(stream.write, scaled)
+                    vol = float(getattr(self.ui, "speaker_volume", 1.0))
+                    spk_muted = bool(getattr(self.ui, "speaker_muted", False))
+                    out = self._apply_speaker_gain(scaled, vol, spk_muted)
+                    if out:
+                        await asyncio.to_thread(stream.write, out)
         except Exception as e:
             print(f"[JARVIS] ❌ Ses: {e}")
             raise

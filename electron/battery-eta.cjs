@@ -6,7 +6,8 @@ const MAX_VALID_U32 = 0x7fffffff; // Filter ACPI unknown sentinels (0x80000000, 
 const MIN_VALID_CHARGE_RATE_MW = 500; // 0.5 W minimum to ignore noise / trickle-off
 const MAX_VALID_CHARGE_RATE_MW = 500000; // 500 W upper sanity bound
 const MIN_ETA_MINUTES = 1;
-const MAX_ETA_MINUTES = 720; // 12 hours upper sanity bound
+const MAX_ETA_MINUTES = 720; // 12 hours upper sanity bound for charging
+const MAX_DISCHARGE_ETA_MINUTES = 1440; // 24 hours upper sanity bound for discharging
 const MIN_CHARGE_LIMIT_PCT = 40;
 const MAX_CHARGE_LIMIT_PCT = 100;
 
@@ -24,24 +25,32 @@ const WMI_QUERY_SCRIPT = [
   '  if ($s.InstanceName -and $fullMap.ContainsKey($s.InstanceName)) { $full = $fullMap[$s.InstanceName] }',
   '  elseif ($i -lt $bf.Count) { $full = [double]$bf[$i].FullChargedCapacity }',
   '  $pct = if ($i -lt $wb.Count) { [double]$wb[$i].EstimatedChargeRemaining } else { $null }',
+  '  $estRun = if ($i -lt $wb.Count) { [double]$wb[$i].EstimatedRunTime } else { $null }',
   '  $items += [PSCustomObject]@{',
   '    instanceName = [string]$s.InstanceName',
   '    charging = [bool]$s.Charging',
+  '    discharging = [bool]$s.Discharging',
   '    chargeRateMw = [double]$s.ChargeRate',
+  '    dischargeRateMw = [double]$s.DischargeRate',
   '    remainingCapacityMwh = [double]$s.RemainingCapacity',
   '    fullChargedCapacityMwh = $full',
   '    percent = $pct',
+  '    estimatedRunTimeMin = $estRun',
   '  }',
   '}',
   'if ($items.Count -eq 0 -and $wb.Count -gt 0) {',
   '  foreach ($b in $wb) {',
+  '    $isChg = ($b.BatteryStatus -eq 2 -or $b.BatteryStatus -eq 6 -or $b.BatteryStatus -eq 7 -or $b.BatteryStatus -eq 8 -or $b.BatteryStatus -eq 9)',
   '    $items += [PSCustomObject]@{',
   '      instanceName = [string]$b.DeviceID',
-  '      charging = ($b.BatteryStatus -eq 2 -or $b.BatteryStatus -eq 6 -or $b.BatteryStatus -eq 7 -or $b.BatteryStatus -eq 8 -or $b.BatteryStatus -eq 9)',
+  '      charging = $isChg',
+  '      discharging = (-not $isChg -and $b.BatteryStatus -eq 1)',
   '      chargeRateMw = 0',
+  '      dischargeRateMw = 0',
   '      remainingCapacityMwh = 0',
   '      fullChargedCapacityMwh = 0',
   '      percent = [double]$b.EstimatedChargeRemaining',
+  '      estimatedRunTimeMin = [double]$b.EstimatedRunTime',
   '    }',
   '  }',
   '}',
@@ -120,9 +129,11 @@ function computeBatteryChargeEta(batteries, options = {}) {
   if (list.length === 0) {
     return {
       status: 'unavailable',
+      mode: null,
       minutes: null,
       targetPercent,
       chargeRateW: null,
+      dischargeRateW: null,
       percent: null,
       source: 'none',
     };
@@ -131,20 +142,27 @@ function computeBatteryChargeEta(batteries, options = {}) {
   let totalFullMwh = 0;
   let totalRemainingMwh = 0;
   let totalChargeRateMw = 0;
+  let totalDischargeRateMw = 0;
   let anyCharging = false;
+  let anyDischarging = false;
   let validCapacityCount = 0;
   let fallbackPercentSum = 0;
   let fallbackPercentCount = 0;
+  let validEstRunTimeMin = null;
 
   for (const bat of list) {
     if (!bat || typeof bat !== 'object') continue;
     const isCharging = Boolean(bat.charging);
+    const isDischarging = !isCharging && Boolean(bat.discharging);
     if (isCharging) anyCharging = true;
+    if (isDischarging) anyDischarging = true;
 
     const full = Number(bat.fullChargedCapacityMwh);
     const rem = Number(bat.remainingCapacityMwh);
     const rate = Number(bat.chargeRateMw);
+    const dRate = Number(bat.dischargeRateMw);
     const pct = Number(bat.percent);
+    const estRun = Number(bat.estimatedRunTimeMin);
 
     if (Number.isFinite(pct) && pct >= 0 && pct <= 100) {
       fallbackPercentSum += pct;
@@ -160,6 +178,20 @@ function computeBatteryChargeEta(batteries, options = {}) {
     if (isCharging && isValidChargeRate(rate)) {
       totalChargeRateMw += rate;
     }
+
+    if (!isCharging && isValidChargeRate(dRate)) {
+      totalDischargeRateMw += dRate;
+    }
+
+    if (
+      !isCharging &&
+      Number.isFinite(estRun) &&
+      estRun >= MIN_ETA_MINUTES &&
+      estRun <= MAX_DISCHARGE_ETA_MINUTES
+    ) {
+      validEstRunTimeMin =
+        validEstRunTimeMin === null ? Math.round(estRun) : validEstRunTimeMin + Math.round(estRun);
+    }
   }
 
   const computedPercent =
@@ -170,13 +202,52 @@ function computeBatteryChargeEta(batteries, options = {}) {
         : null;
 
   const chargeRateW = totalChargeRateMw > 0 ? Math.round((totalChargeRateMw / 1000) * 10) / 10 : null;
+  const dischargeRateW = totalDischargeRateMw > 0 ? Math.round((totalDischargeRateMw / 1000) * 10) / 10 : null;
+
+  // Discharging path (not charging, active discharge rate or WMI runtime estimate)
+  if (!anyCharging && (anyDischarging || totalDischargeRateMw > 0 || validEstRunTimeMin !== null)) {
+    let minutes = null;
+    if (validCapacityCount > 0 && totalRemainingMwh > 0 && totalDischargeRateMw > 0) {
+      const computed = Math.round((totalRemainingMwh / totalDischargeRateMw) * 60);
+      if (Number.isFinite(computed) && computed >= MIN_ETA_MINUTES && computed <= MAX_DISCHARGE_ETA_MINUTES) {
+        minutes = computed;
+      }
+    }
+    if (minutes === null && validEstRunTimeMin !== null && validEstRunTimeMin <= MAX_DISCHARGE_ETA_MINUTES) {
+      minutes = validEstRunTimeMin;
+    }
+    if (minutes !== null) {
+      return {
+        status: 'ok',
+        mode: 'discharging',
+        minutes,
+        targetPercent: 0,
+        chargeRateW: null,
+        dischargeRateW,
+        percent: computedPercent,
+        source: 'wmi',
+      };
+    }
+    return {
+      status: 'unavailable',
+      mode: 'discharging',
+      minutes: null,
+      targetPercent: 0,
+      chargeRateW: null,
+      dischargeRateW,
+      percent: computedPercent,
+      source: 'none',
+    };
+  }
 
   if (computedPercent !== null && computedPercent >= 100) {
     return {
       status: 'full',
+      mode: 'charging',
       minutes: 0,
       targetPercent: 100,
       chargeRateW,
+      dischargeRateW: null,
       percent: 100,
       source: 'wmi',
     };
@@ -185,9 +256,11 @@ function computeBatteryChargeEta(batteries, options = {}) {
   if (computedPercent !== null && targetPercent < 100 && computedPercent >= targetPercent) {
     return {
       status: 'limit-reached',
+      mode: 'charging',
       minutes: 0,
       targetPercent,
       chargeRateW,
+      dischargeRateW: null,
       percent: computedPercent,
       source: 'wmi',
     };
@@ -196,9 +269,11 @@ function computeBatteryChargeEta(batteries, options = {}) {
   if (!anyCharging || validCapacityCount === 0 || totalFullMwh <= 0 || totalChargeRateMw <= 0) {
     return {
       status: 'unavailable',
+      mode: anyCharging ? 'charging' : null,
       minutes: null,
       targetPercent,
       chargeRateW,
+      dischargeRateW,
       percent: computedPercent,
       source: 'none',
     };
@@ -209,9 +284,11 @@ function computeBatteryChargeEta(batteries, options = {}) {
   if (missingMwh <= totalFullMwh * 0.005) {
     return {
       status: targetPercent < 100 ? 'limit-reached' : 'full',
+      mode: 'charging',
       minutes: 0,
       targetPercent,
       chargeRateW,
+      dischargeRateW: null,
       percent: computedPercent !== null ? computedPercent : targetPercent,
       source: 'wmi',
     };
@@ -222,9 +299,11 @@ function computeBatteryChargeEta(batteries, options = {}) {
   if (!Number.isFinite(minutes) || minutes < MIN_ETA_MINUTES || minutes > MAX_ETA_MINUTES) {
     return {
       status: 'unavailable',
+      mode: 'charging',
       minutes: null,
       targetPercent,
       chargeRateW,
+      dischargeRateW: null,
       percent: computedPercent,
       source: 'none',
     };
@@ -232,9 +311,11 @@ function computeBatteryChargeEta(batteries, options = {}) {
 
   return {
     status: 'ok',
+    mode: 'charging',
     minutes,
     targetPercent,
     chargeRateW,
+    dischargeRateW: null,
     percent: computedPercent,
     source: 'wmi',
   };

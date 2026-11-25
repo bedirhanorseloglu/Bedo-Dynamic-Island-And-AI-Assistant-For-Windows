@@ -4659,8 +4659,8 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
   transition: background 0.18s ease, color 0.18s ease;
 }
 
-.topbar-charge-pill-wrap.is-charging:hover .topbar-charge-pill,
-.topbar-charge-pill-wrap.is-charging:focus-within .topbar-charge-pill {
+.topbar-charge-pill-wrap:hover .topbar-charge-pill,
+.topbar-charge-pill-wrap:focus-within .topbar-charge-pill {
   background: rgba(255, 255, 255, 0.08);
 }
 
@@ -4764,8 +4764,16 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
 .topbar-charge-popover-fill {
   height: 100%;
   border-radius: 999px;
-  background: #30d158;
+  background: rgba(255, 255, 255, 0.86);
   transition: width 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.topbar-charge-pill-wrap.is-charging .topbar-charge-popover-fill {
+  background: #30d158;
+}
+
+.topbar-charge-pill-wrap.is-low .topbar-charge-popover-fill {
+  background: #ff453a;
 }
 
 .topbar-charge-popover-limit-tick {
@@ -8289,6 +8297,18 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
   object-fit: cover;
 }
 
+.note-att-chip.is-image-chip {
+  padding: 3px 6px 3px 3px;
+  border-radius: 10px;
+}
+
+.note-att-chip.is-image-chip .note-att-thumb {
+  width: 34px;
+  height: 24px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
 .note-att-emoji {
   display: inline-flex;
   align-items: center;
@@ -9103,7 +9123,7 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
   color-scheme: dark;
 }
 
-.agenda-quick-add button {
+.agenda-quick-add > button.agenda-submit-btn {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -9118,7 +9138,7 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
   cursor: pointer;
 }
 
-.agenda-quick-add button:disabled {
+.agenda-quick-add > button.agenda-submit-btn:disabled {
   opacity: .4;
   cursor: default;
 }
@@ -9621,32 +9641,268 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
 }
 
 .agenda-quick-add {
+  position: relative;
+  z-index: 40;
   gap: 7px;
-  padding: 7px;
-  border-color: rgba(163, 190, 217, 0.12);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.035);
+  padding: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 14px;
+  background: linear-gradient(155deg, rgba(255, 255, 255, 0.11) 0%, rgba(255, 255, 255, 0.03) 100%);
+  backdrop-filter: blur(20px) saturate(165%);
+  -webkit-backdrop-filter: blur(20px) saturate(165%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    0 10px 26px rgba(0, 0, 0, 0.32);
 }
 
 .agenda-quick-add input {
   height: 30px;
-  border-color: rgba(255, 255, 255, 0.08);
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.2);
-  font-size: 11px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.24);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.26);
+  color: #ffffff;
+  font-size: 11.5px;
+  transition: border-color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease;
 }
 
 .agenda-quick-add input:focus {
-  border-color: rgba(166, 198, 228, 0.38);
+  border-color: rgba(var(--music-accent-rgb, 110, 142, 185), 0.52);
+  background: rgba(0, 0, 0, 0.32);
+  box-shadow:
+    inset 0 1px 2px rgba(0, 0, 0, 0.28),
+    0 0 0 3px rgba(var(--music-accent-rgb, 110, 142, 185), 0.14);
 }
 
-.agenda-quick-add button {
+.agenda-time-picker-wrap {
+  position: relative;
+  width: 82px;
+}
+
+.agenda-quick-add .agenda-time-trigger {
+  width: 100%;
   height: 30px;
-  border: 1px solid rgba(179, 207, 232, 0.16);
+  padding: 0 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.055);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.94);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", var(--font-family-number, var(--font-family-ui));
+  font-size: 11.5px;
+  font-weight: 550;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  transition: border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+}
+
+.agenda-quick-add .agenda-time-trigger:hover,
+.agenda-quick-add .agenda-time-trigger.is-open {
+  border-color: rgba(255, 255, 255, 0.24);
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.agenda-quick-add .agenda-time-trigger svg {
+  color: rgba(255, 255, 255, 0.48);
+  flex-shrink: 0;
+}
+
+.agenda-time-popover {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  height: 98px;
+  padding: 0 8px;
+  border-radius: 16px;
+  background: rgba(16, 17, 22, 0.84);
+  backdrop-filter: blur(32px) saturate(200%);
+  -webkit-backdrop-filter: blur(32px) saturate(200%);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 20px 44px rgba(0, 0, 0, 0.62);
+  z-index: 1400;
+  overflow: hidden;
+}
+
+.agenda-time-lens {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  top: 50%;
+  height: 26px;
+  transform: translateY(-50%);
   border-radius: 8px;
-  color: #eaf2f9;
-  background: rgba(141, 185, 220, 0.17);
-  font-size: 10px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.13) 0%, rgba(255, 255, 255, 0.06) 100%);
+  border: 0.5px solid rgba(255, 255, 255, 0.16);
+  box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.24);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.agenda-time-col {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 100%;
+  padding: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.35) 16%, #000 38%, #000 62%, rgba(0, 0, 0, 0.35) 84%, transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.35) 16%, #000 38%, #000 62%, rgba(0, 0, 0, 0.35) 84%, transparent 100%);
+}
+
+.agenda-time-col-sep {
+  position: relative;
+  z-index: 2;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 12px;
+  font-weight: 600;
+  padding-bottom: 1px;
+  user-select: none;
+}
+
+.agenda-quick-add .agenda-time-opt {
+  width: 100%;
+  height: 22px;
+  flex: 0 0 22px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.44);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", var(--font-family-number, var(--font-family-ui));
+  font-size: 12px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  transition: color 0.12s ease, transform 0.12s ease;
+}
+
+.agenda-quick-add .agenda-time-opt.is-far {
+  opacity: 0.4;
+  font-size: 11px;
+}
+
+.agenda-quick-add .agenda-time-opt:hover {
+  background: transparent;
+  color: rgba(255, 255, 255, 0.84);
+}
+
+.agenda-quick-add .agenda-time-opt.is-selected {
+  background: transparent;
+  color: #ffffff;
+  font-size: 13.5px;
+  font-weight: 650;
+}
+
+.agenda-quick-add > button.agenda-submit-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 30px;
+  padding: 0 11px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 9px;
+  color: #ffffff;
+  background: linear-gradient(155deg, rgba(255, 255, 255, 0.18) 0%, rgba(255, 255, 255, 0.07) 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.26);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.16s ease, border-color 0.16s ease, transform 0.14s ease, opacity 0.14s ease;
+}
+
+.agenda-quick-add > button.agenda-submit-btn:hover:not(:disabled) {
+  background: linear-gradient(155deg, rgba(255, 255, 255, 0.26) 0%, rgba(255, 255, 255, 0.12) 100%);
+  border-color: rgba(255, 255, 255, 0.34);
+  transform: translateY(-0.5px);
+}
+
+.agenda-quick-add > button.agenda-submit-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* Liquid Glass surface refinement for Agenda cards, pills, and calendar cells */
+.agenda-tab-view .agenda-nav-btn,
+.agenda-tab-view .agenda-today-btn,
+.agenda-tab-view .agenda-day-month-pill {
+  background: linear-gradient(155deg, rgba(255, 255, 255, 0.11) 0%, rgba(255, 255, 255, 0.03) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+}
+
+.agenda-tab-view .agenda-plus-circle {
+  background: linear-gradient(145deg, rgba(var(--music-accent-rgb, 110, 142, 185), 0.32) 0%, rgba(var(--music-accent-rgb, 110, 142, 185), 0.14) 100%);
+  border: 1px solid rgba(var(--music-accent-rgb, 110, 142, 185), 0.42);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.24), 0 4px 12px rgba(0, 0, 0, 0.24);
+}
+
+.agenda-tab-view .agenda-plus-circle:hover {
+  background: linear-gradient(145deg, rgba(var(--music-accent-rgb, 110, 142, 185), 0.46) 0%, rgba(var(--music-accent-rgb, 110, 142, 185), 0.22) 100%);
+  border-color: rgba(var(--music-accent-rgb, 110, 142, 185), 0.6);
+}
+
+.agenda-tab-view .agenda-date-cell {
+  background: linear-gradient(155deg, rgba(255, 255, 255, 0.075) 0%, rgba(255, 255, 255, 0.02) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.agenda-tab-view .agenda-date-cell.selected,
+.agenda-tab-view .agenda-month-day.selected {
+  background: linear-gradient(145deg, rgba(var(--music-accent-rgb, 110, 142, 185), 0.32) 0%, rgba(var(--music-accent-rgb, 110, 142, 185), 0.12) 100%);
+  border-color: rgba(var(--music-accent-rgb, 110, 142, 185), 0.48);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.24), 0 4px 14px rgba(var(--music-accent-rgb, 110, 142, 185), 0.18);
+}
+
+.agenda-tab-view .agenda-month-day.today:not(.selected) {
+  border-color: rgba(var(--music-accent-rgb, 110, 142, 185), 0.28);
+  color: rgba(255, 255, 255, 0.92);
+  background: rgba(var(--music-accent-rgb, 110, 142, 185), 0.1);
+}
+
+.agenda-tab-view .agenda-date-cell i,
+.agenda-tab-view .agenda-month-day i,
+.agenda-tab-view .agenda-event-accent {
+  background: rgb(var(--music-accent-rgb, 110, 142, 185));
+}
+
+.agenda-tab-view .agenda-event-card {
+  background: linear-gradient(155deg, rgba(255, 255, 255, 0.09) 0%, rgba(255, 255, 255, 0.025) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16), 0 6px 18px rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(16px) saturate(150%);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+}
+
+.agenda-tab-view .agenda-empty-icon {
+  background: linear-gradient(155deg, rgba(255, 255, 255, 0.11) 0%, rgba(255, 255, 255, 0.03) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
 .agenda-month-grid {
@@ -15985,6 +16241,85 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
   color: #fca5a5;
 }
 
+.bedo-v2-speaker-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.bedo-v2-speaker-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: -24px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(22, 22, 26, 0.94);
+  backdrop-filter: blur(22px) saturate(180%);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.52), inset 0 0.5px 0 rgba(255, 255, 255, 0.14);
+  opacity: 0;
+  transform: translateY(-3px) scale(0.96);
+  pointer-events: none;
+  transition: opacity 0.15s ease, transform 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 1200;
+}
+
+.bedo-v2-speaker-popover::before {
+  content: "";
+  position: absolute;
+  top: -10px;
+  left: 0;
+  right: 0;
+  height: 10px;
+}
+
+.bedo-v2-speaker-wrap:hover .bedo-v2-speaker-popover,
+.bedo-v2-speaker-wrap:focus-within .bedo-v2-speaker-popover {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+.bedo-v2-speaker-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 78px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  outline: none;
+  cursor: pointer;
+}
+
+.bedo-v2-speaker-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+  transition: transform 0.12s ease;
+}
+
+.bedo-v2-speaker-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.14);
+}
+
+.bedo-v2-speaker-pct {
+  min-width: 28px;
+  text-align: right;
+  font-size: 10.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.78);
+}
+
 .bedo-v2-body {
   flex: 1 1 0;
   min-height: 0;
@@ -16175,6 +16510,91 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
   background: rgba(239, 68, 68, 0.72);
   border-color: rgba(252, 165, 165, 0.4);
   color: #ffffff;
+}
+
+.bedo-v2-composer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  flex-shrink: 0;
+}
+
+.bedo-v2-composer.is-centered {
+  max-width: 390px;
+}
+
+.bedo-v2-composer.is-top {
+  max-width: 100%;
+}
+
+.bedo-v2-buddy-preview {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 5px 8px 5px 6px;
+  border-radius: 13px;
+  background: linear-gradient(155deg, rgba(56, 189, 248, 0.12) 0%, rgba(255, 255, 255, 0.04) 100%);
+  border: 1px solid rgba(125, 211, 252, 0.26);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  box-sizing: border-box;
+}
+
+.bedo-v2-buddy-thumb {
+  width: 44px;
+  height: 28px;
+  border-radius: 7px;
+  object-fit: cover;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  flex-shrink: 0;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.bedo-v2-buddy-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1 1 0;
+  gap: 1px;
+}
+
+.bedo-v2-buddy-title {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.92);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bedo-v2-buddy-hint {
+  font-size: 10.5px;
+  color: rgba(255, 255, 255, 0.52);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bedo-v2-buddy-remove {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.72);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.14s ease, color 0.14s ease;
+}
+
+.bedo-v2-buddy-remove:hover {
+  background: rgba(239, 68, 68, 0.24);
+  color: #fca5a5;
 }
 
 .bedo-v2-input-bar {

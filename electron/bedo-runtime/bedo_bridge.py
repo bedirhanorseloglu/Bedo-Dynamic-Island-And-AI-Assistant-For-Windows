@@ -80,7 +80,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.start_paused:
         ui.paused = True
 
-    ui.emit("ready", dry_run=args.dry_run, paused=ui.paused, wake_enabled=not args.no_wake)
+    ui.emit(
+        "ready",
+        dry_run=args.dry_run,
+        paused=ui.paused,
+        wake_enabled=not args.no_wake,
+        speaker_volume=round(ui.speaker_volume, 3),
+        speaker_muted=ui.speaker_muted,
+    )
 
     if args.dry_run:
         _stdin_loop(ui)

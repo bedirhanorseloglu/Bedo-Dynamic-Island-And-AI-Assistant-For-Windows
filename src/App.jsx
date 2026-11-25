@@ -1378,11 +1378,14 @@ export default function App() {
     ready: false,
     jarvisState: 'INITIALISING',
     muted: false,
+    speakerVolume: 1,
+    speakerMuted: false,
     paused: true,
     webcamActive: false,
   });
   const [bedoWebcamFrame, setBedoWebcamFrame] = useState(null);
   const [bedoUserTranscript, setBedoUserTranscript] = useState('');
+  const [pendingBuddyImage, setPendingBuddyImage] = useState(null);
   const [bedoMicLevel, setBedoMicLevel] = useState(0);
   const [bedoThinkingHint, setBedoThinkingHint] = useState('');
   const bedoPausedMediaRef = useRef(false);
@@ -1905,6 +1908,7 @@ export default function App() {
   const [notePreviewAtt, setNotePreviewAtt] = useState(null);
   const [noteDragOver, setNoteDragOver] = useState(false);
   const noteFileInputRef = useRef(null);
+  const noteImageInputRef = useRef(null);
   const noteTextareaRef = useRef(null);
 
   useEffect(() => {
@@ -1984,20 +1988,36 @@ export default function App() {
   });
 
   const handleNoteFiles = (fileList) => {
-    const files = Array.from(fileList || []).slice(0, 4);
+    const files = Array.from(fileList || []).slice(0, 6);
     if (!files.length) return;
-    files.forEach(async (file) => {
+    files.forEach(async (file, idx) => {
       const filePath = window.twocode?.getPathForFile?.(file) || file.path || '';
-      const isImage = file.type.startsWith('image/') || /\.(png|jpe?g|webp|gif|bmp)$/i.test(file.name);
+      const isImage = file.type.startsWith('image/') || /\.(png|jpe?g|webp|gif|bmp)$/i.test(file.name || '');
+      const fallbackName = isImage
+        ? `${langCode === 'tr' ? 'Görsel' : 'Image'}-${new Date().toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' }).replace(':', '')}${idx ? `-${idx + 1}` : ''}.png`
+        : 'Dosya';
+      const name = file.name && file.name !== 'image.png' ? file.name : fallbackName;
       const thumb = isImage ? await buildImageThumbnail(file) : '';
       updateActiveNote((n) => ({
         ...n,
         attachments: [
           ...(n.attachments || []),
-          { id: `att_${Date.now()}_${Math.random()}`, name: file.name, path: filePath, isImage, thumb },
-        ].slice(-4),
+          { id: `att_${Date.now()}_${Math.random()}`, name, path: filePath, isImage, thumb },
+        ].slice(-6),
       }));
     });
+  };
+
+  const handleNotePaste = (e) => {
+    const items = Array.from(e.clipboardData?.items || []);
+    const imageFiles = items
+      .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
+      .map((item) => item.getAsFile())
+      .filter(Boolean);
+    if (imageFiles.length > 0) {
+      e.preventDefault();
+      handleNoteFiles(imageFiles);
+    }
   };
 
   const removeNoteAttachment = (attId) => {
@@ -2732,13 +2752,22 @@ export default function App() {
     };
 
     const getBrowserFallbackEta = (bat) => {
-      if (!bat || !bat.charging) return null;
+      if (!bat) return null;
       const pct = Math.round(bat.level * 100);
-      if (pct >= 100) return { status: 'full', minutes: 0, source: 'browser' };
-      if (Number.isFinite(bat.chargingTime) && bat.chargingTime > 0) {
-        const mins = Math.round(bat.chargingTime / 60);
-        if (mins >= 1 && mins <= 720) {
-          return { status: 'ok', minutes: mins, source: 'browser' };
+      if (bat.charging) {
+        if (pct >= 100) return { status: 'full', mode: 'charging', minutes: 0, source: 'browser' };
+        if (Number.isFinite(bat.chargingTime) && bat.chargingTime > 0) {
+          const mins = Math.round(bat.chargingTime / 60);
+          if (mins >= 1 && mins <= 720) {
+            return { status: 'ok', mode: 'charging', minutes: mins, source: 'browser' };
+          }
+        }
+        return null;
+      }
+      if (Number.isFinite(bat.dischargingTime) && bat.dischargingTime > 0) {
+        const mins = Math.round(bat.dischargingTime / 60);
+        if (mins >= 1 && mins <= 1440) {
+          return { status: 'ok', mode: 'discharging', minutes: mins, source: 'browser' };
         }
       }
       return null;
@@ -2748,10 +2777,14 @@ export default function App() {
 
     const refreshChargeEta = (bat, retryIndex = -1) => {
       clearEtaRetry();
+      const expectedCharging = Boolean(bat?.charging);
+      const expectedMode = expectedCharging ? 'charging' : 'discharging';
       const reqId = ++batteryEtaReqIdRef.current;
       const browserFallback = getBrowserFallbackEta(bat);
       if (browserFallback) {
-        setBatteryChargeEta((prev) => (prev?.source === 'wmi' ? prev : browserFallback));
+        setBatteryChargeEta((prev) =>
+          prev?.source === 'wmi' && prev?.mode === expectedMode ? prev : browserFallback
+        );
       }
 
       const fetchEta = window.twocode?.getBatteryChargeEta;
@@ -2762,8 +2795,9 @@ export default function App() {
 
       fetchEta({ force: true })
         .then((res) => {
-          if (isDisposed || reqId !== batteryEtaReqIdRef.current || !bat?.charging) return;
-          if (res && (res.status === 'ok' || res.status === 'full' || res.status === 'limit-reached')) {
+          if (isDisposed || reqId !== batteryEtaReqIdRef.current || Boolean(bat?.charging) !== expectedCharging) return;
+          const resMatchesMode = !res?.mode || res.mode === expectedMode;
+          if (res && resMatchesMode && (res.status === 'ok' || (expectedCharging && (res.status === 'full' || res.status === 'limit-reached')))) {
             setBatteryChargeEta(res);
             return;
           }
@@ -2771,7 +2805,7 @@ export default function App() {
             const delay = RAMP_RETRY_DELAYS_MS[retryIndex];
             etaRetryTimer = setTimeout(() => {
               etaRetryTimer = null;
-              if (!isDisposed && bat?.charging) {
+              if (!isDisposed && Boolean(bat?.charging) === expectedCharging) {
                 refreshChargeEta(bat, retryIndex + 1);
               }
             }, delay);
@@ -2781,7 +2815,7 @@ export default function App() {
           }
         })
         .catch(() => {
-          if (isDisposed || reqId !== batteryEtaReqIdRef.current || !bat?.charging) return;
+          if (isDisposed || reqId !== batteryEtaReqIdRef.current || Boolean(bat?.charging) !== expectedCharging) return;
           const fallback = getBrowserFallbackEta(bat);
           if (fallback) setBatteryChargeEta(fallback);
         });
@@ -2842,11 +2876,13 @@ export default function App() {
         hasShown20AlertRef.current = false;
         return;
       }
-      clearEtaRetry();
-      batteryEtaReqIdRef.current += 1;
-      setBatteryChargeEta(null);
+      const justUnplugged = wasCharging === true;
+      if (justUnplugged) {
+        setBatteryChargeEta(null);
+      }
       setBatteryCharging(false);
       wasCharging = false;
+      refreshChargeEta(batteryObj, justUnplugged ? 0 : -1);
 
       if (nextPct > 20) {
         hasShown20AlertRef.current = false;
@@ -2859,11 +2895,14 @@ export default function App() {
       }
     };
 
-    const handleChargingTimeChange = () => {
-      if (!batteryObj || !batteryObj.charging) return;
+    const handleBatteryTimeChange = () => {
+      if (!batteryObj) return;
+      const expectedMode = batteryObj.charging ? 'charging' : 'discharging';
       const fallback = getBrowserFallbackEta(batteryObj);
       if (fallback) {
-        setBatteryChargeEta((prev) => (prev?.source === 'wmi' && prev?.status === 'ok' ? prev : fallback));
+        setBatteryChargeEta((prev) =>
+          prev?.source === 'wmi' && prev?.status === 'ok' && prev?.mode === expectedMode ? prev : fallback
+        );
       }
     };
 
@@ -2881,12 +2920,11 @@ export default function App() {
             setBatteryPercent(pct);
             previousBatteryLowRef.current = pct <= 20 && !wasCharging;
           }
-          if (wasCharging) {
-            refreshChargeEta(bat, -1);
-          }
+          refreshChargeEta(bat, -1);
           bat.addEventListener('levelchange', handleBatteryChange);
           bat.addEventListener('chargingchange', handleBatteryChange);
-          bat.addEventListener('chargingtimechange', handleChargingTimeChange);
+          bat.addEventListener('chargingtimechange', handleBatteryTimeChange);
+          bat.addEventListener('dischargingtimechange', handleBatteryTimeChange);
         })
         .catch(() => { });
     }
@@ -2896,24 +2934,27 @@ export default function App() {
       if (batteryObj) {
         batteryObj.removeEventListener('levelchange', handleBatteryChange);
         batteryObj.removeEventListener('chargingchange', handleBatteryChange);
-        batteryObj.removeEventListener('chargingtimechange', handleChargingTimeChange);
+        batteryObj.removeEventListener('chargingtimechange', handleBatteryTimeChange);
+        batteryObj.removeEventListener('dischargingtimechange', handleBatteryTimeChange);
       }
       if (batteryTimerRef.current) clearTimeout(batteryTimerRef.current);
     };
   }, []);
 
-  // Refresh live charging ETA only while expanded and charging (zero background cost when collapsed)
+  // Refresh live battery ETA (charging & discharging) only while expanded (zero background cost when collapsed)
   useEffect(() => {
-    if (islandMode !== 'expanded' || !batteryCharging) return undefined;
+    if (islandMode !== 'expanded') return undefined;
     const fetchEta = window.twocode?.getBatteryChargeEta;
     if (typeof fetchEta !== 'function') return undefined;
     let cancelled = false;
+    const expectedMode = batteryCharging ? 'charging' : 'discharging';
 
     const pull = () => {
       fetchEta({ force: true })
         .then((res) => {
           if (cancelled || !res) return;
-          if (res.status === 'ok' || res.status === 'full' || res.status === 'limit-reached') {
+          if (res.mode && res.mode !== expectedMode) return;
+          if (res.status === 'ok' || (batteryCharging && (res.status === 'full' || res.status === 'limit-reached'))) {
             setBatteryChargeEta(res);
           }
         })
@@ -3195,7 +3236,7 @@ export default function App() {
       }
     });
 
-    const unsubBuddy = window.twocode.onBedoBuddyCaptured?.(async (payload) => {
+    const unsubBuddy = window.twocode.onBedoBuddyCaptured?.((payload) => {
       if (!payload?.imageDataUrl) return;
       setShowMenu(false);
       setNotificationHistoryOpen(false);
@@ -3203,28 +3244,8 @@ export default function App() {
       setSelectedAiProvider('Bedo');
       setActiveTab('robo');
       setIslandMode('expanded');
-      setBedoUserTranscript('Ekrandan seçilen bölge');
-      setRoboReply(null);
-      setRoboLoading(true);
-      setRoboMood('thinking');
-      try {
-        const res = await window.twocode?.askRoboVision?.({ imageDataUrl: payload.imageDataUrl });
-        setRoboLoading(false);
-        if (res?.ok && res?.text) {
-          setRoboMood('happy');
-          triggerRoboReaction('success', 3, 1450);
-          playRoboSound('happy', islandSettingsRef.current?.soundEffects !== false);
-          setRoboReply(res.text);
-        } else {
-          setRoboMood('sad');
-          playRoboSound('sad', islandSettingsRef.current?.soundEffects !== false);
-          setRoboReply(res?.error || 'Ekran bölgesi analiz edilemedi.');
-        }
-      } catch (err) {
-        setRoboLoading(false);
-        setRoboMood('sad');
-        setRoboReply(err?.message || 'Ekran analizi başarısız oldu.');
-      }
+      setPendingBuddyImage(payload.imageDataUrl);
+      playRoboSound('tap', islandSettingsRef.current?.soundEffects !== false);
     });
 
     window.twocode.getAiHistory?.().then((hist) => {
@@ -3705,6 +3726,34 @@ export default function App() {
     return t('battery.powerConnected');
   }, [batteryPercent, batteryChargeEta, t]);
 
+  const batteryDischargingCompactEta = useMemo(() => {
+    if (batteryCharging) return null;
+    if (batteryChargeEta?.mode && batteryChargeEta.mode !== 'discharging') return null;
+    const mins = batteryChargeEta?.status === 'ok' ? Number(batteryChargeEta.minutes) : NaN;
+    if (!Number.isFinite(mins) || mins < 1) return null;
+    if (mins < 60) return t('battery.shortMinutes', { minutes: mins });
+    const hours = Math.floor(mins / 60);
+    const remMins = mins % 60;
+    if (remMins === 0) return t('battery.shortHours', { hours });
+    return t('battery.shortHoursMinutes', { hours, minutes: remMins });
+  }, [batteryCharging, batteryChargeEta, t]);
+
+  const batteryDischargingPopoverEta = useMemo(() => {
+    if (batteryCharging) return null;
+    if (batteryChargeEta?.mode && batteryChargeEta.mode !== 'discharging') {
+      return t('battery.onBattery');
+    }
+    const mins = batteryChargeEta?.status === 'ok' ? Number(batteryChargeEta.minutes) : NaN;
+    if (Number.isFinite(mins) && mins >= 1) {
+      if (mins < 60) return t('battery.remainingMinutes', { minutes: mins });
+      const hours = Math.floor(mins / 60);
+      const remMins = mins % 60;
+      if (remMins === 0) return t('battery.remainingHours', { hours });
+      return t('battery.remainingHoursMinutes', { hours, minutes: remMins });
+    }
+    return t('battery.onBattery');
+  }, [batteryCharging, batteryChargeEta, t]);
+
   const showBatteryPopup = () => {
     suppressPowerNotifToastUntilRef.current = Date.now() + 10000;
     if (notifTimerRef.current) {
@@ -3824,6 +3873,39 @@ export default function App() {
   const submitRoboPrompt = async (promptText, explicitMode) => {
     if (roboLoading) return;
     let q = (promptText ?? roboQuestion).trim();
+    if (pendingBuddyImage && selectedAiProvider === 'Bedo') {
+      const imageDataUrl = pendingBuddyImage;
+      setPendingBuddyImage(null);
+      setRoboQuestion('');
+      setBedoUserTranscript(q || (langCode === 'tr' ? 'Ekrandan seçilen bölge' : 'Selected screen region'));
+      setRoboReply(null);
+      setRoboLoading(true);
+      setRoboMood('thinking');
+      triggerRoboReaction('thinking', 3, 1800);
+      playRoboSound('curious', islandSettings.soundEffects !== false);
+      try {
+        const res = await window.twocode?.askRoboVision?.({
+          imageDataUrl,
+          question: q || undefined,
+        });
+        setRoboLoading(false);
+        if (res?.ok && res?.text) {
+          setRoboMood('happy');
+          triggerRoboReaction('success', 3, 1450);
+          playRoboSound('happy', islandSettingsRef.current?.soundEffects !== false);
+          setRoboReply(res.text);
+        } else {
+          setRoboMood('sad');
+          playRoboSound('sad', islandSettingsRef.current?.soundEffects !== false);
+          setRoboReply(res?.error || (langCode === 'tr' ? 'Ekran bölgesi analiz edilemedi.' : 'Could not analyze screen region.'));
+        }
+      } catch (err) {
+        setRoboLoading(false);
+        setRoboMood('sad');
+        setRoboReply(err?.message || (langCode === 'tr' ? 'Ekran analizi başarısız oldu.' : 'Screen analysis failed.'));
+      }
+      return;
+    }
     if (!q) {
       if (explicitMode && lastClipboardText) {
         q = lastClipboardText;
@@ -4394,7 +4476,7 @@ export default function App() {
                   </span>
                 </div>
                 <span className="battery-alert-sub">
-                  {batteryAlertKind === 'charging' ? batteryChargingSubtext : t('battery.plugCharger')}
+                  {batteryAlertKind === 'charging' ? t('battery.powerConnected') : t('battery.plugCharger')}
                 </span>
               </div>
 
@@ -4409,9 +4491,7 @@ export default function App() {
                     </div>
                   </div>
                   <span className="battery-mini-bar-label">
-                    {batteryAlertKind === 'charging'
-                      ? (batteryChargeEta?.chargeRateW >= 1 ? `${Math.round(batteryChargeEta.chargeRateW)}W` : t('battery.chargingPill'))
-                      : t('battery.criticalPill')}
+                    {batteryAlertKind === 'charging' ? t('battery.chargingPill') : t('battery.criticalPill')}
                   </span>
                 </div>
               </div>
@@ -4822,7 +4902,11 @@ export default function App() {
                       <button
                         type="button"
                         className="topbar-charge-pill"
-                        aria-label={batteryCharging ? `${batteryPercent}% · ${batteryChargingPopoverEta}` : `${batteryPercent}%`}
+                        aria-label={
+                          batteryCharging
+                            ? `${batteryPercent}% · ${batteryChargingPopoverEta}`
+                            : `${batteryPercent}% · ${batteryDischargingPopoverEta}`
+                        }
                       >
                         <svg className="topbar-charge-svg" width="17" height="10" viewBox="0 0 18 10" fill="none" aria-hidden="true">
                           <rect
@@ -4849,42 +4933,45 @@ export default function App() {
                             strokeLinecap="round"
                           />
                         </svg>
-                        <span className="topbar-charge-pct">
-                          {batteryCharging && batteryChargingCompactEta
-                            ? batteryChargingCompactEta
-                            : langCode === 'tr' ? `%${batteryPercent}` : `${batteryPercent}%`}
-                        </span>
+                        {(batteryCharging ? batteryChargingCompactEta : batteryDischargingCompactEta) && (
+                          <span className="topbar-charge-pct">
+                            {batteryCharging ? batteryChargingCompactEta : batteryDischargingCompactEta}
+                          </span>
+                        )}
                       </button>
 
-                      {batteryCharging && (
-                        <div className="topbar-charge-popover" role="status">
-                          <div className="topbar-charge-popover-head">
-                            <span className="topbar-charge-popover-pct">
-                              {langCode === 'tr' ? `%${batteryPercent}` : `${batteryPercent}%`}
+                      <div className="topbar-charge-popover" role="status">
+                        <div className="topbar-charge-popover-head">
+                          <span className="topbar-charge-popover-pct">
+                            {langCode === 'tr' ? `%${batteryPercent}` : `${batteryPercent}%`}
+                          </span>
+                          {batteryCharging && batteryChargeEta?.chargeRateW >= 1 && (
+                            <span className="topbar-charge-popover-watt">
+                              {batteryChargeEta.chargeRateW.toLocaleString(locale, { maximumFractionDigits: 1 })} W
                             </span>
-                            {batteryChargeEta?.chargeRateW >= 1 && (
-                              <span className="topbar-charge-popover-watt">
-                                {batteryChargeEta.chargeRateW.toLocaleString(locale, { maximumFractionDigits: 1 })} W
-                              </span>
-                            )}
-                          </div>
-                          <div className="topbar-charge-popover-bar">
-                            <div
-                              className="topbar-charge-popover-fill"
-                              style={{ width: `${Math.min(100, Math.max(4, batteryPercent))}%` }}
-                            />
-                            {Number(batteryChargeEta?.targetPercent) > 0 && Number(batteryChargeEta?.targetPercent) < 100 && (
-                              <span
-                                className="topbar-charge-popover-limit-tick"
-                                style={{ left: `${Number(batteryChargeEta.targetPercent)}%` }}
-                              />
-                            )}
-                          </div>
-                          <div className="topbar-charge-popover-foot">
-                            <span>{batteryChargingPopoverEta}</span>
-                          </div>
+                          )}
+                          {!batteryCharging && batteryChargeEta?.dischargeRateW >= 1 && (
+                            <span className="topbar-charge-popover-watt">
+                              {batteryChargeEta.dischargeRateW.toLocaleString(locale, { maximumFractionDigits: 1 })} W
+                            </span>
+                          )}
                         </div>
-                      )}
+                        <div className="topbar-charge-popover-bar">
+                          <div
+                            className="topbar-charge-popover-fill"
+                            style={{ width: `${Math.min(100, Math.max(4, batteryPercent))}%` }}
+                          />
+                          {batteryCharging && Number(batteryChargeEta?.targetPercent) > 0 && Number(batteryChargeEta?.targetPercent) < 100 && (
+                            <span
+                              className="topbar-charge-popover-limit-tick"
+                              style={{ left: `${Number(batteryChargeEta.targetPercent)}%` }}
+                            />
+                          )}
+                        </div>
+                        <div className="topbar-charge-popover-foot">
+                          <span>{batteryCharging ? batteryChargingPopoverEta : batteryDischargingPopoverEta}</span>
+                        </div>
+                      </div>
                     </div>
                   )}
                   {renderDateTop(now)}
@@ -6546,6 +6633,18 @@ export default function App() {
                       <BedoStage
                         status={bedoStatus}
                         systemMicMuted={systemMicMuted}
+                        speakerVolume={
+                          Number.isFinite(Number(bedoStatus.speakerVolume))
+                            ? Number(bedoStatus.speakerVolume)
+                            : Number.isFinite(Number(islandSettings.bedoSpeakerVolume))
+                              ? Number(islandSettings.bedoSpeakerVolume)
+                              : 1
+                        }
+                        speakerMuted={
+                          typeof bedoStatus.speakerMuted === 'boolean'
+                            ? bedoStatus.speakerMuted
+                            : Boolean(islandSettings.bedoSpeakerMuted)
+                        }
                         webcamFrame={bedoWebcamFrame}
                         micLevel={bedoMicLevel}
                         roboMood={roboMood}
@@ -6556,8 +6655,9 @@ export default function App() {
                         documentVisible={documentVisible}
                         userTranscript={bedoUserTranscript}
                         reply={roboReply}
-                        loading={roboLoading && !bedoStatus.paused}
+                        loading={roboLoading}
                         question={roboQuestion}
+                        pendingBuddyImage={pendingBuddyImage}
                         hasApiKey={Boolean(
                           islandSettings.geminiApiKey?.trim() ||
                           islandSettings.codexApiKey?.trim() ||
@@ -6577,6 +6677,7 @@ export default function App() {
                         langCode={langCode}
                         onQuestionChange={setRoboQuestion}
                         onSubmit={() => submitRoboPrompt()}
+                        onClearBuddyImage={() => setPendingBuddyImage(null)}
                         onValidateApiKey={(provider, apiKey) =>
                           window.twocode?.validateApiKey?.({ provider, apiKey })
                         }
@@ -6612,6 +6713,17 @@ export default function App() {
                             return;
                           }
                           window.twocode?.bedoSetMuted?.(!bedoStatus.muted);
+                        }}
+                        onSpeakerVolumeChange={(vol) => {
+                          setBedoStatus((prev) => ({ ...prev, speakerVolume: vol }));
+                          setIslandSettings((prev) => ({ ...prev, bedoSpeakerVolume: vol }));
+                          window.twocode?.bedoSetSpeakerVolume?.(vol);
+                        }}
+                        onToggleSpeakerMute={(nextMuted) => {
+                          const flag = Boolean(nextMuted);
+                          setBedoStatus((prev) => ({ ...prev, speakerMuted: flag }));
+                          setIslandSettings((prev) => ({ ...prev, bedoSpeakerMuted: flag }));
+                          window.twocode?.bedoSetSpeakerMuted?.(flag);
                         }}
                         onTogglePause={() => window.twocode?.bedoSetPaused?.(!bedoStatus.paused)}
                         onToggleWebcam={() => window.twocode?.bedoSetWebcam?.(!bedoStatus.webcamActive)}
@@ -7009,6 +7121,17 @@ export default function App() {
                             e.target.value = '';
                           }}
                         />
+                        <input
+                          ref={noteImageInputRef}
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          className="note-hidden-file-input"
+                          onChange={(e) => {
+                            handleNoteFiles(e.target.files);
+                            e.target.value = '';
+                          }}
+                        />
 
                         <div className="note-glass-topbar">
                           <div className="note-glass-dots">
@@ -7042,7 +7165,22 @@ export default function App() {
                             <button
                               type="button"
                               className="note-glass-orb"
-                              onClick={() => noteFileInputRef.current?.click()}
+                              onClick={() => {
+                                suppressHoverCollapseUntilRef.current = Date.now() + 15000;
+                                noteImageInputRef.current?.click();
+                              }}
+                              title={t('notes.attachImage')}
+                              aria-label={t('notes.attachImage')}
+                            >
+                              <ImageIcon size={13} />
+                            </button>
+                            <button
+                              type="button"
+                              className="note-glass-orb"
+                              onClick={() => {
+                                suppressHoverCollapseUntilRef.current = Date.now() + 15000;
+                                noteFileInputRef.current?.click();
+                              }}
                               title={t('notes.attachFile')}
                               aria-label={t('notes.attachFile')}
                             >
@@ -7149,6 +7287,7 @@ export default function App() {
                               className="note-glass-textarea"
                               placeholder={t('notes.placeholder')}
                               value={activeNote?.text || ''}
+                              onPaste={handleNotePaste}
                               onChange={(e) => {
                                 const val = e.target.value;
                                 updateActiveNote((n) => ({ ...n, text: val }));
@@ -7160,7 +7299,7 @@ export default function App() {
                           {!notePreviewAtt && (activeNote?.attachments?.length || 0) > 0 && (
                             <div className="note-glass-attachments">
                               {activeNote.attachments.map((att) => (
-                                <div key={att.id} className="note-att-chip">
+                                <div key={att.id} className={`note-att-chip ${att.isImage && att.thumb ? 'is-image-chip' : ''}`}>
                                   <button
                                     type="button"
                                     className="note-att-open"

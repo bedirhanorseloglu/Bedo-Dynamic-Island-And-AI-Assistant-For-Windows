@@ -210,6 +210,8 @@ contextBridge.exposeInMainWorld('twocode', {
   },
   bedoSendText: (text) => ipcRenderer.invoke('bedo:send-text', text),
   bedoSetMuted: (muted) => ipcRenderer.invoke('bedo:set-muted', muted),
+  bedoSetSpeakerVolume: (volume) => ipcRenderer.invoke('bedo:set-speaker-volume', volume),
+  bedoSetSpeakerMuted: (muted) => ipcRenderer.invoke('bedo:set-speaker-muted', muted),
   bedoSetSystemMicMuted: (muted) => ipcRenderer.invoke('bedo:set-system-mic-muted', muted),
   bedoSetPaused: (paused) => ipcRenderer.invoke('bedo:set-paused', paused),
   bedoSetWebcam: (active) => ipcRenderer.invoke('bedo:set-webcam', active),

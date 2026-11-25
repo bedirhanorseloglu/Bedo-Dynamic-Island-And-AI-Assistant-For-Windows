@@ -15,6 +15,9 @@ import {
   Settings,
   Video,
   VideoOff,
+  Volume1,
+  Volume2,
+  VolumeX,
   X,
   Scan,
 } from 'lucide-react';
@@ -77,6 +80,8 @@ const SETUP_PROVIDERS = {
 export default function BedoStage({
   status,
   systemMicMuted = false,
+  speakerVolume = 1,
+  speakerMuted = false,
   webcamFrame,
   micLevel = 0,
   roboMood,
@@ -89,17 +94,21 @@ export default function BedoStage({
   reply,
   loading,
   question,
+  pendingBuddyImage = null,
   hasApiKey = true,
   activeProvider = null,
   pythonBootstrapStatus = null,
   langCode = 'tr',
   onQuestionChange,
   onSubmit,
+  onClearBuddyImage,
   onValidateApiKey,
   onSaveApiKey,
   onOpenApiKeyPage,
   onOpenSettings,
   onToggleMute,
+  onSpeakerVolumeChange,
+  onToggleSpeakerMute,
   onTogglePause,
   onToggleWebcam,
   onStartBuddy,
@@ -123,7 +132,14 @@ export default function BedoStage({
   const [keyError, setKeyError] = useState('');
   const prevPausedRef = useRef(paused);
   const replyScrollRef = useRef(null);
+  const inputRef = useRef(null);
   const autoScrollPinnedRef = useRef(true);
+
+  useEffect(() => {
+    if (pendingBuddyImage) {
+      setTimeout(() => inputRef.current?.focus?.(), 60);
+    }
+  }, [pendingBuddyImage]);
 
   useEffect(() => {
     autoScrollPinnedRef.current = true;
@@ -174,8 +190,12 @@ export default function BedoStage({
   }, [paused]);
 
   const isThinking = Boolean(loading || (!paused && running && jarvisState === 'THINKING'));
-  const hasContent = Boolean(webcamActive || isThinking || reply || userTranscript || question.trim());
+  const hasContent = Boolean(webcamActive || isThinking || reply || userTranscript || question.trim() || pendingBuddyImage);
   const isTop = !paused || inputFocused || hasContent;
+  const clampedSpeakerVol = Math.max(0, Math.min(1, Number.isFinite(Number(speakerVolume)) ? Number(speakerVolume) : 1));
+  const effectiveSpeakerMuted = Boolean(speakerMuted || clampedSpeakerVol <= 0.001);
+  const speakerVolPct = effectiveSpeakerMuted ? 0 : Math.round(clampedSpeakerVol * 100);
+  const canSendNow = !loading && Boolean(question.trim() || pendingBuddyImage);
 
   const auraMode = paused
     ? 'sleeping'
@@ -563,6 +583,63 @@ export default function BedoStage({
                 >
                   {webcamActive ? <Video size={13} /> : <VideoOff size={13} />}
                 </button>
+                <div
+                  className="bedo-v2-speaker-wrap"
+                  onWheel={(e) => {
+                    e.preventDefault();
+                    const step = e.deltaY < 0 ? 0.05 : -0.05;
+                    const base = effectiveSpeakerMuted ? 0 : clampedSpeakerVol;
+                    const next = Math.max(0, Math.min(1, Math.round((base + step) * 20) / 20));
+                    if (next > 0 && speakerMuted) onToggleSpeakerMute?.(false);
+                    onSpeakerVolumeChange?.(next);
+                  }}
+                >
+                  <button
+                    type="button"
+                    className={`bedo-v2-ctrl-btn ${effectiveSpeakerMuted ? 'is-danger' : ''}`}
+                    onClick={() => {
+                      if (effectiveSpeakerMuted && clampedSpeakerVol <= 0.001) {
+                        onSpeakerVolumeChange?.(0.7);
+                        onToggleSpeakerMute?.(false);
+                      } else {
+                        onToggleSpeakerMute?.(!speakerMuted);
+                      }
+                    }}
+                    aria-label={
+                      effectiveSpeakerMuted
+                        ? (langCode === 'tr' ? 'Bedo Sesini Aç' : 'Unmute Bedo Voice')
+                        : (langCode === 'tr' ? `Bedo Sesi: %${speakerVolPct}` : `Bedo Voice: ${speakerVolPct}%`)
+                    }
+                    data-no-tooltip="true"
+                  >
+                    {effectiveSpeakerMuted ? (
+                      <VolumeX size={13} />
+                    ) : clampedSpeakerVol < 0.5 ? (
+                      <Volume1 size={13} />
+                    ) : (
+                      <Volume2 size={13} />
+                    )}
+                  </button>
+                  <div className="bedo-v2-speaker-popover" onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      step="1"
+                      value={speakerVolPct}
+                      onChange={(e) => {
+                        const pct = Number(e.target.value);
+                        const vol = Math.max(0, Math.min(1, pct / 100));
+                        if (vol > 0 && speakerMuted) onToggleSpeakerMute?.(false);
+                        if (vol === 0 && !speakerMuted) onToggleSpeakerMute?.(true);
+                        onSpeakerVolumeChange?.(vol);
+                      }}
+                      className="bedo-v2-speaker-slider"
+                      aria-label={langCode === 'tr' ? 'Bedo Ses Düzeyi' : 'Bedo Voice Volume'}
+                    />
+                    <span className="bedo-v2-speaker-pct">{speakerVolPct}%</span>
+                  </div>
+                </div>
                 <button
                   type="button"
                   className={`bedo-v2-ctrl-btn ${effectiveMicMuted ? 'is-danger' : !paused ? 'is-live' : ''}`}
@@ -643,43 +720,83 @@ export default function BedoStage({
             )}
           </AnimatePresence>
 
-          {/* Alt Komut Çubuğu */}
-          <motion.div
-            layout
-            transition={LAYOUT_SPRING}
-            className={`bedo-v2-input-bar ${loading || jarvisState === 'THINKING' ? 'is-thinking' : ''} ${isTop ? 'is-top' : 'is-centered'}`}
-          >
-            <input
-              type="text"
-              placeholder={
-                loading
-                  ? (langCode === 'tr' ? 'Bedo yanıtlıyor...' : 'Bedo is replying...')
-                  : isTextOnlyMode
-                    ? activeProvider === 'openai'
-                      ? (langCode === 'tr' ? "GPT'ye yaz..." : 'Ask GPT...')
-                      : (langCode === 'tr' ? "Claude'a yaz..." : 'Ask Claude...')
-                    : (langCode === 'tr' ? "Bedo'ya konuş veya yaz..." : 'Talk or type to Bedo...')
-              }
-              value={question}
-              onFocus={() => {
-                setInputFocused(true);
-                if (paused) onTogglePause?.();
-              }}
-              onBlur={() => setInputFocused(false)}
-              onChange={(e) => onQuestionChange(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && !loading && onSubmit()}
-              aria-label="Bedo komutu"
-            />
-            <button
-              type="button"
-              className={`bedo-v2-send ${question.trim() && !loading ? 'is-ready' : ''}`}
-              onClick={onSubmit}
-              disabled={loading || !question.trim()}
-              aria-label="Gönder"
+          {/* Alt Komut Çubuğu (+ Bedo Buddy Önizleme) */}
+          <div className={`bedo-v2-composer ${isTop ? 'is-top' : 'is-centered'}`}>
+            <AnimatePresence>
+              {pendingBuddyImage && (
+                <motion.div
+                  key="buddy-attachment"
+                  className="bedo-v2-buddy-preview"
+                  initial={{ opacity: 0, y: 6, scale: 0.97 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 4, scale: 0.97 }}
+                  transition={{ duration: 0.16 }}
+                >
+                  <img
+                    src={pendingBuddyImage}
+                    alt={langCode === 'tr' ? 'Seçilen ekran görüntüsü' : 'Captured screen region'}
+                    className="bedo-v2-buddy-thumb"
+                  />
+                  <div className="bedo-v2-buddy-meta">
+                    <span className="bedo-v2-buddy-title">
+                      {langCode === 'tr' ? 'Ekran görüntüsü hazır' : 'Screenshot ready'}
+                    </span>
+                    <span className="bedo-v2-buddy-hint">
+                      {langCode === 'tr' ? 'İstersen not yaz, Enter ile gönder' : 'Add a note or press Enter to send'}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className="bedo-v2-buddy-remove"
+                    onClick={onClearBuddyImage}
+                    aria-label={langCode === 'tr' ? 'Görseli kaldır' : 'Remove image'}
+                  >
+                    <X size={12} strokeWidth={2.4} />
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <motion.div
+              layout
+              transition={LAYOUT_SPRING}
+              className={`bedo-v2-input-bar ${loading || jarvisState === 'THINKING' ? 'is-thinking' : ''} ${isTop ? 'is-top' : 'is-centered'}`}
             >
-              <ArrowUp size={14} strokeWidth={2.5} />
-            </button>
-          </motion.div>
+              <input
+                ref={inputRef}
+                type="text"
+                placeholder={
+                  loading
+                    ? (langCode === 'tr' ? 'Bedo yanıtlıyor...' : 'Bedo is replying...')
+                    : pendingBuddyImage
+                      ? (langCode === 'tr' ? 'Görselle ilgili sor veya direkt gönder...' : 'Ask about this capture or press Enter...')
+                      : isTextOnlyMode
+                        ? activeProvider === 'openai'
+                          ? (langCode === 'tr' ? "GPT'ye yaz..." : 'Ask GPT...')
+                          : (langCode === 'tr' ? "Claude'a yaz..." : 'Ask Claude...')
+                        : (langCode === 'tr' ? "Bedo'ya konuş veya yaz..." : 'Talk or type to Bedo...')
+                }
+                value={question}
+                onFocus={() => {
+                  setInputFocused(true);
+                  if (paused && !pendingBuddyImage) onTogglePause?.();
+                }}
+                onBlur={() => setInputFocused(false)}
+                onChange={(e) => onQuestionChange(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && canSendNow && onSubmit()}
+                aria-label="Bedo komutu"
+              />
+              <button
+                type="button"
+                className={`bedo-v2-send ${canSendNow ? 'is-ready' : ''}`}
+                onClick={onSubmit}
+                disabled={!canSendNow}
+                aria-label="Gönder"
+              >
+                <ArrowUp size={14} strokeWidth={2.5} />
+              </button>
+            </motion.div>
+          </div>
         </div>
       </motion.div>
     </LayoutGroup>
