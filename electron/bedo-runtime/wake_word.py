@@ -254,10 +254,12 @@ class WakeWordListener:
     @staticmethod
     def _transcribe_whisper(whisper_model, pcm_bytes: bytes) -> str:
         audio_f32 = np.frombuffer(pcm_bytes, dtype=np.int16).astype(np.float32) / 32768.0
+        peak_amp = float(np.max(np.abs(audio_f32))) if audio_f32.size > 0 else 0.0
+        if peak_amp < 0.025:
+            return ""
         segments, _ = whisper_model.transcribe(
             audio_f32,
             language="tr",
-            initial_prompt="Bedo.",
             beam_size=1,
             vad_filter=False,
             without_timestamps=True,
@@ -265,9 +267,9 @@ class WakeWordListener:
         )
         valid_texts: list[str] = []
         for seg in segments:
-            if getattr(seg, "no_speech_prob", 0.0) >= 0.50:
+            if getattr(seg, "no_speech_prob", 0.0) >= 0.38:
                 continue
-            if getattr(seg, "avg_logprob", 0.0) <= -1.05:
+            if getattr(seg, "avg_logprob", 0.0) <= -0.85:
                 continue
             t = (seg.text or "").strip()
             if t:
@@ -335,13 +337,14 @@ class WakeWordListener:
         _wake_log(f"_loop started: whisper={whisper_model is not None}, vosk={vosk_model is not None}")
 
         frame_bytes = 960  # 30ms @ 16kHz int16 mono
-        min_speech_bytes = int(0.20 * SAMPLE_RATE * 2)
-        early_peek_bytes = int(0.38 * SAMPLE_RATE * 2)
-        mid_peek_bytes = int(0.68 * SAMPLE_RATE * 2)
+        min_speech_bytes = int(0.24 * SAMPLE_RATE * 2)
+        early_peek_bytes = int(0.42 * SAMPLE_RATE * 2)
+        mid_peek_bytes = int(0.72 * SAMPLE_RATE * 2)
         max_speech_bytes = int(1.08 * SAMPLE_RATE * 2)
         overlap_bytes = int(0.38 * SAMPLE_RATE * 2)
         hangover_frames = 3  # 90ms sessizlik sonrası anında işle
-        min_voiced_frames = 4  # En az 120ms gerçek insan konuşması (klavye tıkırtılarını ele)
+        min_voiced_frames = 5  # En az 150ms gerçek insan konuşması (klavye tıkırtılarını ele)
+        startup_grace_until = time.monotonic() + 2.0
         denoiser = RealTimeSpeechDenoiser(sample_rate=SAMPLE_RATE) if (whisper_model is not None and RealTimeSpeechDenoiser is not None) else None
         pa = pyaudio.PyAudio()
 
@@ -386,7 +389,7 @@ class WakeWordListener:
                 while self._running and not self._paused.is_set():
                     data = stream.read(read_frames, exception_on_overflow=False)
                     rms_val = audioop.rms(data, 2)
-                    if rms_val == 0:
+                    if rms_val == 0 or time.monotonic() < startup_grace_until:
                         continue
                     if not logged_first_audio:
                         logged_first_audio = True
@@ -397,7 +400,7 @@ class WakeWordListener:
                             raw_frame = bytes(residual[:frame_bytes])
                             del residual[:frame_bytes]
                             # Çok düşük enerjili ortam gürültüsünde RNNoise/Whisper çalıştırmadan pre-roll güncelle
-                            if not active_speech and rms_val < 90:
+                            if not active_speech and rms_val < 160:
                                 pre_roll.append(raw_frame)
                                 continue
                             clean_frame = raw_frame

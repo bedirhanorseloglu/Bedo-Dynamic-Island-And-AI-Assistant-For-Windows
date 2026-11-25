@@ -116,6 +116,7 @@ contextBridge.exposeInMainWorld('twocode', {
   captureScreen: () => ipcRenderer.invoke('capture-screen'),
   getSystemStats: () => ipcRenderer.invoke('get-system-stats'),
   getPerfMetrics: () => ipcRenderer.invoke('get-perf-metrics'),
+  getBatteryChargeEta: (opts) => ipcRenderer.invoke('get-battery-charge-eta', opts),
   openTaskMgrPerf: (section) => ipcRenderer.invoke('open-taskmgr-perf', section),
   focusAgentWindow: (payload) => ipcRenderer.invoke('focus-agent-window', payload),
   getDroppedFilePaths: (files) => {

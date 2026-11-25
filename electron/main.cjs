@@ -36,6 +36,7 @@ const { createPerfMonitor } = require('./perf-monitor.cjs');
 const { BedoService } = require('./bedo-service.cjs');
 const { ensurePythonRuntimeBackground, getAvailablePythonExe, getPythonBootstrapStatus } = require('./python-bootstrap.cjs');
 const { isKickStream, fetchKickStreamerCover } = require('./kick-cover.cjs');
+const { queryWindowsBatteryEta } = require('./battery-eta.cjs');
 const perfMonitor = createPerfMonitor();
 let bedoService = null;
 
@@ -728,10 +729,10 @@ function saveSettingsToDisk(nextSettings) {
           openaiApiKey: userSettings.codexApiKey || process.env.OPENAI_API_KEY || '',
           anthropicApiKey: userSettings.claudeApiKey || process.env.ANTHROPIC_API_KEY || '',
           voice: userSettings.bedoVoice || 'Charon',
-          startPaused: false,
+          startPaused: true,
           enableWake: userSettings.bedoEnableWake !== false,
           enableClap: false,
-        }).catch(() => {});
+        });
       }
     } catch {}
   }
@@ -2589,6 +2590,11 @@ function startSystemWatcher() {
             }
             if (!isGameOptHudAllowed()) continue;
             if (gameModeActive) showWindowForGameModeOverlay();
+            const toastLaunch = lookupWindowsToastLaunchPayload({
+              id: ev.id,
+              appId: ev.appId || '',
+              title: ev.title || '',
+            });
             mainWindow.webContents.send('windows-notification', {
               id: ev.id,
               app: isEmail ? 'Gmail' : ev.app || 'Windows',
@@ -2599,6 +2605,7 @@ function startSystemWatcher() {
               notificationKind: ev.notificationKind || '',
               callKind: ev.callKind || '',
               targetUrl: ev.targetUrl || '',
+              toastLaunch: toastLaunch || '',
               title: ev.title || ev.app || 'Notification',
               body: ev.body || '',
             });
@@ -2762,6 +2769,10 @@ app.whenReady().then(() => {
     });
   } catch {}
   loadSettingsFromDisk();
+  try {
+    const readyPy = getAvailablePythonExe(app.getPath('userData'));
+    if (readyPy) process.env.BEDO_BOOTSTRAP_PYTHON = readyPy;
+  } catch {}
   ensureDesktopShortcutOnce();
   setupAutoUpdater();
   applyStartWithWindows(userSettings.startWithWindows !== false);
@@ -2783,7 +2794,11 @@ app.whenReady().then(() => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('python-bootstrap-status', status);
       }
-      if (status?.state === 'ready' && String(userSettings.geminiApiKey || '').trim()) {
+      if (
+        status?.state === 'ready' &&
+        userSettings.bedoAutoStart !== false &&
+        String(userSettings.geminiApiKey || '').trim()
+      ) {
         try {
           const svc = getBedoService();
           if (!svc.getStatus().running) {
@@ -2792,10 +2807,10 @@ app.whenReady().then(() => {
               openaiApiKey: userSettings.codexApiKey || process.env.OPENAI_API_KEY || '',
               anthropicApiKey: userSettings.claudeApiKey || process.env.ANTHROPIC_API_KEY || '',
               voice: userSettings.bedoVoice || 'Charon',
-              startPaused: false,
+              startPaused: true,
               enableWake: userSettings.bedoEnableWake !== false,
               enableClap: false,
-            }).catch(() => {});
+            });
           }
         } catch {}
       }
@@ -3674,6 +3689,132 @@ ipcMain.handle('get-installed-apps', async (_event, opts = {}) => {
   }
 });
 
+function decodeXmlAttrEntities(raw) {
+  if (!raw) return '';
+  return String(raw)
+    .replace(/&#x([0-9a-fA-F]+);/g, (_m, hex) => String.fromCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_m, dec) => String.fromCodePoint(parseInt(dec, 10)))
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+}
+
+function extractToastLaunchFromXml(xmlText) {
+  if (!xmlText || typeof xmlText !== 'string') return '';
+  const m = xmlText.match(/<toast\b[^>]*?\blaunch\s*=\s*(?:"([^"]*)"|'([^']*)')/i);
+  if (!m) return '';
+  return decodeXmlAttrEntities(m[1] !== undefined ? m[1] : m[2]);
+}
+
+function lookupWindowsToastLaunchPayload({ id, appId, title } = {}) {
+  if (process.platform !== 'win32') return '';
+  let DatabaseSync;
+  try {
+    ({ DatabaseSync } = require('node:sqlite'));
+  } catch {
+    return '';
+  }
+  const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+  const srcDb = path.join(localAppData, 'Microsoft', 'Windows', 'Notifications', 'wpndatabase.db');
+  if (!fs.existsSync(srcDb)) return '';
+
+  const tmpBase = path.join(os.tmpdir(), `tc_wpn_${process.pid}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.db`);
+  let db = null;
+  try {
+    fs.copyFileSync(srcDb, tmpBase);
+    for (const ext of ['-wal', '-shm']) {
+      if (fs.existsSync(srcDb + ext)) {
+        try { fs.copyFileSync(srcDb + ext, tmpBase + ext); } catch {}
+      }
+    }
+    db = new DatabaseSync(tmpBase, { open: true });
+    const decodePayload = (val) => {
+      if (!val) return '';
+      if (typeof val === 'string') return val;
+      if (Buffer.isBuffer(val) || val instanceof Uint8Array) {
+        return Buffer.from(val).toString('utf8');
+      }
+      return String(val);
+    };
+
+    const numericId = /^\d+$/.test(String(id || '').trim()) ? Number(String(id).trim()) : null;
+    if (numericId !== null && Number.isSafeInteger(numericId)) {
+      const row = db.prepare('SELECT Payload FROM Notification WHERE Id = ? LIMIT 1').get(numericId);
+      const launch = extractToastLaunchFromXml(decodePayload(row?.Payload));
+      if (launch) return launch;
+    }
+
+    const cleanAppId = String(appId || '').trim();
+    if (cleanAppId) {
+      const rows = db
+        .prepare(
+          'SELECT n.Payload FROM Notification n JOIN NotificationHandler h ON n.HandlerId = h.RecordId WHERE LOWER(h.PrimaryId) = LOWER(?) ORDER BY n.Id DESC LIMIT 20'
+        )
+        .all(cleanAppId);
+      const cleanTitle = String(title || '').trim().toLowerCase();
+      let firstLaunch = '';
+      for (const r of rows) {
+        const xml = decodePayload(r?.Payload);
+        const launch = extractToastLaunchFromXml(xml);
+        if (!launch) continue;
+        if (!firstLaunch) firstLaunch = launch;
+        if (cleanTitle && xml.toLowerCase().includes(cleanTitle)) {
+          return launch;
+        }
+      }
+      if (firstLaunch) return firstLaunch;
+    }
+  } catch {
+    return '';
+  } finally {
+    try { db?.close(); } catch {}
+    for (const ext of ['', '-wal', '-shm', '-journal']) {
+      try { if (fs.existsSync(tmpBase + ext)) fs.unlinkSync(tmpBase + ext); } catch {}
+    }
+  }
+  return '';
+}
+
+function resolveToastActivatorClsid(appId) {
+  const lower = String(appId || '').trim().toLowerCase();
+  if (!lower) return '';
+  try {
+    const shortcuts = getStartMenuShortcuts();
+    const match = shortcuts.find((s) => s.appIdLower === lower && s.toastActivatorClsid);
+    return match ? match.toastActivatorClsid : '';
+  } catch {
+    return '';
+  }
+}
+
+function runPowerShellJsonScript(scriptName, namedParams = {}, timeoutMs = 6000) {
+  const scriptPath = resolveScriptPath(scriptName);
+  const cliArgs = [];
+  for (const [key, val] of Object.entries(namedParams)) {
+    const str = val !== undefined && val !== null ? String(val) : '';
+    if (str.length > 0) {
+      cliArgs.push(`-${key}`, str);
+    }
+  }
+  return new Promise((resolve) => {
+    execFile(
+      'powershell.exe',
+      ['-WindowStyle', 'Hidden', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', scriptPath, ...cliArgs],
+      { windowsHide: true, timeout: timeoutMs },
+      (_err, stdout) => {
+        try {
+          const lastLine = String(stdout || '').trim().split(/\r?\n/).filter(Boolean).pop();
+          resolve(lastLine ? JSON.parse(lastLine) : { ok: false });
+        } catch {
+          resolve({ ok: false });
+        }
+      }
+    );
+  });
+}
+
 ipcMain.handle('open-notification-target', async (_event, target = {}) => {
   try {
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -3685,7 +3826,44 @@ ipcMain.handle('open-notification-target', async (_event, target = {}) => {
       await shell.openExternal(parsed.toString());
       return true;
     }
+
     const cleanAppId = typeof target.appId === 'string' ? target.appId.trim() : '';
+    const appName = typeof target.app === 'string' ? target.app.trim() : '';
+    const notifTitle = typeof target.title === 'string' ? target.title.trim() : '';
+    const notifBody = typeof target.body === 'string' ? target.body.trim() : '';
+    const notifId = target.id !== undefined && target.id !== null ? String(target.id).trim() : '';
+    const isBrowserApp =
+      /^(chrome|msedge|microsoftedge|brave|comet|firefox|opera|vivaldi|arc|zen|thorium|chromium|waterfox|librewolf|floorp)(\.|$)/i.test(cleanAppId) ||
+      /\b(chrome|edge|brave|comet|firefox|opera|vivaldi|arc|zen)\b/i.test(appName);
+
+    // 1. Native Windows Action Center COM activation (switches directly to the exact open browser tab / notification context)
+    if (cleanAppId && !/[\r\n\0"<>|&^;]/.test(cleanAppId)) {
+      const invokedArgs =
+        (typeof target.toastLaunch === 'string' && target.toastLaunch) ||
+        lookupWindowsToastLaunchPayload({ id: notifId, appId: cleanAppId, title: notifTitle });
+      const clsid = resolveToastActivatorClsid(cleanAppId);
+      if (invokedArgs || (clsid && !isBrowserApp)) {
+        const comRes = await runPowerShellJsonScript('win-activate-notification.ps1', {
+          Clsid: clsid,
+          AppId: cleanAppId,
+          InvokedArgs: invokedArgs || '',
+        });
+        if (comRes?.ok) return true;
+      }
+    }
+
+    // 2. Focus already-open window / matching tab instead of spawning a duplicate blank browser window
+    const focusSource = cleanAppId || appName;
+    if (focusSource) {
+      const focusRes = await runPowerShellJsonScript('win-focus-media.ps1', {
+        SourceApp: focusSource,
+        Title: notifTitle,
+        Artist: notifBody,
+      });
+      if (focusRes?.ok) return true;
+    }
+
+    // 3. Last resort: launch app via shell:AppsFolder when not currently open
     if (cleanAppId && !/[\r\n\0"<>|&^;]/.test(cleanAppId)) {
       const child = spawn('explorer.exe', [`shell:AppsFolder\\${cleanAppId}`], {
         detached: true,
@@ -3914,6 +4092,7 @@ ipcMain.handle('get-system-stats', async () => {
 });
 
 ipcMain.handle('get-perf-metrics', async () => perfMonitor.getSnapshot());
+ipcMain.handle('get-battery-charge-eta', async (_event, opts = {}) => queryWindowsBatteryEta(opts));
 
 ipcMain.handle('open-taskmgr-perf', async (_event, section = 'cpu') => {
   const scriptPath = resolveScriptPath('open-taskmgr-perf.ps1');
@@ -4553,14 +4732,51 @@ ipcMain.handle('test-agenda-notif', async () => {
   return true;
 });
 
-ipcMain.handle('get-file-icon', async (_event, filePath) => {
+async function extractNativePathIconDataUri(rawPath) {
   try {
-    if (!filePath || !fs.existsSync(filePath)) return null;
-    const icon = await app.getFileIcon(filePath, { size: 'normal' });
-    return icon ? icon.toDataURL() : null;
+    if (!rawPath || !fs.existsSync(rawPath)) return null;
+    let iconSourcePath = rawPath;
+    if (/\.lnk$/i.test(rawPath)) {
+      let resolvedTarget = '';
+      try {
+        const sl = shell.readShortcutLink(rawPath);
+        const cleanIconPath = String(sl?.icon || '')
+          .trim()
+          .replace(/,\s*-?\d+\s*$/, '')
+          .replace(/^"(.*)"$/, '$1');
+        const cleanTargetPath = String(sl?.target || '')
+          .trim()
+          .replace(/^"(.*)"$/, '$1');
+        if (cleanIconPath && fs.existsSync(cleanIconPath) && !/\.(lnk|url)$/i.test(cleanIconPath)) {
+          resolvedTarget = cleanIconPath;
+        } else if (cleanTargetPath && fs.existsSync(cleanTargetPath) && !/\.(lnk|url)$/i.test(cleanTargetPath)) {
+          resolvedTarget = cleanTargetPath;
+        }
+      } catch {}
+      // Never call app.getFileIcon directly on .lnk — Windows Shell returns a generic blank sheet icon
+      if (!resolvedTarget) return null;
+      iconSourcePath = resolvedTarget;
+    }
+
+    if (/\.(ico|png|jpe?g|webp|bmp)$/i.test(iconSourcePath)) {
+      try {
+        const directImg = nativeImage.createFromPath(iconSourcePath);
+        if (directImg && !directImg.isEmpty()) {
+          return directImg.toDataURL();
+        }
+      } catch {}
+    }
+
+    const icon = await app.getFileIcon(iconSourcePath, { size: 'normal' });
+    if (!icon || icon.isEmpty()) return null;
+    return icon.toDataURL();
   } catch {
     return null;
   }
+}
+
+ipcMain.handle('get-file-icon', async (_event, filePath) => {
+  return await extractNativePathIconDataUri(filePath);
 });
 
 const appLogoCache = new Map();
@@ -4575,6 +4791,8 @@ const APP_ICON_ALIASES = {
   'telegram desktop': ['telegram', 'telegram desktop'],
   'g-helper': ['ghelper', 'g-helper'],
   ghelper: ['ghelper', 'g-helper'],
+  'nvidia app': ['nvidia app', 'nvidia overlay', 'nvcontainer'],
+  nvidia: ['nvidia app', 'nvidia overlay', 'nvcontainer'],
   'windows security': ['securityhealthsystray'],
   'windows defender': ['securityhealthsystray'],
   'dosya yöneticisi': ['explorer'],
@@ -4604,8 +4822,17 @@ function getStartMenuShortcuts() {
       if (entry.isDirectory()) {
         walk(fullPath, depth + 1);
       } else if (entry.isFile() && /\.lnk$/i.test(entry.name)) {
+        let appIdLower = '';
+        let toastActivatorClsid = '';
+        try {
+          const sl = shell.readShortcutLink(fullPath);
+          appIdLower = String(sl?.appUserModelId || '').trim().toLowerCase();
+          toastActivatorClsid = String(sl?.toastActivatorClsid || '').trim();
+        } catch {}
         results.push({
           nameLower: entry.name.replace(/\.lnk$/i, '').toLowerCase(),
+          appIdLower,
+          toastActivatorClsid,
           path: fullPath,
         });
       }
@@ -4812,29 +5039,27 @@ ipcMain.handle('resolve-app-logo', async (_event, payload) => {
     const promise = (async () => {
       const directExePath = resolveKnownFolderAppIdPath(appId);
       if (directExePath && fs.existsSync(directExePath)) {
-        try {
-          const icon = await app.getFileIcon(directExePath, { size: 'normal' });
-          const dataUri = icon ? icon.toDataURL() : null;
-          if (dataUri) {
-            appLogoCache.set(cacheKey, { dataUri, ts: Date.now() });
-            return dataUri;
-          }
-        } catch {}
+        const dataUri = await extractNativePathIconDataUri(directExePath);
+        if (dataUri) {
+          appLogoCache.set(cacheKey, { dataUri, ts: Date.now() });
+          return dataUri;
+        }
       }
 
       const candidates = buildAppLogoCandidates(appName, appId);
-      if (candidates.length === 0) {
-        appLogoCache.set(cacheKey, { dataUri: null, ts: Date.now() });
-        return null;
-      }
+      const lowerAppId = appId.toLowerCase();
 
-      // 1. Fast Start Menu .lnk lookup
+      // 1. Fast Start Menu .lnk lookup (exact AppUserModelId first, then shortcut name)
       const shortcuts = getStartMenuShortcuts();
-      let lnkMatch = null;
-      for (const cand of candidates) {
-        const low = cand.toLowerCase();
-        lnkMatch = shortcuts.find((s) => s.nameLower === low);
-        if (lnkMatch) break;
+      let lnkMatch = lowerAppId
+        ? shortcuts.find((s) => s.appIdLower && s.appIdLower === lowerAppId)
+        : null;
+      if (!lnkMatch) {
+        for (const cand of candidates) {
+          const low = cand.toLowerCase();
+          lnkMatch = shortcuts.find((s) => s.nameLower === low);
+          if (lnkMatch) break;
+        }
       }
       if (!lnkMatch) {
         for (const cand of candidates) {
@@ -4845,14 +5070,16 @@ ipcMain.handle('resolve-app-logo', async (_event, payload) => {
         }
       }
       if (lnkMatch) {
-        try {
-          const icon = await app.getFileIcon(lnkMatch.path, { size: 'normal' });
-          const dataUri = icon ? icon.toDataURL() : null;
-          if (dataUri) {
-            appLogoCache.set(cacheKey, { dataUri, ts: Date.now() });
-            return dataUri;
-          }
-        } catch {}
+        const dataUri = await extractNativePathIconDataUri(lnkMatch.path);
+        if (dataUri) {
+          appLogoCache.set(cacheKey, { dataUri, ts: Date.now() });
+          return dataUri;
+        }
+      }
+
+      if (candidates.length === 0) {
+        appLogoCache.set(cacheKey, { dataUri: null, ts: Date.now() });
+        return null;
       }
 
       // 2. Running process / UWP AppxManifest fallback

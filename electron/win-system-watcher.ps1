@@ -559,6 +559,7 @@ function Get-NotificationProcessLogoDataUri($AppName, $AppId) {
             elseif ($lowApp -match 'microsoft edge') { $candidates.Add('msedge') }
             elseif ($lowApp -match 'telegram') { $candidates.Add('telegram') }
             elseif ($lowApp -match 'g-?helper') { $candidates.Add('ghelper') }
+            elseif ($lowApp -match 'nvidia|geforce') { $candidates.Add('nvidia overlay'); $candidates.Add('nvcontainer') }
             elseif ($lowApp -match 'windows security|defender') { $candidates.Add('securityhealthsystray') }
         }
 

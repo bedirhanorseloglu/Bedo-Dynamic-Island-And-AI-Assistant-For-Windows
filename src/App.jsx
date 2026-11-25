@@ -260,6 +260,7 @@ const NOTIFICATION_BRANDS = [
   { match: /brave/, rgb: '251, 84, 43', hex: '#FB542B', secondaryRgb: '255, 26, 85', secondaryHex: '#FF1A55', brand: 'brave' },
   { match: /notion/, rgb: '35, 35, 35', hex: '#232323', secondaryRgb: '0, 0, 0', secondaryHex: '#000000', brand: 'notion' },
   { match: /riot|valorant|league of legends/, rgb: '235, 0, 41', hex: '#EB0029', secondaryRgb: '20, 20, 20', secondaryHex: '#141414', brand: 'riot' },
+  { match: /nvidia|geforce|nvapp/, rgb: '118, 185, 0', hex: '#76B900', secondaryRgb: '68, 114, 0', secondaryHex: '#447200', brand: 'nvidia' },
 ];
 
 function resolveNotifBrand(banner, logoAccent) {
@@ -1162,6 +1163,8 @@ export default function App() {
   const [batteryPercent, setBatteryPercent] = useState(80);
   const [batteryCharging, setBatteryCharging] = useState(false);
   const [batteryAlertKind, setBatteryAlertKind] = useState('charging');
+  const [batteryChargeEta, setBatteryChargeEta] = useState(null);
+  const batteryEtaReqIdRef = useRef(0);
   const batteryPercentRef = useRef(batteryPercent);
   batteryPercentRef.current = batteryPercent;
   const batteryChargingRef = useRef(batteryCharging);
@@ -1443,7 +1446,12 @@ export default function App() {
     const unsubStatus = api.onBedoStatus?.((status) => {
       if (!status) return;
       const nowPaused = Boolean(status.paused);
-      if (prevPaused && !nowPaused && islandModeRef.current !== 'expanded') {
+      if (
+        prevPaused &&
+        !nowPaused &&
+        islandModeRef.current !== 'expanded' &&
+        Date.now() - appMountedAtRef.current > 4000
+      ) {
         lastBedoWakeAtRef.current = Date.now();
         islandModeRef.current = 'bedo-live';
         setIslandMode('bedo-live');
@@ -2235,8 +2243,16 @@ export default function App() {
     isShowingNotifToastRef.current = false;
     setNotificationHistoryOpen(false);
     setIslandMode((mode) => (mode === 'notif-toast' || mode === 'expanded') ? resolvedCollapsedModeRef.current : mode);
-    if (item?.targetUrl || item?.appId) {
-      window.twocode?.openNotificationTarget?.({ url: item.targetUrl || '', appId: item.appId || '' });
+    if (item?.targetUrl || item?.appId || item?.app) {
+      window.twocode?.openNotificationTarget?.({
+        id: item.id || '',
+        url: item.targetUrl || '',
+        appId: item.appId || '',
+        app: item.app || '',
+        title: item.title || '',
+        body: item.body || '',
+        toastLaunch: item.toastLaunch || '',
+      });
     }
   };
   const notifLogoAccent = useDominantColor(toastBanner.logo);
@@ -2700,10 +2716,72 @@ export default function App() {
     };
   }, [islandMode]);
 
-  // Read real Windows battery percentage and alert only at exactly 20%.
+  // Read real Windows battery percentage, charging ETA, and alert only at exactly 20%.
   useEffect(() => {
     let batteryObj = null;
     let wasCharging = null;
+    let isDisposed = false;
+    let etaRetryTimer = null;
+
+    const clearEtaRetry = () => {
+      if (etaRetryTimer) {
+        clearTimeout(etaRetryTimer);
+        etaRetryTimer = null;
+      }
+    };
+
+    const getBrowserFallbackEta = (bat) => {
+      if (!bat || !bat.charging) return null;
+      const pct = Math.round(bat.level * 100);
+      if (pct >= 100) return { status: 'full', minutes: 0, source: 'browser' };
+      if (Number.isFinite(bat.chargingTime) && bat.chargingTime > 0) {
+        const mins = Math.round(bat.chargingTime / 60);
+        if (mins >= 1 && mins <= 720) {
+          return { status: 'ok', minutes: mins, source: 'browser' };
+        }
+      }
+      return null;
+    };
+
+    const refreshChargeEta = (bat, allowRampRetry = false) => {
+      clearEtaRetry();
+      const reqId = ++batteryEtaReqIdRef.current;
+      const browserFallback = getBrowserFallbackEta(bat);
+      if (browserFallback) {
+        setBatteryChargeEta((prev) => (prev?.source === 'wmi' ? prev : browserFallback));
+      }
+
+      const fetchEta = window.twocode?.getBatteryChargeEta;
+      if (typeof fetchEta !== 'function') {
+        if (browserFallback) setBatteryChargeEta(browserFallback);
+        return;
+      }
+
+      fetchEta({ force: true })
+        .then((res) => {
+          if (isDisposed || reqId !== batteryEtaReqIdRef.current || !bat?.charging) return;
+          if (res && (res.status === 'ok' || res.status === 'full')) {
+            setBatteryChargeEta(res);
+            return;
+          }
+          if (allowRampRetry) {
+            etaRetryTimer = setTimeout(() => {
+              etaRetryTimer = null;
+              if (!isDisposed && bat?.charging) {
+                refreshChargeEta(bat, false);
+              }
+            }, 1800);
+          } else {
+            const fallback = getBrowserFallbackEta(bat);
+            setBatteryChargeEta(fallback);
+          }
+        })
+        .catch(() => {
+          if (isDisposed || reqId !== batteryEtaReqIdRef.current || !bat?.charging) return;
+          const fallback = getBrowserFallbackEta(bat);
+          if (fallback) setBatteryChargeEta(fallback);
+        });
+    };
 
     const clearActiveToastTimer = () => {
       if (notifTimerRef.current) {
@@ -2719,6 +2797,7 @@ export default function App() {
       clearActiveToastTimer();
       setBatteryPercent(pct);
       setBatteryCharging(false);
+      setBatteryChargeEta(null);
       setBatteryAlertKind('low');
       setIslandMode((current) => {
         if (current === 'expanded') return current;
@@ -2749,11 +2828,19 @@ export default function App() {
 
       if (nextCharging) {
         setBatteryCharging(true);
-        if (wasCharging === false && !isStartup) triggerChargingAlert();
+        const justPluggedIn = wasCharging === false;
+        if (justPluggedIn && !isStartup) {
+          setBatteryChargeEta(null);
+          triggerChargingAlert();
+        }
+        refreshChargeEta(batteryObj, justPluggedIn);
         wasCharging = true;
         hasShown20AlertRef.current = false;
         return;
       }
+      clearEtaRetry();
+      batteryEtaReqIdRef.current += 1;
+      setBatteryChargeEta(null);
       setBatteryCharging(false);
       wasCharging = false;
 
@@ -2768,10 +2855,19 @@ export default function App() {
       }
     };
 
+    const handleChargingTimeChange = () => {
+      if (!batteryObj || !batteryObj.charging) return;
+      const fallback = getBrowserFallbackEta(batteryObj);
+      if (fallback) {
+        setBatteryChargeEta((prev) => (prev?.source === 'wmi' && prev?.status === 'ok' ? prev : fallback));
+      }
+    };
+
     if (navigator.getBattery) {
       navigator
         .getBattery()
         .then((bat) => {
+          if (isDisposed) return;
           batteryObj = bat;
           wasCharging = Boolean(bat.charging);
           previousBatteryChargingRef.current = wasCharging;
@@ -2781,15 +2877,22 @@ export default function App() {
             setBatteryPercent(pct);
             previousBatteryLowRef.current = pct <= 20 && !wasCharging;
           }
+          if (wasCharging) {
+            refreshChargeEta(bat, false);
+          }
           bat.addEventListener('levelchange', handleBatteryChange);
           bat.addEventListener('chargingchange', handleBatteryChange);
+          bat.addEventListener('chargingtimechange', handleChargingTimeChange);
         })
         .catch(() => { });
     }
     return () => {
+      isDisposed = true;
+      clearEtaRetry();
       if (batteryObj) {
         batteryObj.removeEventListener('levelchange', handleBatteryChange);
         batteryObj.removeEventListener('chargingchange', handleBatteryChange);
+        batteryObj.removeEventListener('chargingtimechange', handleChargingTimeChange);
       }
       if (batteryTimerRef.current) clearTimeout(batteryTimerRef.current);
     };
@@ -2873,6 +2976,7 @@ export default function App() {
         title: hideNotifText ? (notif.app || 'Yeni bildirim') : (notif.title || notif.app || 'Notification'),
         body: hideNotifText ? '' : (notif.body || ''),
         targetUrl: notif.targetUrl || '',
+        toastLaunch: notif.toastLaunch || '',
         isAgentActivity: Boolean(notif.isAgentActivity),
       };
 
@@ -3451,7 +3555,10 @@ export default function App() {
     }
     if (slotKey === 'Battery') {
       return (
-        <span className={`idle-slot-badge is-battery ${batteryPercent <= 20 && !batteryCharging ? 'is-low' : ''} ${batteryCharging ? 'is-charging' : ''}`}>
+        <span
+          className={`idle-slot-badge is-battery ${batteryPercent <= 20 && !batteryCharging ? 'is-low' : ''} ${batteryCharging ? 'is-charging' : ''}`}
+          title={batteryCharging ? batteryChargingSubtext : undefined}
+        >
           {batteryCharging ? '⚡' : ''}{batteryPercent}%
         </span>
       );
@@ -3503,6 +3610,25 @@ export default function App() {
     const target = new Date(now.getTime() + timerSeconds * 1000);
     return formatTimeHHMM(target);
   }, [now, timerSeconds]);
+
+  const batteryChargingSubtext = useMemo(() => {
+    if (batteryPercent >= 100 || batteryChargeEta?.status === 'full') {
+      return t('battery.fullyCharged');
+    }
+    const mins = batteryChargeEta?.status === 'ok' ? Number(batteryChargeEta.minutes) : NaN;
+    if (Number.isFinite(mins) && mins >= 1) {
+      if (mins < 60) {
+        return t('battery.etaMinutes', { minutes: mins });
+      }
+      const hours = Math.floor(mins / 60);
+      const remMins = mins % 60;
+      if (remMins === 0) {
+        return t('battery.etaHours', { hours });
+      }
+      return t('battery.etaHoursMinutes', { hours, minutes: remMins });
+    }
+    return t('battery.powerConnected');
+  }, [batteryPercent, batteryChargeEta, t]);
 
   const showBatteryPopup = () => {
     suppressPowerNotifToastUntilRef.current = Date.now() + 10000;
@@ -4193,7 +4319,7 @@ export default function App() {
                   </span>
                 </div>
                 <span className="battery-alert-sub">
-                  {batteryAlertKind === 'charging' ? t('battery.powerConnected') : t('battery.plugCharger')}
+                  {batteryAlertKind === 'charging' ? batteryChargingSubtext : t('battery.plugCharger')}
                 </span>
               </div>
 
