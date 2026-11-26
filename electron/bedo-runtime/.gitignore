@@ -10,3 +10,5 @@ __pycache__/
 config/api_keys.json
 memory/memory.json
 memory/phone_book.json
+memory/mem0_qdrant/
+memory/mem0_history.db

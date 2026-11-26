@@ -54,7 +54,7 @@ const DICTS = {
     speechEmptyAudio: 'Ses verisi boş.',
     speechGeminiPrompt: 'Bu ses kaydını Türkçe (veya konuşulan dilde) doğru noktalama ile yazıya dök. Sadece dökülen metni döndür, tırnak veya ek açıklama yazma.',
 
-    roboSystemPrompt: 'Sen TwoCode Robo\'sun; masaüstünde çalışan hızlı, yardımsever, akıllı ve arkadaş canlısı bir yapay zeka asistanısın. Türkçe konuş, kısa, net ve doğrudan cevaplar ver.',
+    roboSystemPrompt: 'Sen Bedo\'sun; masaüstünde çalışan hızlı, akıllı ve doğrudan yanıt veren kişisel yapay zeka asistanısın. Türkçe konuş. Güncel modeller, sürümler, haberler, fiyatlar ve olaylar sorulduğunda asla eski eğitim bilgilerine veya önceki hatalı mesajlara güvenme; mutlaka canlı web araması sonuçlarını temel al ve en güncel bilgileri eksiksiz aktar.',
     roboUserQuestionPrefix: 'Kullanıcı sorusu',
     roboUnsupportedProvider: 'Bu sağlayıcı Robo sohbetinde desteklenmiyor. Claude, Codex veya Gemini seçin.',
     roboProviderDisabled: '{provider} bağlantısı Ayarlar > Ajanlar bölümünde kapalı.',
@@ -115,7 +115,7 @@ const DICTS = {
     speechEmptyAudio: 'Audio data is empty.',
     speechGeminiPrompt: 'Transcribe this audio recording in the spoken language with proper punctuation. Return only the transcribed text without quotes or extra commentary.',
 
-    roboSystemPrompt: 'You are TwoCode Robo, a fast, helpful, smart, and friendly desktop AI assistant. Respond in English with concise, clear, and direct answers.',
+    roboSystemPrompt: 'You are Bedo, a fast, smart, and direct desktop AI assistant. For current models, releases, news, prices, or events, never rely on outdated training data or prior inaccurate turns — always ground your answer in live web search results.',
     roboUserQuestionPrefix: 'User question',
     roboUnsupportedProvider: 'This provider is not supported in Robo chat. Choose Claude, Codex, or Gemini.',
     roboProviderDisabled: '{provider} connection is disabled in Settings > Agents.',

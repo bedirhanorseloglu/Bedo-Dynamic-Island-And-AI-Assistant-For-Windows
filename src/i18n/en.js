@@ -400,12 +400,13 @@ export default {
 
   // SettingsApp.jsx — Sidebar & Window Controls
   'settings.subtitle': 'Settings',
-  'settings.navGroup.twocode': 'BEDO',
+  'settings.navGroup.twocode': 'OVERVIEW',
   'settings.navGroup.robo': 'BEDO',
   'settings.navGroup.settings': 'SETTINGS',
   'settings.nav.home': 'Home',
   'settings.nav.connections': 'Agents',
   'settings.nav.aichat': 'AI & Chat',
+  'settings.nav.bedochat': 'Chat History',
   'settings.nav.apps': 'Apps',
   'settings.nav.robo': 'Bedo',
   'settings.nav.wardrobe': 'Wardrobe',
@@ -432,6 +433,8 @@ export default {
   'settings.header.connections.sub': 'Connect Codex and Antigravity to Bedo',
   'settings.header.aichat.title': 'AI & Chat',
   'settings.header.aichat.sub': "Bedo's voice and AI settings",
+  'settings.header.bedochat.title': 'Chat History',
+  'settings.header.bedochat.sub': 'Your text, voice, and screen analysis conversations with Bedo',
   'settings.header.apps.title': 'Apps',
   'settings.header.apps.sub': 'Pick which apps are in your Bedo',
   'settings.header.robo.title': 'Bedo',

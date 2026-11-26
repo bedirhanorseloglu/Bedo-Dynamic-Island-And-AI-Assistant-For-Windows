@@ -209,6 +209,27 @@ contextBridge.exposeInMainWorld('twocode', {
     return () => ipcRenderer.removeListener('python-bootstrap-status', listener);
   },
   bedoSendText: (text) => ipcRenderer.invoke('bedo:send-text', text),
+  getBedoChatHistory: () => ipcRenderer.invoke('bedo:get-chat-history'),
+  deleteBedoChatEntry: (id) => ipcRenderer.invoke('bedo:delete-chat-entry', id),
+  clearBedoChatHistory: () => ipcRenderer.invoke('bedo:clear-chat-history'),
+  newBedoChatSession: () => ipcRenderer.invoke('bedo:new-chat-session'),
+  selectBedoChatSession: (sessionId) => ipcRenderer.invoke('bedo:select-chat-session', sessionId),
+  deleteBedoChatSession: (sessionId) => ipcRenderer.invoke('bedo:delete-chat-session', sessionId),
+  onBedoChatHistoryUpdate: (cb) => {
+    const listener = (_event, history) => cb(history);
+    ipcRenderer.on('bedo-chat-history-update', listener);
+    return () => ipcRenderer.removeListener('bedo-chat-history-update', listener);
+  },
+  onBedoChatSessionReset: (cb) => {
+    const listener = (_event, payload) => cb(payload);
+    ipcRenderer.on('bedo-chat-session-reset', listener);
+    return () => ipcRenderer.removeListener('bedo-chat-session-reset', listener);
+  },
+  onBedoChatSync: (cb) => {
+    const listener = (_event, payload) => cb(payload);
+    ipcRenderer.on('bedo-chat-sync', listener);
+    return () => ipcRenderer.removeListener('bedo-chat-sync', listener);
+  },
   bedoSetMuted: (muted) => ipcRenderer.invoke('bedo:set-muted', muted),
   bedoSetSpeakerVolume: (volume) => ipcRenderer.invoke('bedo:set-speaker-volume', volume),
   bedoSetSpeakerMuted: (muted) => ipcRenderer.invoke('bedo:set-speaker-muted', muted),

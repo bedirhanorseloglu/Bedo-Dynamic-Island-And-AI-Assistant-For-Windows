@@ -44,30 +44,45 @@ def _extract_version_tuple(model_id: str) -> tuple[int, ...]:
 
 
 def rank_gemini_models(model_names: Iterable[str]) -> list[str]:
-    """Mevcut Gemini modelleri arasından canlı arama için en güncelden başlayarak sıralı liste döner."""
+    """Mevcut Gemini modelleri arasından kota dostu ve Search Grounding destekli en güncelleri sıralar."""
     candidates: list[tuple[tuple[int, ...], int, str]] = []
-    excluded = ("embedding", "imagen", "veo", "tts", "audio", "robotics", "aqa", "live")
+    excluded = (
+        "embedding", "imagen", "veo", "tts", "audio", "robotics", "aqa", "live",
+        "learnlm", "gemma", "banana", "lyria", "omni", "computer", "image", "transcribe",
+    )
     for raw in model_names:
         name = str(raw or "").replace("models/", "").strip()
         low = name.lower()
         if not low.startswith("gemini-") or any(bad in low for bad in excluded):
             continue
+        if "exp" in low:
+            continue
         ver = _extract_version_tuple(low)
-        if "carbon" in low:
-            tier = 5
-        elif "argon" in low:
-            tier = 4
+        # Hydrogen ve Flash modelleri yüksek kota + düşük gecikme + Search Grounding sunduğu için
+        # 0-ücretsiz-kotalı Carbon/Argon/Pro modellerinin önünde denenir; Carbon/Neon yine listede kalır.
+        if "hydrogen" in low:
+            tier = 7
         elif "flash" in low and "lite" not in low:
+            tier = 6
+        elif "flash-lite" in low:
+            tier = 5
+        elif "neon" in low:
+            tier = 4
+        elif "carbon" in low:
             tier = 3
         elif "pro" in low:
             tier = 2
         else:
             tier = 1
-        stability = 0 if ("exp" in low or "preview" in low) else 1
+        stability = 0 if "preview" in low else 1
         candidates.append((ver, tier * 10 + stability, name))
     candidates.sort(key=lambda item: (item[0], item[1]), reverse=True)
     seen: set[str] = set()
     ordered: list[str] = []
+    # Öncelikli Gemini 4 Hydrogen ve Gemini 3.x Flash zinciri
+    for pinned in ("gemini-4-hydrogen", "gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite"):
+        seen.add(pinned)
+        ordered.append(pinned)
     for _, _, name in candidates:
         if name not in seen:
             seen.add(name)
@@ -82,7 +97,7 @@ def select_latest_gemini_model(model_names: Iterable[str]) -> str | None:
 
 
 def select_latest_openai_model(model_ids: Iterable[str]) -> str | None:
-    """OpenAI modelleri arasından en güncel sohbet/arama modelini seçer."""
+    """OpenAI modelleri arasından en güncel sohbet/arama modelini seçer (GPT-6.2 Astra/Sol öncelikli)."""
     candidates: list[tuple[tuple[int, ...], int, str]] = []
     excluded = ("audio", "realtime", "transcribe", "tts", "image", "embedding", "whisper", "dall-e", "moderation")
     for raw in model_ids:
@@ -90,11 +105,11 @@ def select_latest_openai_model(model_ids: Iterable[str]) -> str | None:
         low = mid.lower()
         if any(bad in low for bad in excluded):
             continue
-        if not (low.startswith("gpt-") or low.startswith("o3") or low.startswith("o4")):
+        if not low.startswith("gpt-"):
             continue
         ver = _extract_version_tuple(low)
-        bonus = 3 if "gpt-6" in low else 2 if ("gpt-5" in low or "gpt-4" in low) else 1
-        candidates.append((ver, bonus, mid))
+        tier = 5 if "astra" in low else 4 if "sol" in low else 3 if "pro" in low else 2
+        candidates.append((ver, tier, mid))
     if not candidates:
         return None
     candidates.sort(key=lambda item: (item[0], item[1]), reverse=True)
@@ -102,7 +117,7 @@ def select_latest_openai_model(model_ids: Iterable[str]) -> str | None:
 
 
 def select_latest_anthropic_model(model_ids: Iterable[str]) -> str | None:
-    """Anthropic Claude modelleri arasından en güncelini seçer."""
+    """Anthropic Claude modelleri arasından en güncelini seçer (Claude Fable 5.2 / 5.5 öncelikli)."""
     candidates: list[tuple[tuple[int, ...], int, str]] = []
     for raw in model_ids:
         mid = str(raw or "").strip()
@@ -110,11 +125,13 @@ def select_latest_anthropic_model(model_ids: Iterable[str]) -> str | None:
         if not low.startswith("claude-"):
             continue
         ver = _extract_version_tuple(low)
-        if "opus" in low:
+        if "fable" in low:
+            tier = 5
+        elif "opus" in low:
             tier = 4
-        elif "fable" in low:
-            tier = 3
         elif "sonnet" in low:
+            tier = 3
+        elif "haiku" in low:
             tier = 2
         else:
             tier = 1
@@ -127,13 +144,18 @@ def select_latest_anthropic_model(model_ids: Iterable[str]) -> str | None:
 
 _GEMINI_RANKED_CACHE: list[str] = []
 _PROVIDER_COOLDOWN_UNTIL: dict[str, float] = {}
+_MODEL_COOLDOWN_UNTIL: dict[str, float] = {}
+_GEMINI_SEARCH_TOOL_BLOCKED_UNTIL: float = 0.0
 
 
 def clear_rag_caches() -> None:
     """Yeni API anahtarı girildiğinde model ve kota önbelleğini temizler."""
+    global _GEMINI_SEARCH_TOOL_BLOCKED_UNTIL
     _MODEL_CACHE.clear()
     _GEMINI_RANKED_CACHE.clear()
     _PROVIDER_COOLDOWN_UNTIL.clear()
+    _MODEL_COOLDOWN_UNTIL.clear()
+    _GEMINI_SEARCH_TOOL_BLOCKED_UNTIL = 0.0
 
 
 def _resolve_ranked_gemini_models(client: genai.Client) -> list[str]:
@@ -167,19 +189,64 @@ def _http_json(url: str, headers: dict[str, str], payload: dict | None = None, t
         return json.loads(resp.read().decode("utf-8", errors="replace"))
 
 
-def _web_rag_gemini(prompt: str, api_key: str, max_tokens: int = 200) -> str:
+def _web_rag_gemini(prompt: str, api_key: str, max_tokens: int = 600, raw_query: str = "") -> str:
+    global _GEMINI_SEARCH_TOOL_BLOCKED_UNTIL
     client = genai.Client(api_key=api_key)
     models_to_try = _resolve_ranked_gemini_models(client)
     last_err: Exception | None = None
+    now_m = time.monotonic()
+
+    # 1) Native Google Search Grounding (ücretsiz katmanda kota=0 dönerse 30 dk boyunca atla)
+    if now_m >= _GEMINI_SEARCH_TOOL_BLOCKED_UNTIL:
+        for model_id in models_to_try:
+            if now_m < _MODEL_COOLDOWN_UNTIL.get(f"{model_id}:search", 0.0):
+                continue
+            try:
+                resp = client.models.generate_content(
+                    model=model_id,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        tools=[types.Tool(google_search=types.GoogleSearch())],
+                        temperature=0.2,
+                        max_output_tokens=max(2048, max_tokens),
+                    ),
+                )
+                text = str(getattr(resp, "text", "") or "").strip()
+                if text:
+                    return text
+            except Exception as exc:
+                last_err = exc
+                msg = str(exc)
+                if "401" in msg or "403" in msg or "API_KEY_INVALID" in msg:
+                    _PROVIDER_COOLDOWN_UNTIL["gemini"] = time.monotonic() + 120.0
+                    raise
+                if "429" in msg or "RESOURCE_EXHAUSTED" in msg or "400" in msg:
+                    _GEMINI_SEARCH_TOOL_BLOCKED_UNTIL = time.monotonic() + 1800.0
+                    break
+                if "404" in msg:
+                    _MODEL_COOLDOWN_UNTIL[f"{model_id}:search"] = time.monotonic() + 300.0
+                    continue
+                break
+
+    # 2) Organik Web RAG + Düz Gemini Sentezi (Gemini 4 Hydrogen / 3.8 Flash / 3.5 Flash Lite)
+    web_ctx = _web_rag_free_fallback(raw_query or prompt)
+    grounded_prompt = (
+        f"<web_context>\n{web_ctx or 'Doğrudan eşleşen canlı web kaynağı bulunamadı.'}\n</web_context>\n\n"
+        "KESİN KURALLAR:\n"
+        "1. Yalnızca <web_context> içindeki güncel verileri, rakamları ve tarihleri kullan; eğitim belleğindeki eski model/fiyat bilgilerini güncel diye sunma.\n"
+        "2. <web_context> içinde olmayan hiçbir fiyatı veya sayıyı UYDURMA; bulunamayan canlı veri varsa açıkça belirt ve ilgili kaynak sitelerini öner.\n\n"
+        f"{prompt}"
+    )
     for model_id in models_to_try:
+        if now_m < _MODEL_COOLDOWN_UNTIL.get(f"{model_id}:plain", 0.0):
+            continue
         try:
             resp = client.models.generate_content(
                 model=model_id,
-                contents=prompt,
+                contents=grounded_prompt,
                 config=types.GenerateContentConfig(
-                    tools=[types.Tool(google_search=types.GoogleSearch())],
                     temperature=0.2,
-                    max_output_tokens=max_tokens,
+                    max_output_tokens=max(2048, max_tokens),
                 ),
             )
             text = str(getattr(resp, "text", "") or "").strip()
@@ -188,10 +255,14 @@ def _web_rag_gemini(prompt: str, api_key: str, max_tokens: int = 200) -> str:
         except Exception as exc:
             last_err = exc
             msg = str(exc)
-            if "429" in msg or "RESOURCE_EXHAUSTED" in msg or "401" in msg or "403" in msg:
+            if "401" in msg or "403" in msg or "API_KEY_INVALID" in msg:
                 _PROVIDER_COOLDOWN_UNTIL["gemini"] = time.monotonic() + 120.0
                 break
+            if "429" in msg or "RESOURCE_EXHAUSTED" in msg or "404" in msg:
+                _MODEL_COOLDOWN_UNTIL[f"{model_id}:plain"] = time.monotonic() + 90.0
+                continue
             continue
+
     if last_err is not None:
         raise last_err
     return ""
@@ -292,8 +363,64 @@ def _resolve_provider_keys(explicit_gemini_key: str = "") -> dict[str, str]:
     return {"gemini": gemini_key, "openai": openai_key, "anthropic": anthropic_key}
 
 
+def _search_yahoo_organic_py(query: str, is_tr: bool = True) -> list[str]:
+    import html as _html
+    import http.cookiejar
+    import urllib.parse
+
+    url = f"https://tr.search.yahoo.com/search?p={urllib.parse.quote_plus(query)}&ei=UTF-8"
+    jar = http.cookiejar.CookieJar()
+    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
+            ),
+            "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
+            "Accept-Encoding": "identity",
+        },
+    )
+    with opener.open(req, timeout=5.0) as resp:
+        raw_html = resp.read(450_000).decode("utf-8", errors="replace")
+    if "compText" not in raw_html and re.search(r"verify you are human|cf-turnstile", raw_html, re.I):
+        return []
+
+    results: list[str] = []
+    blocks = re.split(r'<div[^>]+class="[^"]*\balgo\b[^"]*"[^>]*>', raw_html, flags=re.I)[1:]
+    for blk in blocks:
+        if len(results) >= 6:
+            break
+        h3 = re.search(r"<h3[^>]*>([\s\S]*?)</h3>", blk, re.I)
+        if not h3:
+            continue
+        href_m = re.search(r'href="([^"]+)"', h3.group(1), re.I) or re.search(r'href="([^"]+)"', blk, re.I)
+        link = _html.unescape(href_m.group(1)) if href_m else ""
+        ru_m = re.search(r"/RU=([^/]+)/", link, re.I)
+        if ru_m:
+            try:
+                link = urllib.parse.unquote(ru_m.group(1))
+            except Exception:
+                pass
+        if not link.startswith(("http://", "https://")) or re.search(r"yahoo\.com/|bing\.com/aclick", link, re.I):
+            continue
+        title_clean = re.sub(
+            r'<span[^>]*class="[^"]*(?:d-ib|fc-obsidian|fz-ms|va-bot)[^"]*"[^>]*>[\s\S]*?</span>',
+            " ",
+            h3.group(1),
+            flags=re.I,
+        )
+        title_clean = re.sub(r"\s+", " ", _html.unescape(re.sub(r"<[^>]+>", " ", title_clean))).strip()
+        comp_m = re.search(r'<div[^>]+class="[^"]*\bcompText\b[^"]*"[^>]*>([\s\S]*?)</div>', blk, re.I)
+        snip = re.sub(r"\s+", " ", _html.unescape(re.sub(r"<[^>]+>", " ", comp_m.group(1) if comp_m else ""))).strip()
+        if title_clean:
+            results.append(f"- {title_clean} ({link}): {snip[:320]}")
+    return results
+
+
 def _web_rag_free_fallback(query: str) -> str:
-    """Sağlayıcı API kotası dolduğunda veya anahtar yoksa genel amaçlı ücretsiz Web RAG yedeği."""
+    """Genel amaçlı çok kaynaklı Organik Web RAG (Yahoo Organik Web + Google News RSS + Döviz + Wikipedia)."""
     import html as _html
     import urllib.parse
     import xml.etree.ElementTree as ET
@@ -303,23 +430,51 @@ def _web_rag_free_fallback(query: str) -> str:
     headers = {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
         ),
         "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
     }
 
-    # 1) Google News RSS canlı güncel arama sonuçları (+ sayfa özeti)
+    sections: list[str] = []
+
+    # 1) Döviz / Kur sorguları için canlı açık kur servisi
+    if re.search(r"\b(dolar|euro|sterlin|usd|eur|gbp|döviz|doviz|kur|kaç\s*tl|kac\s*tl)\b", q.lower()):
+        try:
+            fx = _http_json("https://open.er-api.com/v6/latest/USD", headers={"User-Agent": "Bedo/1.0"}, timeout=4.0)
+            rates = fx.get("rates", {}) if isinstance(fx, dict) else {}
+            if rates.get("TRY"):
+                usd_try = float(rates["TRY"])
+                eur_try = usd_try / float(rates["EUR"]) if rates.get("EUR") else 0.0
+                gbp_try = usd_try / float(rates["GBP"]) if rates.get("GBP") else 0.0
+                fx_parts = [f"1 USD = {usd_try:.2f} TL"]
+                if eur_try:
+                    fx_parts.append(f"1 EUR = {eur_try:.2f} TL")
+                if gbp_try:
+                    fx_parts.append(f"1 GBP = {gbp_try:.2f} TL")
+                sections.append("Anlık döviz kurları: " + " | ".join(fx_parts))
+        except Exception:
+            pass
+
+    # 2) Organik Web Arama Sonuçları (Yahoo TR + gerekirse EN)
+    try:
+        yh_hits = _search_yahoo_organic_py(q, is_tr=True)
+        if yh_hits:
+            sections.append("Organik web sonuçları:\n" + "\n".join(yh_hits))
+    except Exception:
+        pass
+
+    # 3) Google News RSS canlı güncel haberler
     try:
         req = urllib.request.Request(
             f"https://news.google.com/rss/search?q={enc}&hl=tr&gl=TR&ceid=TR:tr",
             headers=headers,
         )
-        with urllib.request.urlopen(req, timeout=8.0) as resp:
+        with urllib.request.urlopen(req, timeout=5.0) as resp:
             xml_bytes = resp.read()
         root = ET.fromstring(xml_bytes)
         items = root.findall(".//item")
         lines: list[str] = []
-        for it in items[:6]:
+        for it in items[:5]:
             title = (it.findtext("title") or "").strip()
             pub = (it.findtext("pubDate") or "").strip()
             desc = re.sub(r"<[^>]+>", "", _html.unescape(it.findtext("description") or "")).strip()
@@ -331,56 +486,61 @@ def _web_rag_free_fallback(query: str) -> str:
                     entry += f": {desc[:220]}"
                 lines.append(entry)
         if lines:
-            return "Canlı arama özetleri:\n" + "\n".join(lines)
+            sections.append("Güncel haber özetleri:\n" + "\n".join(lines))
     except Exception:
         pass
 
-    # 3) Türkçe Wikipedia genel bilgi özeti
-    try:
-        wiki = _http_json(
-            f"https://tr.wikipedia.org/w/api.php?action=query&list=search&srsearch={enc}&format=json",
-            headers={"User-Agent": "BedoAssistant/1.0"},
-            timeout=6.0,
-        )
-        hits = wiki.get("query", {}).get("search", [])
-        if hits:
+    # 4) Türkçe Wikipedia genel bilgi özeti (yalnızca üstteki kaynaklar azsa ekle)
+    if len(sections) < 2:
+        try:
+            wiki = _http_json(
+                f"https://tr.wikipedia.org/w/api.php?action=query&list=search&srsearch={enc}&format=json",
+                headers={"User-Agent": "BedoAssistant/1.0"},
+                timeout=4.0,
+            )
+            hits = wiki.get("query", {}).get("search", [])
             snips = []
-            for h in hits[:3]:
+            for h in hits[:2]:
                 s = re.sub(r"<[^>]+>", "", _html.unescape(h.get("snippet", ""))).strip()
                 if s:
                     snips.append(f"- {h.get('title', '')}: {s}")
             if snips:
-                return "Wikipedia özetleri:\n" + "\n".join(snips)
-    except Exception:
-        pass
+                sections.append("Wikipedia özetleri:\n" + "\n".join(snips))
+        except Exception:
+            pass
 
-    return ""
+    return "\n\n".join(sections).strip()
 
 
 def web_search_answer(query: str, api_key: str = "", detail: str = "concise") -> str:
     """Yapılandırılmış en güncel sağlayıcı üzerinden iki aşamalı (kısa/derin) Web RAG araması yapar."""
+    import datetime as _dt
+
     q = str(query or "").strip()
     if not q:
         return "Aranacak soru belirtilmedi."
 
     keys = _resolve_provider_keys(api_key)
     if not any(keys.values()):
-        return "Canlı arama için Gemini, OpenAI (GPT) veya Anthropic (Claude) API anahtarı bulunamadı."
+        fb = _web_rag_free_fallback(q)
+        return fb or "Canlı arama için Gemini, OpenAI (GPT) veya Anthropic (Claude) API anahtarı bulunamadı."
 
+    today_str = _dt.datetime.now().strftime("%d.%m.%Y")
     is_deep = str(detail or "").strip().lower() == "deep"
-    max_tokens = 900 if is_deep else 180
+    max_tokens = 1400 if is_deep else 600
     if is_deep:
         prompt = (
+            f"[BUGÜNÜN TARİHİ: {today_str}]\n"
             "Aşağıdaki soruyu canlı web arama sonuçlarına dayanarak Türkçe araştır. "
             "Nedenleri, önemli tarihleri, sayıları ve bağlamı net, düzenli ve doyurucu şekilde özetle; "
-            "kaynaklarda net yoksa tahmin yürütme.\n\n"
+            "asla eski eğitim verisine dayanma ve 'arama yapıyorum' gibi ara cümleler kurma.\n\n"
             f"Soru: {q}"
         )
     else:
         prompt = (
-            "Aşağıdaki soruyu canlı web arama sonuçlarına dayanarak Türkçe, tek veya en fazla iki net cümleyle yanıtla. "
-            "Doğrudan kesin cevabı (skor, tarih, isim, sayı) ver; gereksiz giriş veya ek yorum yapma. "
-            "Kaynaklarda net yoksa tahmin yürütme.\n\n"
+            f"[BUGÜNÜN TARİHİ: {today_str}]\n"
+            "Aşağıdaki soruyu canlı web arama sonuçlarına dayanarak Türkçe, net ve doğrudan yanıtla. "
+            "Kesin cevabı (kur, skor, tarih, sürüm adı, sayı) doğrudan ver; 'arama yapıyorum' gibi giriş cümlesi yazma.\n\n"
             f"Soru: {q}"
         )
 
@@ -388,7 +548,7 @@ def web_search_answer(query: str, api_key: str = "", detail: str = "concise") ->
     now_m = time.monotonic()
     if keys["gemini"] and now_m >= _PROVIDER_COOLDOWN_UNTIL.get("gemini", 0.0):
         try:
-            text = _web_rag_gemini(prompt, keys["gemini"], max_tokens=max_tokens)
+            text = _web_rag_gemini(prompt, keys["gemini"], max_tokens=max_tokens, raw_query=q)
             if text:
                 return text
         except Exception as exc:
@@ -504,7 +664,7 @@ def _collect_local_files(scope: str = "all", max_files: int = 60) -> list[Path]:
 
 
 def local_rag_query(query: str, scope: str = "all", top_k: int = 3, detail: str = "concise") -> str:
-    """Yerel metin/belge dosyalarından TF-IDF benzerliğiyle en alakalı parçaları getirir."""
+    """Yerel metin/belge dosyalarından TF-IDF + Mem0 semantik hafızadan en alakalı parçaları getirir."""
     is_deep = str(detail or "").strip().lower() == "deep"
     effective_k = max(top_k, 6) if is_deep else max(1, top_k)
     max_chars = 420 if is_deep else 260
@@ -512,8 +672,28 @@ def local_rag_query(query: str, scope: str = "all", top_k: int = 3, detail: str 
     if not q_tokens:
         return "Aranacak geçerli bir sorgu belirtilmedi."
 
+    sc_folded = _fold_key(scope or "all")
+    memory_lines: list[str] = []
+    if sc_folded in {"all", "hepsi", "genel", "memory", "hafiza", "bellek"}:
+        try:
+            from memory.mem0_layer import search_semantic_memories
+            mem_hits = search_semantic_memories(query, limit=5 if is_deep else 3)
+            for hit in mem_hits:
+                mtxt = str(hit.get("memory") or "").strip()
+                if mtxt:
+                    memory_lines.append(f"[Hafıza] {mtxt[:max_chars]}")
+        except Exception:
+            pass
+
+    if sc_folded in {"memory", "hafiza", "bellek"}:
+        if memory_lines:
+            return "Semantik hafızadan bulunan ilgili bilgiler:\n" + "\n".join(memory_lines)
+        return f"Hafızada '{query}' ile eşleşen bir kayıt bulunamadı."
+
     files = _collect_local_files(scope=scope)
     if not files:
+        if memory_lines:
+            return "Semantik hafızadan bulunan ilgili bilgiler:\n" + "\n".join(memory_lines)
         return "Belirtilen konumda taranabilecek metin belgesi bulunamadı."
 
     docs: list[tuple[Path, str, Counter[str]]] = []
@@ -534,25 +714,45 @@ def local_rag_query(query: str, scope: str = "all", top_k: int = 3, detail: str 
                 df[tok] += 1
 
     if not docs:
+        if memory_lines:
+            return "Semantik hafızadan bulunan ilgili bilgiler:\n" + "\n".join(memory_lines)
         return "Yerel belgelerde okunabilir içerik bulunamadı."
 
     n_docs = len(docs)
+    avg_dl = sum(sum(tf.values()) for _, _, tf in docs) / max(1, n_docs)
+    k1 = 1.5
+    b = 0.75
     q_set = set(q_tokens)
     scored: list[tuple[float, Path, str]] = []
 
     for fpath, chunk, tf in docs:
+        doc_len = sum(tf.values())
         score = 0.0
         for qt in q_set:
-            if qt in tf:
-                idf = math.log((n_docs + 1) / (df[qt] + 1)) + 1.0
-                score += tf[qt] * idf
+            freq = float(tf.get(qt, 0))
+            doc_freq = df.get(qt, 0)
+            # Türkçe eklemeli morfoloji için kök/önek eşleşmesi (>= 4 karakter)
+            if freq == 0.0 and len(qt) >= 4:
+                root = qt[: max(4, len(qt) - 2)]
+                for dt, cnt in tf.items():
+                    if len(dt) >= 4 and (dt.startswith(root) or qt.startswith(dt[: max(4, len(dt) - 2)])):
+                        freq += 0.65 * cnt
+                        doc_freq = max(doc_freq, df.get(dt, 1))
+            if freq > 0.0:
+                idf = math.log(1.0 + (n_docs - doc_freq + 0.5) / (doc_freq + 0.5))
+                denom = freq + k1 * (1.0 - b + b * (doc_len / max(1.0, avg_dl)))
+                score += idf * ((freq * (k1 + 1.0)) / denom)
         if score > 0:
             scored.append((score, fpath, chunk))
 
     if not scored:
+        if memory_lines:
+            return "Semantik hafızadan bulunan ilgili bilgiler:\n" + "\n".join(memory_lines)
         return f"Yerel belgelerde '{query}' ile eşleşen bir içerik bulunamadı."
 
     scored.sort(key=lambda item: item[0], reverse=True)
     top_items = scored[:effective_k]
     lines = [f"[{p.name}] {ch[:max_chars]}" for _, p, ch in top_items]
-    return "Yerel belgelerden bulunan en alakalı bilgiler:\n" + "\n".join(lines)
+    if memory_lines:
+        lines.extend(memory_lines)
+    return "Yerel belgelerden ve hafızadan bulunan en alakalı bilgiler:\n" + "\n".join(lines)

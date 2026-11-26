@@ -387,6 +387,28 @@ TOOL_DECLARATIONS = [
         }
     },
     {
+        "name": "search_memory",
+        "description": (
+            "Kullanicinin gecmis konusmalardan ogrenilen tercihleri, aliskanliklari, projeleri ve "
+            "kalici hafiza kayitlari icinde anlamsal (semantik) arama yapar. "
+            "Kullanici daha once konustugu bir seyi, tercihini veya kisisel bilgisini sorarsa kullan."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "query": {
+                    "type": "STRING",
+                    "description": "Hafizada aranacak soru veya konu (orn. 'sevdigim kahve', 'calistigim proje')"
+                },
+                "limit": {
+                    "type": "INTEGER",
+                    "description": "Dondurulecek maksimum kayit sayisi (varsayilan 5)"
+                }
+            },
+            "required": ["query"]
+        }
+    },
+    {
         "name": "send_whatsapp_message",
         "description": (
             "WhatsApp Desktop veya WhatsApp Web üzerinden mesaj taslağı açar veya mesajı gönderir. "

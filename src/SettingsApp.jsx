@@ -2,10 +2,16 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import RealAppIcon from './RealAppIcon';
 import NotificationText from './NotificationText';
+import RoboMarkdown from './RoboMarkdown';
 import {
   Home,
   Plug,
   MessageSquare,
+  Clock,
+  Trash2,
+  Scan,
+  PenSquare,
+  ListFilter,
   LayoutGrid,
   Bot,
   Shirt,
@@ -191,6 +197,7 @@ const PAGE_HEADERS = {
   home: { title: 'Home', subtitle: '' },
   connections: { title: 'Agents', subtitle: 'Connect Codex and Antigravity to Bedo' },
   aichat: { title: 'AI & Chat', subtitle: "Which AI Bedo's chat talks to" },
+  bedochat: { title: 'Chat History', subtitle: 'Your text, voice, and screen conversations with Bedo' },
   apps: { title: 'Apps', subtitle: 'Pick which apps are in your Bedo' },
   robo: { title: 'Bedo', subtitle: 'His name, eyes, behaviour and badges', hasSearch: true },
   wardrobe: {
@@ -451,6 +458,23 @@ export default function SettingsApp() {
   const [showKeyCodex, setShowKeyCodex] = useState(false);
   const [showKeyGemini, setShowKeyGemini] = useState(false);
   const [keyVerify, setKeyVerify] = useState({});
+  const [bedoChatHistory, setBedoChatHistory] = useState([]);
+  const [selectedChatSessionId, setSelectedChatSessionId] = useState(null);
+  const [isNewChatDraft, setIsNewChatDraft] = useState(false);
+  const [chatSearchOpen, setChatSearchOpen] = useState(false);
+  const [chatHistorySearch, setChatHistorySearch] = useState('');
+  const [chatHistoryFilter, setChatHistoryFilter] = useState('all');
+  const [chatComposerText, setChatComposerText] = useState('');
+  const [chatSending, setChatSending] = useState(false);
+  const [chatPendingUserText, setChatPendingUserText] = useState('');
+  const [chatStreamingReply, setChatStreamingReply] = useState('');
+  const [chatResearchState, setChatResearchState] = useState(null);
+  const [chatSendError, setChatSendError] = useState('');
+  const [chatProviderChoice, setChatProviderChoice] = useState('auto');
+  const [copiedChatId, setCopiedChatId] = useState(null);
+  const [confirmClearChat, setConfirmClearChat] = useState(false);
+  const [expandedChatIds, setExpandedChatIds] = useState({});
+  const chatThreadScrollRef = useRef(null);
 
   const verifyProviderKey = async (provider, rawKey) => {
     const apiKey = String(rawKey || '').trim();
@@ -587,6 +611,89 @@ export default function SettingsApp() {
       if (st) setBedoStatus(st);
     });
 
+    window.twocode.getBedoChatHistory?.().then((list) => {
+      if (Array.isArray(list)) setBedoChatHistory(list);
+    });
+
+    const unsubBedoChat = window.twocode.onBedoChatHistoryUpdate?.((list) => {
+      if (Array.isArray(list)) {
+        setBedoChatHistory(list);
+        if (list.length > 0 && list[0]?.sessionId) {
+          setIsNewChatDraft((wasDraft) => {
+            if (wasDraft && Date.now() - (Number(list[0].timestamp) || 0) < 8000) {
+              setSelectedChatSessionId(list[0].sessionId);
+              return false;
+            }
+            return wasDraft;
+          });
+        }
+        setTimeout(() => {
+          const el = chatThreadScrollRef.current;
+          if (el) el.scrollTop = el.scrollHeight;
+        }, 40);
+      }
+    });
+
+    const unsubBedoChatSync = window.twocode.onBedoChatSync?.((ev) => {
+      if (!ev || typeof ev !== 'object') return;
+      if (ev.type === 'turn-start') {
+        if (ev.sessionId) setSelectedChatSessionId(ev.sessionId);
+        setIsNewChatDraft(false);
+        setChatPendingUserText(ev.userText || '');
+        setChatStreamingReply('');
+        setChatResearchState(null);
+        setChatSending(true);
+        setChatSendError('');
+        setTimeout(() => {
+          const el = chatThreadScrollRef.current;
+          if (el) el.scrollTop = el.scrollHeight;
+        }, 40);
+      } else if (ev.type === 'turn-research') {
+        if (ev.sessionId) setSelectedChatSessionId(ev.sessionId);
+        setIsNewChatDraft(false);
+        if (ev.userText) setChatPendingUserText(ev.userText);
+        setChatResearchState(ev.research?.phase === 'idle' ? null : ev.research || null);
+        setChatSending(true);
+        const el = chatThreadScrollRef.current;
+        if (el && el.scrollHeight - el.scrollTop - el.clientHeight <= 96) {
+          el.scrollTop = el.scrollHeight;
+        }
+      } else if (ev.type === 'turn-stream') {
+        if (ev.sessionId) setSelectedChatSessionId(ev.sessionId);
+        setIsNewChatDraft(false);
+        if (ev.userText) setChatPendingUserText(ev.userText);
+        if (ev.assistantText) setChatStreamingReply(ev.assistantText);
+        setChatSending(true);
+        const el = chatThreadScrollRef.current;
+        if (el && el.scrollHeight - el.scrollTop - el.clientHeight <= 96) {
+          el.scrollTop = el.scrollHeight;
+        }
+      } else if (ev.type === 'turn-done') {
+        if (ev.sessionId) setSelectedChatSessionId(ev.sessionId);
+        setIsNewChatDraft(false);
+        setChatPendingUserText('');
+        setChatStreamingReply('');
+        setChatResearchState(null);
+        setChatSending(false);
+        setTimeout(() => {
+          const el = chatThreadScrollRef.current;
+          if (el) el.scrollTop = el.scrollHeight;
+        }, 40);
+      } else if (ev.type === 'turn-error') {
+        setChatPendingUserText('');
+        setChatStreamingReply('');
+        setChatResearchState(null);
+        setChatSending(false);
+      } else if (ev.type === 'session-new') {
+        if (ev.sessionId) setSelectedChatSessionId(ev.sessionId);
+        setChatPendingUserText('');
+        setChatStreamingReply('');
+        setChatResearchState(null);
+        setChatSending(false);
+        setIsNewChatDraft(true);
+      }
+    });
+
     window.twocode.getPythonBootstrapStatus?.().then((st) => {
       if (st) setPythonBootstrap(st);
     });
@@ -621,6 +728,8 @@ export default function SettingsApp() {
       if (unsubAi) unsubAi();
       if (unsubMedia) unsubMedia();
       if (unsubBedo) unsubBedo();
+      if (unsubBedoChat) unsubBedoChat();
+      if (unsubBedoChatSync) unsubBedoChatSync();
       if (unsubPyBoot) unsubPyBoot();
       window.removeEventListener('storage', onStorageSync);
     };
@@ -932,6 +1041,7 @@ export default function SettingsApp() {
             <span className="nav-section-label">{t('settings.navGroup.robo')}</span>
             {[
               { id: 'robo', label: t('settings.nav.robo'), icon: Bot },
+              { id: 'bedochat', label: t('settings.nav.bedochat'), icon: Clock },
             ].map((item) => {
               const Icon = item.icon;
               return (
@@ -1005,7 +1115,7 @@ export default function SettingsApp() {
         {/* TOP HERO BANNER WITH LIVE NOTCH PREVIEW & WINDOW CONTROLS */}
         <header
           className={`settings-hero-banner ${
-            activePage === 'notifications' ? 'compact-banner' : ''
+            activePage === 'notifications' || activePage === 'bedochat' ? 'compact-banner' : ''
           }`}
         >
           {/* Draggable titlebar region */}
@@ -2459,6 +2569,648 @@ export default function SettingsApp() {
                   </div>
                 </div>
               </section>
+
+              {/* Quick Jump to Bedo Chat History */}
+              <section className="ai-lg-card">
+                <button
+                  type="button"
+                  className="chat-lg-jump-row"
+                  onClick={() => setActivePage('bedochat')}
+                >
+                  <div className="row-left-with-icon">
+                    <span className="ai-lg-icon-badge sky">
+                      <Clock size={16} />
+                    </span>
+                    <div className="row-text-col">
+                      <strong>{langCode === 'tr' ? 'Bedo Sohbet Geçmişi' : 'Bedo Chat History'}</strong>
+                      <span>
+                        {langCode === 'tr'
+                          ? `${bedoChatHistory.length} kayıtlı sohbet — yazılı, sesli ve ekran analizlerini görüntüle`
+                          : `${bedoChatHistory.length} saved conversations — browse text, voice, and screen chats`}
+                      </span>
+                    </div>
+                  </div>
+                  <ChevronRight size={16} />
+                </button>
+              </section>
+            </div>
+          );
+        })()}
+
+        {/* ============================================================
+            PAGE 3B: BEDO CHAT STUDIO (Gemini / GPT / Claude Style)
+            ============================================================ */}
+        {activePage === 'bedochat' && (() => {
+          const isTr = langCode === 'tr';
+          const q = chatHistorySearch.trim().toLowerCase();
+
+          // Group entries into sessions (newest session first)
+          const sessionMap = new Map();
+          const chronoAll = [...bedoChatHistory]
+            .filter((item) => item && (item.userText || item.assistantText))
+            .sort((a, b) => (Number(a.timestamp) || 0) - (Number(b.timestamp) || 0));
+
+          chronoAll.forEach((entry) => {
+            const sid = entry.sessionId || 'sess_default';
+            if (!sessionMap.has(sid)) {
+              sessionMap.set(sid, {
+                id: sid,
+                title: '',
+                items: [],
+                lastTs: Number(entry.timestamp) || Date.now(),
+              });
+            }
+            const sess = sessionMap.get(sid);
+            sess.items.push(entry);
+            sess.lastTs = Math.max(sess.lastTs, Number(entry.timestamp) || 0);
+            if (!sess.title && entry.userText) {
+              sess.title = entry.userText.trim();
+            }
+          });
+
+          const allSessions = Array.from(sessionMap.values())
+            .map((s) => ({
+              ...s,
+              title: s.title || (isTr ? 'Yeni sohbet' : 'New chat'),
+            }))
+            .sort((a, b) => b.lastTs - a.lastTs);
+
+          const visibleSessions = allSessions.filter((sess) => {
+            const sourceMatch =
+              chatHistoryFilter === 'all' ||
+              sess.items.some((it) => (it.source || 'text') === chatHistoryFilter);
+            if (!sourceMatch) return false;
+            if (!q) return true;
+            return (
+              sess.title.toLowerCase().includes(q) ||
+              sess.items.some(
+                (it) =>
+                  String(it.userText || '').toLowerCase().includes(q) ||
+                  String(it.assistantText || '').toLowerCase().includes(q)
+              )
+            );
+          });
+
+          const activeSession = isNewChatDraft
+            ? null
+            : visibleSessions.find((s) => s.id === selectedChatSessionId) || null;
+
+          const showWelcomeCanvas = (isNewChatDraft || !activeSession) && !chatSending;
+
+          const activeMessages = activeSession
+            ? activeSession.items.filter((it) => {
+                if (chatHistoryFilter !== 'all' && (it.source || 'text') !== chatHistoryFilter) {
+                  return false;
+                }
+                if (!q) return true;
+                return (
+                  String(it.userText || '').toLowerCase().includes(q) ||
+                  String(it.assistantText || '').toLowerCase().includes(q)
+                );
+              })
+            : [];
+
+          const availableProviders = [
+            settings.geminiApiKey?.trim() ? { id: 'Gemini', label: 'Gemini' } : null,
+            (settings.codexApiKey || settings.openaiApiKey)?.trim() ? { id: 'OpenAI', label: 'GPT' } : null,
+            settings.claudeApiKey?.trim() ? { id: 'Claude', label: 'Claude' } : null,
+          ].filter(Boolean);
+
+          const effectiveProvider =
+            chatProviderChoice !== 'auto' && availableProviders.some((p) => p.id === chatProviderChoice)
+              ? chatProviderChoice
+              : availableProviders[0]?.id || 'Gemini';
+
+          const effectiveProviderLabel =
+            availableProviders.find((p) => p.id === effectiveProvider)?.label || effectiveProvider;
+
+          const formatChatTime = (ts) => {
+            try {
+              return new Date(Number(ts) || Date.now()).toLocaleTimeString(locale, {
+                hour: '2-digit',
+                minute: '2-digit',
+              });
+            } catch {
+              return '';
+            }
+          };
+
+          const filterLabels = {
+            all: isTr ? 'Tümü' : 'All',
+            text: isTr ? 'Metin' : 'Text',
+            voice: isTr ? 'Sesli' : 'Voice',
+            vision: isTr ? 'Ekran' : 'Screen',
+          };
+
+          const cycleFilter = () => {
+            const order = ['all', 'text', 'voice', 'vision'];
+            const next = order[(order.indexOf(chatHistoryFilter) + 1) % order.length];
+            setChatHistoryFilter(next);
+          };
+
+          const cycleProvider = () => {
+            if (availableProviders.length <= 1) return;
+            const idx = availableProviders.findIndex((p) => p.id === effectiveProvider);
+            const next = availableProviders[(idx + 1) % availableProviders.length];
+            setChatProviderChoice(next.id);
+          };
+
+          const handleStartNewSession = async () => {
+            setChatSendError('');
+            setIsNewChatDraft(true);
+            try {
+              const res = await window.twocode?.newBedoChatSession?.();
+              if (res?.sessionId) setSelectedChatSessionId(res.sessionId);
+            } catch {}
+          };
+
+          const handleSelectSession = async (sessionId) => {
+            setChatSendError('');
+            setIsNewChatDraft(false);
+            setSelectedChatSessionId(sessionId);
+            try {
+              await window.twocode?.selectBedoChatSession?.(sessionId);
+            } catch {}
+          };
+
+          const handleDeleteSession = async (e, sessionId) => {
+            e?.stopPropagation?.();
+            try {
+              const res = await window.twocode?.deleteBedoChatSession?.(sessionId);
+              if (Array.isArray(res?.history)) setBedoChatHistory(res.history);
+              else setBedoChatHistory((prev) => prev.filter((item) => item.sessionId !== sessionId));
+              if (selectedChatSessionId === sessionId) {
+                setSelectedChatSessionId(null);
+                setIsNewChatDraft(true);
+              }
+            } catch {}
+          };
+
+          const handleSendFromStudio = async () => {
+            const text = chatComposerText.trim();
+            if (!text || chatSending) return;
+            setChatSendError('');
+            setChatComposerText('');
+
+            let targetSid = activeSession?.id || null;
+            if (showWelcomeCanvas || !targetSid) {
+              // Create a brand-new isolated session ID immediately without racing session-new broadcast
+              targetSid = `sess_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+              setSelectedChatSessionId(targetSid);
+              setIsNewChatDraft(false);
+            }
+            setChatPendingUserText(text);
+            setChatStreamingReply('');
+            setChatSending(true);
+
+            try {
+              const res = await window.twocode?.askRobo?.({
+                question: text,
+                provider: effectiveProvider,
+                sessionId: targetSid,
+              });
+              if (res?.error) {
+                setChatSendError(res.error);
+              } else {
+                setIsNewChatDraft(false);
+                if (targetSid) setSelectedChatSessionId(targetSid);
+                const fresh = await window.twocode?.getBedoChatHistory?.();
+                if (Array.isArray(fresh)) setBedoChatHistory(fresh);
+                setTimeout(() => {
+                  const el = chatThreadScrollRef.current;
+                  if (el) el.scrollTop = el.scrollHeight;
+                }, 40);
+              }
+            } catch (err) {
+              setChatSendError(err?.message || (isTr ? 'Mesaj gönderilemedi.' : 'Could not send message.'));
+            } finally {
+              setChatPendingUserText('');
+              setChatStreamingReply('');
+              setChatSending(false);
+            }
+          };
+
+          const handleCopyChat = (entry) => {
+            const textToCopy = entry.assistantText || entry.userText || '';
+            if (!textToCopy) return;
+            try {
+              navigator.clipboard?.writeText?.(textToCopy);
+            } catch {}
+            setCopiedChatId(entry.id);
+            setTimeout(() => {
+              setCopiedChatId((curr) => (curr === entry.id ? null : curr));
+            }, 1400);
+          };
+
+          const handleDeleteChat = async (id) => {
+            try {
+              const res = await window.twocode?.deleteBedoChatEntry?.(id);
+              if (Array.isArray(res?.history)) setBedoChatHistory(res.history);
+              else setBedoChatHistory((prev) => prev.filter((item) => item.id !== id));
+            } catch {}
+          };
+
+          const handleClearAllChats = async () => {
+            if (!confirmClearChat) {
+              setConfirmClearChat(true);
+              setTimeout(() => setConfirmClearChat(false), 3500);
+              return;
+            }
+            setConfirmClearChat(false);
+            try {
+              await window.twocode?.clearBedoChatHistory?.();
+              setBedoChatHistory([]);
+              setSelectedChatSessionId(null);
+              setIsNewChatDraft(true);
+            } catch {}
+          };
+
+          const renderComposer = (isHero) => (
+            <div className={`chat-studio-composer ${isHero ? 'is-hero' : 'is-docked'}`}>
+              <div className="chat-studio-bar-row">
+                <button
+                  type="button"
+                  className="chat-studio-capture-btn"
+                  onClick={() => window.twocode?.startBedoBuddy?.()}
+                  title={isTr ? 'Ekrandan bölge seçip Bedo’ya sor' : 'Capture screen region for Bedo'}
+                  aria-label={isTr ? 'Ekran yakala' : 'Capture screen'}
+                >
+                  <Scan size={14} />
+                </button>
+                <input
+                  type="text"
+                  className="chat-studio-input"
+                  placeholder={
+                    chatSending
+                      ? (isTr ? 'Bedo yanıtlıyor...' : 'Bedo is replying...')
+                      : (isTr ? 'Bedo’ya yaz...' : 'Message Bedo...')
+                  }
+                  value={chatComposerText}
+                  disabled={chatSending}
+                  onChange={(e) => setChatComposerText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.nativeEvent?.isComposing) {
+                      e.preventDefault();
+                      handleSendFromStudio();
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  className={`chat-studio-send-btn ${chatComposerText.trim() && !chatSending ? 'is-ready' : ''}`}
+                  disabled={!chatComposerText.trim() || chatSending}
+                  onClick={handleSendFromStudio}
+                  aria-label={isTr ? 'Gönder' : 'Send'}
+                >
+                  <ArrowUp size={14} strokeWidth={2.5} />
+                </button>
+              </div>
+              {chatSendError && <div className="chat-studio-error">{chatSendError}</div>}
+            </div>
+          );
+
+          return (
+            <div className="settings-page-body chat-lg-page">
+              <div className="chat-studio-shell">
+                {/* LEFT SIDEBAR — Bedo Frosted Glass Sessions */}
+                <aside className="chat-studio-sidebar">
+                  <div className="chat-studio-sb-top">
+                    <span className="chat-studio-sb-heading">
+                      {isTr ? 'Sohbetler' : 'Chats'}
+                      {allSessions.length > 0 && <em>{allSessions.length}</em>}
+                    </span>
+                    <div className="chat-studio-sb-tools">
+                      <button
+                        type="button"
+                        className={`chat-studio-icon-btn ${chatSearchOpen ? 'is-active' : ''}`}
+                        onClick={() => {
+                          setChatSearchOpen((prev) => {
+                            if (prev) setChatHistorySearch('');
+                            return !prev;
+                          });
+                        }}
+                        title={isTr ? 'Sohbetlerde ara' : 'Search chats'}
+                      >
+                        <Search size={13} />
+                      </button>
+                      <button
+                        type="button"
+                        className={`chat-studio-icon-btn ${chatHistoryFilter !== 'all' ? 'is-active' : ''}`}
+                        onClick={cycleFilter}
+                        title={`${isTr ? 'Filtre' : 'Filter'}: ${filterLabels[chatHistoryFilter]}`}
+                      >
+                        <ListFilter size={13} />
+                      </button>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    className={`chat-studio-new-btn ${showWelcomeCanvas ? 'is-active' : ''}`}
+                    onClick={handleStartNewSession}
+                  >
+                    <PenSquare size={13} />
+                    <span>{isTr ? 'Yeni Sohbet' : 'New Chat'}</span>
+                  </button>
+
+                  {chatSearchOpen && (
+                    <div className="home-lg-search-wrap chat-lg-sb-search">
+                      <Search size={12} aria-hidden="true" />
+                      <input
+                        type="text"
+                        className="home-lg-search-input"
+                        placeholder={isTr ? 'Ara...' : 'Search...'}
+                        value={chatHistorySearch}
+                        onChange={(e) => setChatHistorySearch(e.target.value)}
+                        autoFocus
+                      />
+                      {chatHistorySearch && (
+                        <button
+                          type="button"
+                          className="chat-lg-search-clear"
+                          onClick={() => setChatHistorySearch('')}
+                        >
+                          <X size={11} />
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {chatHistoryFilter !== 'all' && (
+                    <div className="chat-studio-active-filter">
+                      <span>{filterLabels[chatHistoryFilter]}</span>
+                      <button type="button" onClick={() => setChatHistoryFilter('all')}>
+                        <X size={10} />
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="chat-studio-sb-list">
+                    {visibleSessions.length === 0 ? (
+                      <div className="chat-lg-sb-empty">
+                        {isTr ? 'Henüz sohbet yok' : 'No chats yet'}
+                      </div>
+                    ) : (
+                      visibleSessions.map((sess) => {
+                        const isActive = !showWelcomeCanvas && activeSession?.id === sess.id;
+                        return (
+                          <div
+                            key={sess.id}
+                            role="button"
+                            tabIndex={0}
+                            className={`chat-studio-sb-item ${isActive ? 'is-active' : ''}`}
+                            onClick={() => handleSelectSession(sess.id)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                handleSelectSession(sess.id);
+                              }
+                            }}
+                          >
+                            <span className="chat-studio-sb-title">{sess.title}</span>
+                            <button
+                              type="button"
+                              className="chat-lg-sb-del"
+                              onClick={(e) => handleDeleteSession(e, sess.id)}
+                              title={isTr ? 'Sohbeti sil' : 'Delete chat'}
+                            >
+                              <Trash2 size={11} />
+                            </button>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  {allSessions.length > 0 && (
+                    <div className="chat-lg-sb-footer">
+                      <button
+                        type="button"
+                        className={`chat-lg-clear-btn ${confirmClearChat ? 'is-confirm' : ''}`}
+                        onClick={handleClearAllChats}
+                      >
+                        <Trash2 size={12} />
+                        <span>
+                          {confirmClearChat
+                            ? (isTr ? 'Emin misin? Tekrar tıkla' : 'Confirm clear all')
+                            : (isTr ? 'Geçmişi Temizle' : 'Clear History')}
+                        </span>
+                      </button>
+                    </div>
+                  )}
+                </aside>
+
+                {/* RIGHT STAGE — Bedo Liquid Glass Welcome or Active Thread */}
+                <section className="chat-studio-stage">
+                  <div className="chat-studio-ambient" aria-hidden="true" />
+
+                  {showWelcomeCanvas ? (
+                    <div className="chat-studio-welcome">
+                      <div className="chat-studio-bedo-emblem" aria-hidden="true">
+                        <span />
+                        <span />
+                      </div>
+                      <div className="chat-studio-welcome-copy">
+                        <h2>
+                          {settings.userName
+                            ? (isTr ? `Selam ${settings.userName}, neyi halledelim?` : `Hey ${settings.userName}, what are we working on?`)
+                            : (isTr ? 'Bugün neyi halledelim?' : 'What shall we tackle today?')}
+                        </h2>
+                        <p>
+                          {isTr
+                            ? 'Ada’dan ya da buradan yazabilirsin — tüm sohbetlerin burada oturum olarak saklanır.'
+                            : 'Type from the Island or right here — all your chats stay organized by session.'}
+                        </p>
+                      </div>
+                      {renderComposer(true)}
+                    </div>
+                  ) : (
+                    <>
+                      <div className="chat-studio-thread-head">
+                        <strong className="chat-studio-thread-title">
+                          {activeSession?.title || chatPendingUserText || (isTr ? 'Yeni Sohbet' : 'New Chat')}
+                        </strong>
+                        <button
+                          type="button"
+                          className="chat-studio-icon-btn"
+                          onClick={handleStartNewSession}
+                          title={isTr ? 'Yeni sohbet' : 'New chat'}
+                        >
+                          <PenSquare size={13} />
+                        </button>
+                      </div>
+
+                      <div ref={chatThreadScrollRef} className="chat-studio-thread-scroll">
+                        <div className="chat-lg-messages">
+                          {activeMessages.map((entry) => {
+                            const isLongReply = (entry.assistantText || '').length > 560;
+                            const isExpanded = Boolean(expandedChatIds[entry.id]);
+                            const displayReply =
+                              isLongReply && !isExpanded
+                                ? `${entry.assistantText.slice(0, 560).trimEnd()}…`
+                                : entry.assistantText;
+                            const timeLabel = formatChatTime(entry.timestamp);
+
+                            return (
+                              <div key={entry.id} className="chat-lg-exchange">
+                                {entry.userText && (
+                                  <div className="chat-lg-msg-row is-user">
+                                    <div className="chat-lg-bubble is-user">
+                                      <p>{entry.userText}</p>
+                                      <div className="chat-lg-bubble-meta">
+                                        {entry.source === 'voice' && <Mic size={10} />}
+                                        {entry.source === 'vision' && <Scan size={10} />}
+                                        <span>{timeLabel}</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {entry.assistantText ? (
+                                  <div className="chat-lg-msg-row is-assistant">
+                                    <div className="chat-lg-avatar" aria-hidden="true">
+                                      <span />
+                                      <span />
+                                    </div>
+                                    <div className="chat-lg-bubble is-assistant">
+                                      <div className="chat-lg-reply-body">
+                                        <RoboMarkdown content={displayReply} />
+                                        {isLongReply && (
+                                          <button
+                                            type="button"
+                                            className="chat-lg-expand-btn"
+                                            onClick={() =>
+                                              setExpandedChatIds((prev) => ({
+                                                ...prev,
+                                                [entry.id]: !prev[entry.id],
+                                              }))
+                                            }
+                                          >
+                                            {isExpanded
+                                              ? (isTr ? 'Daha az göster' : 'Show less')
+                                              : (isTr ? 'Devamını gör' : 'Show more')}
+                                          </button>
+                                        )}
+                                      </div>
+                                      <div className="chat-lg-bubble-footer">
+                                        <span className="chat-lg-meta-label">
+                                          {entry.provider || 'Bedo'} · {timeLabel}
+                                        </span>
+                                        <div className="chat-lg-hover-actions">
+                                          <button
+                                            type="button"
+                                            className="chat-lg-mini-btn"
+                                            onClick={() => handleCopyChat(entry)}
+                                            title={isTr ? 'Kopyala' : 'Copy'}
+                                          >
+                                            {copiedChatId === entry.id ? <Check size={11} /> : <Copy size={11} />}
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="chat-lg-mini-btn is-danger"
+                                            onClick={() => handleDeleteChat(entry.id)}
+                                            title={isTr ? 'Sil' : 'Delete'}
+                                          >
+                                            <Trash2 size={11} />
+                                          </button>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ) : null}
+                              </div>
+                            );
+                          })}
+                          {chatSending && (
+                            <div className="chat-lg-exchange is-live-stream">
+                              {chatPendingUserText && (
+                                <div className="chat-lg-msg-row is-user">
+                                  <div className="chat-lg-bubble is-user">
+                                    <p>{chatPendingUserText}</p>
+                                  </div>
+                                </div>
+                              )}
+                              <div className="chat-lg-msg-row is-assistant">
+                                <div className="chat-lg-avatar is-thinking" aria-hidden="true">
+                                  <span />
+                                  <span />
+                                </div>
+                                {chatStreamingReply ? (
+                                  <div className="chat-lg-bubble is-assistant is-streaming">
+                                    {Array.isArray(chatResearchState?.domains) && chatResearchState.domains.length > 0 && (
+                                      <div className="chat-lg-inline-trail">
+                                        <span className="chat-lg-trail-ring" aria-hidden="true" />
+                                        <span className="chat-lg-trail-domains">
+                                          {chatResearchState.domains.slice(0, 3).join(' · ')}
+                                          {(chatResearchState.totalSources || 0) > 3
+                                            ? ` +${chatResearchState.totalSources - 3}`
+                                            : ''}
+                                        </span>
+                                      </div>
+                                    )}
+                                    <div className="chat-lg-reply-body">
+                                      <RoboMarkdown content={chatStreamingReply} />
+                                    </div>
+                                  </div>
+                                ) : chatResearchState && chatResearchState.phase ? (
+                                  <div className={`chat-lg-research-whisper is-${chatResearchState.phase}`}>
+                                    <div className="chat-lg-whisper-row">
+                                      <span className="chat-lg-orbital-spinner" aria-hidden="true" />
+                                      <span className="chat-lg-shimmer-text">
+                                        {chatResearchState.phase === 'planning'
+                                          ? (isTr ? 'Düşünüyor' : 'Thinking')
+                                          : chatResearchState.phase === 'searching'
+                                            ? (isTr ? 'Web taranıyor' : 'Searching web')
+                                            : chatResearchState.phase === 'reading'
+                                              ? (isTr
+                                                  ? `Kaynaklar okunuyor${chatResearchState.readableTotal ? ` · ${chatResearchState.readCount || 0}/${chatResearchState.readableTotal}` : ''}`
+                                                  : `Reading sources${chatResearchState.readableTotal ? ` · ${chatResearchState.readCount || 0}/${chatResearchState.readableTotal}` : ''}`)
+                                              : (isTr
+                                                  ? `${chatResearchState.totalSources && chatResearchState.totalSources > 1 ? `${chatResearchState.totalSources} kaynaktan ` : ''}yanıt yazılıyor`
+                                                  : 'Writing response')}
+                                      </span>
+                                      {chatResearchState.phase === 'searching' && chatResearchState.queries?.[0] && (
+                                        <span className="chat-lg-whisper-sub">
+                                          {chatResearchState.queries[0]}
+                                        </span>
+                                      )}
+                                    </div>
+                                    {Array.isArray(chatResearchState.domains) && chatResearchState.domains.length > 0 && (
+                                      <div className="chat-lg-whisper-domains">
+                                        {chatResearchState.domains.slice(0, 4).map((dom, idx) => (
+                                          <span
+                                            key={dom}
+                                            className="chat-lg-domain-chip"
+                                            style={{ animationDelay: `${idx * 55}ms` }}
+                                          >
+                                            {dom}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <div className="chat-lg-bubble is-assistant is-thinking-pill" aria-label={isTr ? 'Düşünüyor' : 'Thinking'}>
+                                    <div className="chat-lg-thinking-wave" aria-hidden="true">
+                                      <i />
+                                      <i />
+                                      <i />
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="chat-studio-dock">
+                        {renderComposer(false)}
+                      </div>
+                    </>
+                  )}
+                </section>
+              </div>
             </div>
           );
         })()}

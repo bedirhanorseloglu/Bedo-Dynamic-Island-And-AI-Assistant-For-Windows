@@ -15,3 +15,6 @@ webrtcvad-wheels      # Modern WebRTC VAD (gürültü/sessizlik filtreleme)
 pyrnnoise>=0.4.5
 webrtcvad-wheels>=2.0.14
 faster-whisper>=1.2.0
+mem0ai>=0.1.90        # Semantik kalıcı hafıza (yerel on-disk Qdrant + otomatik tercih çıkarımı)
+anthropic>=0.40.0     # Mem0 Claude (Anthropic) LLM sağlayıcısı
+fastembed>=0.4.0      # Claude-only kurulumlarda yerel (API anahtarsız) embedding sağlayıcısı

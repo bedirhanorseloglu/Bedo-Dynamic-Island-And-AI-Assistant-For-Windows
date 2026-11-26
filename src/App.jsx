@@ -1371,6 +1371,8 @@ export default function App() {
   const [roboReply, setRoboReply] = useState(null);
   const [roboReplyProvider, setRoboReplyProvider] = useState(null);
   const [roboLoading, setRoboLoading] = useState(false);
+  const [roboResearchState, setRoboResearchState] = useState(null);
+  const [roboStreaming, setRoboStreaming] = useState(false);
 
   // Bedo (JARVIS Headless Bridge) live state
   const [bedoStatus, setBedoStatus] = useState({
@@ -1608,9 +1610,69 @@ export default function App() {
       }
     });
 
+    const unsubSessionReset = api.onBedoChatSessionReset?.(() => {
+      setRoboReply(null);
+      setBedoUserTranscript('');
+      setRoboLoading(false);
+    });
+
+    const unsubChatSync = api.onBedoChatSync?.((ev) => {
+      if (!ev || typeof ev !== 'object') return;
+      if (ev.type === 'turn-start') {
+        if (ev.userText) setBedoUserTranscript(ev.userText);
+        setRoboReply(null);
+        setRoboResearchState(null);
+        setRoboStreaming(false);
+        setRoboLoading(true);
+        setRoboMood('curious');
+      } else if (ev.type === 'turn-research') {
+        if (ev.userText) setBedoUserTranscript(ev.userText);
+        setRoboResearchState(ev.research?.phase === 'idle' ? null : ev.research || null);
+      } else if (ev.type === 'turn-stream') {
+        if (ev.userText) setBedoUserTranscript(ev.userText);
+        if (ev.assistantText) {
+          setRoboReply(ev.assistantText);
+          setRoboReplyProvider(ev.provider || 'Bedo');
+          setRoboStreaming(true);
+        }
+      } else if (ev.type === 'turn-done' && ev.entry) {
+        if (ev.entry.userText) setBedoUserTranscript(ev.entry.userText);
+        setRoboReply(ev.entry.assistantText || null);
+        setRoboReplyProvider(ev.entry.provider || 'Bedo');
+        setRoboResearchState(null);
+        setRoboStreaming(false);
+        setRoboLoading(false);
+        setRoboMood('happy');
+      } else if (ev.type === 'turn-error') {
+        setRoboResearchState(null);
+        setRoboStreaming(false);
+        setRoboLoading(false);
+        setRoboMood('sad');
+        if (ev.error) setRoboReply(ev.error);
+      } else if (ev.type === 'session-new') {
+        setRoboReply(null);
+        setBedoUserTranscript('');
+        setRoboResearchState(null);
+        setRoboStreaming(false);
+        setRoboLoading(false);
+      } else if (ev.type === 'session-selected') {
+        if (ev.latestEntry) {
+          setBedoUserTranscript(ev.latestEntry.userText || '');
+          setRoboReply(ev.latestEntry.assistantText || null);
+          setRoboReplyProvider(ev.latestEntry.provider || 'Bedo');
+        } else {
+          setBedoUserTranscript('');
+          setRoboReply(null);
+        }
+        setRoboLoading(false);
+      }
+    });
+
     return () => {
       unsubStatus?.();
       unsubEvent?.();
+      unsubSessionReset?.();
+      unsubChatSync?.();
     };
   }, []);
 
@@ -3914,6 +3976,7 @@ export default function App() {
         return;
       }
     }
+    setRoboQuestion('');
     setRoboLoading(true);
     setRoboMood('curious');
     triggerRoboReaction('thinking', 3, 1800);
@@ -3942,7 +4005,9 @@ export default function App() {
       setBedoUserTranscript(q);
       setRoboReply(null);
       setRoboLoading(true);
-      if (bedoStatus.running) {
+      const isOsDesktopCommand = /\b(aç\b|kapat\b|sesi\b|ses\s+seviye|parlaklık|alarm|hatırlat|zamanlayıcı|ekran\s+görüntüsü|kamerayı|open\s+|launch\s+|close\s+|volume|brightness)/i.test(q);
+      const shouldUseLiveVoiceEngine = bedoStatus.running && (!bedoStatus.paused || isOsDesktopCommand);
+      if (shouldUseLiveVoiceEngine) {
         if (bedoStatus.paused) {
           await window.twocode?.bedoSetPaused?.(false);
         }
@@ -6657,6 +6722,8 @@ export default function App() {
                         userTranscript={bedoUserTranscript}
                         reply={roboReply}
                         loading={roboLoading}
+                        researchState={roboResearchState}
+                        isStreaming={roboStreaming}
                         question={roboQuestion}
                         pendingBuddyImage={pendingBuddyImage}
                         hasApiKey={Boolean(
@@ -6736,6 +6803,7 @@ export default function App() {
                         onClearReply={() => {
                           setRoboReply(null);
                           setBedoUserTranscript('');
+                          window.twocode?.newBedoChatSession?.();
                         }}
                         onPokeEyes={() => {
                           triggerRoboReaction('happy', 3, 1200);

@@ -23,7 +23,14 @@ from google.genai import types  # type: ignore[reportMissingImports]
 
 from app_config import get_app_config_value
 from ui import JarvisUI
-from memory.memory_manager import load_memory, update_memory, delete_memory, format_memory_for_prompt
+from memory.memory_manager import (
+    load_memory,
+    update_memory,
+    delete_memory,
+    format_memory_for_prompt,
+    search_memory,
+    remember_conversation_turn,
+)
 from actions.open_app import open_app
 from actions.sys_info  import sys_info
 from actions.calendar import get_calendar_events, add_calendar_event, delete_calendar_event
@@ -491,6 +498,15 @@ class JarvisLive:
                     args.get("match_text", ""),
                 )
 
+            elif name == "search_memory":
+                result = await loop.run_in_executor(
+                    None,
+                    lambda: search_memory(
+                        args.get("query", ""),
+                        int(args.get("limit", 5) or 5),
+                    ),
+                )
+
             elif name == "open_app":
                 r = await loop.run_in_executor(
                     None, lambda: open_app(args.get("app_name", "")))
@@ -935,9 +951,25 @@ class JarvisLive:
                                 if txt:
                                     out_buf.append(txt)
                                     if hasattr(self.ui, "update_assistant_transcript"):
-                                        live_out = re.sub(r"\s+", " ", "".join(out_buf)).strip()
+                                        live_out = re.sub(r"\n{3,}", "\n\n", re.sub(r"[ \t]+", " ", "".join(out_buf))).strip()
                                         if live_out:
                                             self.ui.update_assistant_transcript(live_out, final=False)
+
+                        # Fallback: capture non-thought text parts if model_turn emits written text
+                        if getattr(sc, "model_turn", None) and getattr(sc.model_turn, "parts", None):
+                            for part in sc.model_turn.parts:
+                                if getattr(part, "thought", False):
+                                    continue
+                                part_text = getattr(part, "text", None)
+                                if part_text and part_text.strip():
+                                    existing = re.sub(r"[ \t]+", " ", "".join(out_buf)).strip()
+                                    clean_part = part_text.strip()
+                                    if clean_part and clean_part not in existing:
+                                        out_buf.append(("\n" if out_buf and clean_part.startswith(("*", "-", "#", "1.")) else (" " if out_buf else "")) + clean_part)
+                                        if hasattr(self.ui, "update_assistant_transcript"):
+                                            live_out = re.sub(r"\n{3,}", "\n\n", re.sub(r"[ \t]+", " ", "".join(out_buf))).strip()
+                                            if live_out:
+                                                self.ui.update_assistant_transcript(live_out, final=False)
 
                         if sc.input_transcription and sc.input_transcription.text:
                             raw_in = sc.input_transcription.text
@@ -970,7 +1002,7 @@ class JarvisLive:
                                     self.ui.write_log(f"Siz: {full_in}")
                             in_buf = []
 
-                            full_out = re.sub(r"\s+", " ", "".join(out_buf)).strip()
+                            full_out = re.sub(r"\n{3,}", "\n\n", re.sub(r"[ \t]+", " ", "".join(out_buf))).strip()
                             if full_out:
                                 if hasattr(self.ui, "update_assistant_transcript"):
                                     self.ui.update_assistant_transcript(full_out, final=True)
@@ -986,6 +1018,8 @@ class JarvisLive:
                                         "Filtrelenen ham transcript: " + " | ".join(output_noise_samples),
                                         level="WARN",
                                     )
+                            if full_in:
+                                remember_conversation_turn(full_in, full_out)
                             out_buf = []
                             output_noise = False
                             output_noise_samples = []

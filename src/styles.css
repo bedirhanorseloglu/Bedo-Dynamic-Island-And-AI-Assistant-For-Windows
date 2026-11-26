@@ -3733,10 +3733,171 @@ select {
   color: rgba(255, 255, 255, .84);
 }
 
-.robo-markdown a {
-  color: #b8c5ff;
-  text-decoration: underline;
-  text-underline-offset: 2px;
+.robo-markdown,
+.robo-markdown p,
+.robo-markdown li,
+.robo-markdown h1,
+.robo-markdown h2,
+.robo-markdown h3,
+.robo-markdown h4,
+.robo-markdown code,
+.robo-markdown pre,
+.robo-markdown blockquote,
+.robo-markdown td,
+.robo-markdown th,
+.bedo-v2-reply-scroll,
+.bedo-v2-user-pill p {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  -webkit-app-region: no-drag;
+  cursor: text;
+}
+
+.robo-markdown ::selection,
+.bedo-v2-reply-scroll ::selection,
+.bedo-v2-user-pill p::selection {
+  background: rgba(56, 189, 248, 0.34);
+  color: #ffffff;
+}
+
+.robo-source-chip {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  cursor: pointer;
+}
+
+.robo-markdown a.robo-md-link {
+  color: #93c5fd;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(147, 197, 253, 0.32);
+  transition: color 0.16s ease, border-color 0.16s ease;
+}
+
+.robo-markdown a.robo-md-link:hover {
+  color: #dbeafe;
+  border-bottom-color: rgba(219, 234, 254, 0.78);
+}
+
+.robo-md-table-wrap {
+  overflow-x: auto;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.robo-md-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11.5px;
+}
+
+.robo-md-table th,
+.robo-md-table td {
+  padding: 5px 9px;
+  text-align: left;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.robo-md-table th {
+  font-weight: 600;
+  color: rgba(186, 230, 253, 0.92);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.robo-md-table tr:last-child td {
+  border-bottom: none;
+}
+
+.bedo-v2-reply-scroll .robo-markdown {
+  gap: 6px;
+}
+
+.bedo-v2-reply-scroll .robo-markdown ul,
+.bedo-v2-reply-scroll .robo-markdown ol {
+  gap: 4px;
+  padding-left: 17px;
+}
+
+.bedo-v2-reply-scroll .robo-markdown li::marker {
+  color: #7dd3fc;
+}
+
+.bedo-v2-reply-scroll .robo-source-chip {
+  padding: 2.5px 8px;
+  font-size: 10.5px;
+}
+
+.robo-sources-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.robo-sources-caption {
+  font-size: 9.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: rgba(148, 163, 184, 0.68);
+}
+
+.robo-sources-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.robo-source-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 220px;
+  padding: 3.5px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(226, 232, 240, 0.88) !important;
+  text-decoration: none !important;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(12px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transition: transform 0.16s cubic-bezier(0.22, 1, 0.36, 1), background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+}
+
+.robo-source-chip:hover {
+  transform: translateY(-1px);
+  color: #ffffff !important;
+  background: rgba(56, 189, 248, 0.14);
+  border-color: rgba(125, 211, 252, 0.34);
+}
+
+.robo-source-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, #38bdf8 0%, #a78bfa 100%);
+}
+
+.robo-source-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.robo-source-arrow {
+  flex-shrink: 0;
+  opacity: 0.5;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.robo-source-chip:hover .robo-source-arrow {
+  opacity: 0.95;
+  transform: translate(1px, -1px);
 }
 
 .robo-markdown blockquote {
@@ -16407,6 +16568,89 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
   font-weight: 500;
 }
 
+.bedo-v2-research-strip {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  padding: 5px 10px;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  backdrop-filter: blur(14px);
+}
+
+.bedo-v2-orbital-ring {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  border: 1.5px solid rgba(148, 163, 184, 0.22);
+  border-top-color: #7dd3fc;
+  border-right-color: rgba(196, 181, 253, 0.75);
+  animation: bedoIslandSpin 0.9s linear infinite;
+}
+
+@keyframes bedoIslandSpin {
+  to { transform: rotate(360deg); }
+}
+
+.bedo-v2-shimmer-label {
+  font-size: 11.5px;
+  font-weight: 520;
+  background: linear-gradient(90deg, rgba(203, 213, 225, 0.65) 0%, #f8fafc 46%, #bae6fd 54%, rgba(203, 213, 225, 0.65) 100%);
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: bedoIslandShimmer 2.1s ease-in-out infinite;
+}
+
+@keyframes bedoIslandShimmer {
+  0% { background-position: 110% 0; }
+  100% { background-position: -110% 0; }
+}
+
+.bedo-v2-research-chips {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.bedo-v2-domain-pill {
+  font-style: normal;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  color: rgba(203, 213, 225, 0.85);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.bedo-v2-reply-stream-wrap {
+  position: relative;
+}
+
+.bedo-v2-reply-stream-wrap.is-streaming .robo-markdown > p:last-of-type::after,
+.bedo-v2-reply-stream-wrap.is-streaming .robo-markdown > ul:last-of-type > li:last-child::after,
+.bedo-v2-reply-stream-wrap.is-streaming .robo-markdown > ol:last-of-type > li:last-child::after {
+  content: '';
+  display: inline-block;
+  width: 4.5px;
+  height: 11.5px;
+  margin-left: 3px;
+  vertical-align: -1.5px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #bae6fd 0%, #c084fc 100%);
+  box-shadow: 0 0 6px rgba(125, 211, 252, 0.65);
+  animation: bedoIslandCaret 0.9s ease-in-out infinite;
+}
+
+@keyframes bedoIslandCaret {
+  0%, 100% { opacity: 0.95; }
+  50% { opacity: 0.2; }
+}
+
 .bedo-v2-cam-wrap {
   position: relative;
   height: 100%;
@@ -16637,8 +16881,25 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
-.bedo-v2-input-bar input {
+.bedo-v2-input-bar.is-launching {
+  border-color: rgba(125, 211, 252, 0.52);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.24),
+    0 0 0 3px rgba(56, 189, 248, 0.14),
+    0 8px 24px -4px rgba(56, 189, 248, 0.28);
+}
+
+.bedo-v2-input-wrap {
+  position: relative;
   flex: 1 1 0;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+}
+
+.bedo-v2-input-bar input {
+  width: 100%;
   min-width: 0;
   background: transparent;
   border: none;
@@ -16651,6 +16912,49 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
 
 .bedo-v2-input-bar input::placeholder {
   color: rgba(255, 255, 255, 0.4);
+  transition: opacity 0.22s ease;
+}
+
+.bedo-v2-input-bar.is-launching input::placeholder {
+  opacity: 0;
+}
+
+.bedo-v2-input-ghost {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 450;
+  letter-spacing: -0.01em;
+  color: rgba(255, 255, 255, 0.96);
+  pointer-events: none;
+  user-select: none;
+  will-change: transform, opacity, filter;
+}
+
+.bedo-v2-input-ghost > span {
+  display: block;
+  width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bedo-v2-send-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+}
+
+.bedo-v2-send.is-launching {
+  background: linear-gradient(135deg, #38bdf8 0%, #3b82f6 100%);
+  border-color: rgba(186, 230, 253, 0.55);
+  color: #ffffff;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.4),
+    0 0 16px rgba(56, 189, 248, 0.55);
 }
 
 .bedo-v2-send {

@@ -20,8 +20,11 @@ const path = require('path');
 const { execFile, spawn } = require('child_process');
 const http = require('http');
 const https = require('https');
+const dns = require('dns');
 const os = require('os');
 const fs = require('fs');
+try { dns.setDefaultResultOrder('ipv4first'); } catch {}
+try { app.commandLine.appendSwitch('disable-ipv6'); } catch {}
 const { DropShareServer } = require('./drop-share-server.cjs');
 const { normalizeLanguage, getLocale, t: trMain } = require('./i18n.cjs');
 const {
@@ -40,6 +43,290 @@ const { queryWindowsBatteryEta } = require('./battery-eta.cjs');
 const perfMonitor = createPerfMonitor();
 let bedoService = null;
 
+// =========================================================================
+// BEDO CHAT HISTORY (Persistent JSON in userData)
+// =========================================================================
+const MAX_BEDO_CHAT_HISTORY = 300;
+const BEDO_SESSION_IDLE_MS = 45 * 60 * 1000;
+let bedoChatHistoryCache = null;
+let activeLiveBedoTurnId = null;
+let activeBedoSessionId = null;
+let explicitBedoSession = false;
+let liveBedoSaveTimer = null;
+
+function createBedoSessionId(ts = Date.now()) {
+  return `sess_${ts}_${Math.random().toString(36).slice(2, 6)}`;
+}
+
+function getBedoChatHistoryPath() {
+  return path.join(app.getPath('userData'), 'bedo-chat-history.json');
+}
+
+function _dedupeBedoChatHistory(entries) {
+  if (!Array.isArray(entries)) return [];
+  const cleaned = [];
+  for (const item of entries) {
+    if (!item || typeof item !== 'object') continue;
+    const u = String(item.userText || '').trim();
+    const a = String(item.assistantText || '').trim();
+    if (!u && !a) continue;
+    // Drop orphaned empty-reply entry if an adjacent entry has the same userText within 60s
+    if (!a) {
+      const ts = Number(item.timestamp) || 0;
+      const hasFilledSibling = entries.some(
+        (other) =>
+          other !== item &&
+          String(other?.userText || '').trim().toLowerCase() === u.toLowerCase() &&
+          String(other?.assistantText || '').trim().length > 0 &&
+          Math.abs((Number(other?.timestamp) || 0) - ts) < 60000
+      );
+      if (hasFilledSibling) continue;
+    }
+    cleaned.push({ ...item });
+  }
+
+  // Assign sessionId to any legacy entries without one (chronologically grouped by 45-min gap)
+  const chrono = [...cleaned].sort((a, b) => (Number(a.timestamp) || 0) - (Number(b.timestamp) || 0));
+  let curSess = null;
+  let lastTs = 0;
+  for (const item of chrono) {
+    const ts = Number(item.timestamp) || Date.now();
+    if (item.sessionId) {
+      curSess = item.sessionId;
+      lastTs = ts;
+      continue;
+    }
+    if (!curSess || ts - lastTs > BEDO_SESSION_IDLE_MS) {
+      curSess = createBedoSessionId(ts);
+    }
+    item.sessionId = curSess;
+    lastTs = ts;
+  }
+
+  return cleaned.slice(0, MAX_BEDO_CHAT_HISTORY);
+}
+
+function ensureActiveBedoSessionId() {
+  const list = loadBedoChatHistory();
+  if (activeBedoSessionId) {
+    if (explicitBedoSession) return activeBedoSessionId;
+    const latestInSession = list.find((item) => item.sessionId === activeBedoSessionId);
+    if (!latestInSession || Date.now() - (Number(latestInSession.timestamp) || 0) <= BEDO_SESSION_IDLE_MS) {
+      return activeBedoSessionId;
+    }
+  }
+  if (list.length > 0 && list[0].sessionId && Date.now() - (Number(list[0].timestamp) || 0) <= BEDO_SESSION_IDLE_MS) {
+    activeBedoSessionId = list[0].sessionId;
+    return activeBedoSessionId;
+  }
+  activeBedoSessionId = createBedoSessionId();
+  return activeBedoSessionId;
+}
+
+function loadBedoChatHistory() {
+  if (Array.isArray(bedoChatHistoryCache)) return bedoChatHistoryCache;
+  try {
+    const file = getBedoChatHistoryPath();
+    if (fs.existsSync(file)) {
+      const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+      if (Array.isArray(parsed)) {
+        const cleaned = _dedupeBedoChatHistory(parsed);
+        bedoChatHistoryCache = cleaned;
+        if (cleaned.length !== parsed.length) {
+          try {
+            fs.writeFileSync(file, JSON.stringify(cleaned, null, 2), 'utf8');
+          } catch {}
+        }
+        return bedoChatHistoryCache;
+      }
+    }
+  } catch (err) {
+    console.warn('[BedoChatHistory] load failed:', err?.message);
+  }
+  bedoChatHistoryCache = [];
+  return bedoChatHistoryCache;
+}
+
+function broadcastBedoChatHistory(list) {
+  const payload = Array.isArray(list) ? list : loadBedoChatHistory();
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    try { mainWindow.webContents.send('bedo-chat-history-update', payload); } catch {}
+  }
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    try { settingsWindow.webContents.send('bedo-chat-history-update', payload); } catch {}
+  }
+}
+
+function broadcastBedoChatSync(payload) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    try { mainWindow.webContents.send('bedo-chat-sync', payload); } catch {}
+  }
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    try { settingsWindow.webContents.send('bedo-chat-sync', payload); } catch {}
+  }
+}
+
+const _POISON_REPLY_RE = /(canlı internet erişimim|web arama aracım olmadığı|hızlıca bir arama yapıyorum|lütfen bekleyin|^(400|401|403|429|500):|API isteği başarısız|şu anda yoğun)/i;
+
+function getCleanSessionTurns(sessionId, maxTurns = 6) {
+  const list = loadBedoChatHistory();
+  return list
+    .filter((item) => {
+      if (item.sessionId !== sessionId) return false;
+      const u = String(item.userText || '').trim();
+      const a = String(item.assistantText || '').trim();
+      if (!u || !a) return false;
+      if (_POISON_REPLY_RE.test(a)) return false;
+      return true;
+    })
+    .sort((a, b) => (Number(a.timestamp) || 0) - (Number(b.timestamp) || 0))
+    .slice(-maxTurns)
+    .map((item) => ({
+      userText: String(item.userText || '').trim().slice(0, 600),
+      assistantText: String(item.assistantText || '').trim().slice(0, 900),
+    }));
+}
+
+function loadUserMemoryContextForPrompt() {
+  const lines = [];
+  if (userSettings.userName && String(userSettings.userName).trim()) {
+    lines.push(`- Kullanıcı adı: ${String(userSettings.userName).trim()}`);
+  }
+  try {
+    const candidates = [
+      process.resourcesPath ? path.join(process.resourcesPath, 'bedo-runtime', 'memory', 'memory.json') : '',
+      path.join(__dirname, 'bedo-runtime', 'memory', 'memory.json'),
+    ].filter(Boolean);
+    const memFile = candidates.find((p) => fs.existsSync(p));
+    if (memFile) {
+      const mem = JSON.parse(fs.readFileSync(memFile, 'utf8'));
+      for (const [cat, bucket] of Object.entries(mem || {})) {
+        if (cat === 'whatsapp_contacts' || !bucket) continue;
+        if (typeof bucket === 'object') {
+          for (const [k, v] of Object.entries(bucket)) {
+            const val = v && typeof v === 'object' ? v.value ?? JSON.stringify(v) : v;
+            if (val) lines.push(`- ${cat}/${k}: ${String(val).slice(0, 180)}`);
+          }
+        } else {
+          lines.push(`- ${cat}: ${String(bucket).slice(0, 180)}`);
+        }
+      }
+    }
+  } catch {}
+  return lines.length > 0 ? `[KULLANICI HAFIZASI]\n${lines.slice(0, 18).join('\n')}\n\n` : '';
+}
+
+function flushBedoChatHistoryToDisk() {
+  if (liveBedoSaveTimer) {
+    clearTimeout(liveBedoSaveTimer);
+    liveBedoSaveTimer = null;
+  }
+  const list = loadBedoChatHistory();
+  try {
+    const file = getBedoChatHistoryPath();
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(list, null, 2), 'utf8');
+  } catch (err) {
+    console.warn('[BedoChatHistory] save failed:', err?.message);
+  }
+}
+
+function scheduleBedoChatHistorySave() {
+  if (liveBedoSaveTimer) clearTimeout(liveBedoSaveTimer);
+  liveBedoSaveTimer = setTimeout(() => {
+    flushBedoChatHistoryToDisk();
+  }, 450);
+}
+
+function appendBedoChatEntry({ sessionId: explicitSid = '', userText = '', assistantText = '', provider = 'Bedo', source = 'text', timestamp = Date.now() }) {
+  const cleanUser = String(userText || '').trim();
+  const cleanAssistant = String(assistantText || '').trim();
+  if (!cleanUser && !cleanAssistant) return null;
+  const list = loadBedoChatHistory();
+  if (explicitSid) {
+    activeBedoSessionId = explicitSid;
+    explicitBedoSession = true;
+  }
+  const sessionId = explicitSid || ensureActiveBedoSessionId();
+  const entry = {
+    id: `chat_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    sessionId,
+    userText: cleanUser,
+    assistantText: cleanAssistant,
+    provider: String(provider || 'Bedo'),
+    source: source === 'voice' || source === 'vision' ? source : 'text',
+    timestamp: Number(timestamp) || Date.now(),
+  };
+  bedoChatHistoryCache = [entry, ...list].slice(0, MAX_BEDO_CHAT_HISTORY);
+  flushBedoChatHistoryToDisk();
+  broadcastBedoChatHistory(bedoChatHistoryCache);
+  return entry;
+}
+
+function upsertLiveBedoChatTurn(role, rawText, { isNewTurn = false, source = 'voice', provider = 'Bedo' } = {}) {
+  const clean = String(rawText || '').trim();
+  if (!clean) return;
+  const list = loadBedoChatHistory();
+  let target = activeLiveBedoTurnId ? list.find((item) => item.id === activeLiveBedoTurnId) : null;
+
+  if (role === 'user') {
+    const samePendingUser =
+      target &&
+      !target.assistantText &&
+      Date.now() - Number(target.timestamp || 0) <= 20000 &&
+      (target.userText.toLowerCase() === clean.toLowerCase() ||
+        clean.toLowerCase().startsWith(target.userText.toLowerCase()) ||
+        target.userText.toLowerCase().startsWith(clean.toLowerCase()));
+
+    const shouldStartNew =
+      !samePendingUser &&
+      (isNewTurn ||
+        !target ||
+        Boolean(target.assistantText) ||
+        Date.now() - Number(target.timestamp || 0) > 60000);
+    if (shouldStartNew) {
+      const sessionId = ensureActiveBedoSessionId();
+      const entry = {
+        id: `chat_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        sessionId,
+        userText: clean,
+        assistantText: '',
+        provider: String(provider || 'Bedo'),
+        source: source === 'text' ? 'text' : 'voice',
+        timestamp: Date.now(),
+      };
+      activeLiveBedoTurnId = entry.id;
+      bedoChatHistoryCache = [entry, ...list].slice(0, MAX_BEDO_CHAT_HISTORY);
+    } else {
+      target.userText = clean;
+      if (source === 'text') target.source = 'text';
+      target.timestamp = Date.now();
+      bedoChatHistoryCache = [...list];
+    }
+  } else if (role === 'assistant') {
+    if (!target) {
+      const sessionId = ensureActiveBedoSessionId();
+      const entry = {
+        id: `chat_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        sessionId,
+        userText: '',
+        assistantText: clean,
+        provider: String(provider || 'Bedo'),
+        source: source === 'text' ? 'text' : 'voice',
+        timestamp: Date.now(),
+      };
+      activeLiveBedoTurnId = entry.id;
+      bedoChatHistoryCache = [entry, ...list].slice(0, MAX_BEDO_CHAT_HISTORY);
+    } else {
+      target.assistantText = clean;
+      target.provider = String(provider || target.provider || 'Bedo');
+      bedoChatHistoryCache = [...list];
+    }
+  }
+  scheduleBedoChatHistorySave();
+  broadcastBedoChatHistory(bedoChatHistoryCache);
+}
+
 function getBedoService() {
   if (bedoService) return bedoService;
   bedoService = new BedoService();
@@ -50,6 +337,24 @@ function getBedoService() {
         mainWindow.setAlwaysOnTop(true, 'screen-saver');
       } catch {}
     }
+    try {
+      if (msg?.type === 'user_transcript') {
+        upsertLiveBedoChatTurn('user', msg.text, { isNewTurn: Boolean(msg.new_turn), source: 'voice' });
+      } else if (msg?.type === 'assistant_transcript') {
+        upsertLiveBedoChatTurn('assistant', msg.text, { source: 'voice' });
+      } else if (msg?.type === 'log') {
+        if (msg.role === 'user') {
+          const cleanUser = String(msg.text || '').replace(/^Siz:\s*/i, '').trim();
+          upsertLiveBedoChatTurn('user', cleanUser, {
+            isNewTurn: msg.source !== 'voice',
+            source: msg.source === 'voice' ? 'voice' : 'text',
+          });
+        } else if (msg.role === 'assistant') {
+          const cleanAssistant = String(msg.text || '').replace(/^Bedo:\s*/i, '').trim();
+          upsertLiveBedoChatTurn('assistant', cleanAssistant, { source: 'voice' });
+        }
+      }
+    } catch {}
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('bedo-event', msg);
     }
@@ -141,6 +446,7 @@ if (!gotSingleInstanceLock) {
     }
     if (settingsWindow && !settingsWindow.isDestroyed()) {
       if (settingsWindow.isMinimized()) settingsWindow.restore();
+      settingsWindow.setSkipTaskbar(false);
       settingsWindow.show();
       settingsWindow.focus();
     }
@@ -1640,12 +1946,42 @@ function getAppWindowIcon() {
   const candidates = [
     path.join(__dirname, '..', 'build', 'icon.ico'),
     path.join(__dirname, '..', 'build', 'icon.png'),
+    path.join(__dirname, '..', 'assets', 'icon.ico'),
+    path.join(__dirname, '..', 'assets', 'icon.png'),
   ];
   return candidates.find((p) => fs.existsSync(p));
 }
 
+function openSafeExternalBrowserTab(rawUrl) {
+  try {
+    const parsed = new URL(String(rawUrl || ''));
+    if (parsed.protocol === 'https:' || parsed.protocol === 'http:' || parsed.protocol === 'mailto:') {
+      shell.openExternal(parsed.toString()).catch(() => {});
+      return true;
+    }
+  } catch {}
+  return false;
+}
+
+function bindExternalLinkInterceptor(win) {
+  if (!win || win.isDestroyed()) return;
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    openSafeExternalBrowserTab(url);
+    return { action: 'deny' };
+  });
+  win.webContents.on('will-navigate', (event, url) => {
+    const isDevLocal = Boolean(process.env.VITE_DEV_SERVER_URL && url.startsWith(process.env.VITE_DEV_SERVER_URL));
+    if (!url.startsWith('file://') && !isDevLocal && !url.startsWith('http://localhost:5173')) {
+      event.preventDefault();
+      openSafeExternalBrowserTab(url);
+    }
+  });
+}
+
 function openOrFocusSettingsWindow(tabId = 'home') {
   if (settingsWindow && !settingsWindow.isDestroyed()) {
+    if (settingsWindow.isMinimized()) settingsWindow.restore();
+    settingsWindow.setSkipTaskbar(false);
     settingsWindow.show();
     settingsWindow.focus();
     if (tabId) {
@@ -1676,8 +2012,9 @@ function openOrFocusSettingsWindow(tabId = 'home') {
     transparent: true,
     backgroundColor: '#00000000',
     icon: getAppWindowIcon(),
-    title: 'Bedo Settings',
-    skipTaskbar: true,
+    title: 'Bedo',
+    minimizable: true,
+    skipTaskbar: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -1687,7 +2024,21 @@ function openOrFocusSettingsWindow(tabId = 'home') {
       devTools: !app.isPackaged,
     },
   });
-  settingsWindow.setSkipTaskbar(true);
+  settingsWindow.setSkipTaskbar(false);
+  bindExternalLinkInterceptor(settingsWindow);
+  settingsWindow.on('page-title-updated', (event) => {
+    event.preventDefault();
+  });
+  settingsWindow.on('minimize', () => {
+    if (settingsWindow && !settingsWindow.isDestroyed()) {
+      settingsWindow.setSkipTaskbar(false);
+    }
+  });
+  settingsWindow.on('restore', () => {
+    if (settingsWindow && !settingsWindow.isDestroyed()) {
+      settingsWindow.setSkipTaskbar(false);
+    }
+  });
 
   const distHtml = path.join(__dirname, '../dist/index.html');
   if (process.env.VITE_DEV_SERVER_URL) {
@@ -2063,6 +2414,7 @@ function createWindow() {
   });
 
   mainWindow.setSkipTaskbar(true);
+  bindExternalLinkInterceptor(mainWindow);
 
   isIgnoringMouse = true;
   try {
@@ -2399,7 +2751,12 @@ function setGameModeActive(active) {
   gameModeActive = nextActive;
 
   if (nextActive) {
-    gameModeSettingsWasVisible = Boolean(settingsWindow && !settingsWindow.isDestroyed() && settingsWindow.isVisible());
+    gameModeSettingsWasVisible = Boolean(
+      settingsWindow &&
+        !settingsWindow.isDestroyed() &&
+        settingsWindow.isVisible() &&
+        !settingsWindow.isMinimized()
+    );
     applyGameModeRuntimeOptions();
     if (mainWindow && !mainWindow.isDestroyed()) {
       animateWindowShapeToMode('idle');
@@ -2407,7 +2764,10 @@ function setGameModeActive(active) {
     }
     if (settingsWindow && !settingsWindow.isDestroyed()) {
       settingsWindow.webContents.send('game-mode-change', true);
-      settingsWindow.hide();
+      settingsWindow.setSkipTaskbar(false);
+      if (!settingsWindow.isMinimized()) {
+        settingsWindow.minimize();
+      }
     }
     return;
   }
@@ -2433,7 +2793,11 @@ function setGameModeActive(active) {
   }
   if (settingsWindow && !settingsWindow.isDestroyed()) {
     settingsWindow.webContents.send('game-mode-change', false);
-    if (gameModeSettingsWasVisible) settingsWindow.showInactive();
+    settingsWindow.setSkipTaskbar(false);
+    if (gameModeSettingsWasVisible) {
+      if (settingsWindow.isMinimized()) settingsWindow.restore();
+      settingsWindow.showInactive();
+    }
   }
   gameModeSettingsWasVisible = false;
 }
@@ -2986,7 +3350,8 @@ ipcMain.handle('open-settings-window', (_event, tabId) => {
 ipcMain.on('settings-window-control', (_event, action) => {
   if (!settingsWindow || settingsWindow.isDestroyed()) return;
   if (action === 'minimize') {
-    settingsWindow.hide();
+    settingsWindow.setSkipTaskbar(false);
+    settingsWindow.minimize();
   } else if (action === 'maximize') {
     if (settingsWindow.isMaximized()) settingsWindow.unmaximize();
     else settingsWindow.maximize();
@@ -5403,161 +5768,1705 @@ function httpsPostJson(urlStr, headers, bodyStr, timeoutMs = 20000) {
   });
 }
 
-function callGeminiApi(apiKey, prompt) {
-  return (async () => {
-    const cleanKey = String(apiKey || '').trim();
-    const models = ['gemini-flash-latest', 'gemini-3.8-flash', 'gemini-3.5-flash-lite'];
-    const payload = JSON.stringify({
-      contents: [
-        {
-          parts: [
-            {
-              text: `${trMain(userSettings.language, 'roboSystemPrompt')}\n\n${trMain(userSettings.language, 'roboUserQuestionPrefix')}: ${prompt}`,
-            },
-          ],
-        },
-      ],
-      generationConfig: {
-        maxOutputTokens: 500,
+function httpsGetJsonIpv4(urlStr, headers = {}, timeoutMs = 4500) {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(urlStr);
+    const req = https.request(
+      {
+        hostname: parsed.hostname,
+        port: parsed.port || 443,
+        path: parsed.pathname + parsed.search,
+        method: 'GET',
+        family: 4,
+        headers,
+        timeout: timeoutMs,
       },
+      (res) => {
+        let data = '';
+        res.setEncoding('utf8');
+        res.on('data', (chunk) => { data += chunk; });
+        res.on('end', () => {
+          const status = res.statusCode || 0;
+          try {
+            resolve({ ok: status >= 200 && status < 300, status, json: JSON.parse(data) });
+          } catch {
+            resolve({ ok: false, status, json: null });
+          }
+        });
+      }
+    );
+    req.on('timeout', () => req.destroy(new Error('TIMEOUT')));
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+function httpsStreamSseIpv4(urlStr, headers, bodyStr, onEventJson, firstByteTimeoutMs = 15000) {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(urlStr);
+    let settled = false;
+    let idleTimer = null;
+    const armTimer = (ms) => {
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          req.destroy(new Error('TIMEOUT'));
+          reject(new Error('TIMEOUT'));
+        }
+      }, ms);
+    };
+
+    const req = https.request(
+      {
+        hostname: parsed.hostname,
+        port: parsed.port || 443,
+        path: parsed.pathname + parsed.search,
+        method: 'POST',
+        family: 4,
+        headers: {
+          ...headers,
+          'Content-Length': Buffer.byteLength(bodyStr, 'utf8'),
+        },
+      },
+      (res) => {
+        const status = res.statusCode || 0;
+        res.setEncoding('utf8');
+
+        if (status < 200 || status >= 300) {
+          let errRaw = '';
+          res.on('data', (chunk) => {
+            armTimer(8000);
+            errRaw += chunk;
+          });
+          res.on('end', () => {
+            if (idleTimer) clearTimeout(idleTimer);
+            if (settled) return;
+            settled = true;
+            let errJson = {};
+            try { errJson = JSON.parse(errRaw); } catch {}
+            resolve({ ok: false, status, errJson, errRaw });
+          });
+          return;
+        }
+
+        let buffer = '';
+        armTimer(20000);
+        res.on('data', (chunk) => {
+          armTimer(20000);
+          buffer += chunk;
+          let idx;
+          while ((idx = buffer.indexOf('\n')) !== -1) {
+            const line = buffer.slice(0, idx).trim();
+            buffer = buffer.slice(idx + 1);
+            if (!line.startsWith('data:')) continue;
+            const raw = line.slice(5).trim();
+            if (!raw || raw === '[DONE]') continue;
+            try {
+              onEventJson(JSON.parse(raw));
+            } catch {}
+          }
+        });
+        res.on('end', () => {
+          if (idleTimer) clearTimeout(idleTimer);
+          if (settled) return;
+          settled = true;
+          const tail = buffer.trim();
+          if (tail.startsWith('data:')) {
+            const raw = tail.slice(5).trim();
+            if (raw && raw !== '[DONE]') {
+              try { onEventJson(JSON.parse(raw)); } catch {}
+            }
+          }
+          resolve({ ok: true, status });
+        });
+        res.on('error', (err) => {
+          if (idleTimer) clearTimeout(idleTimer);
+          if (!settled) {
+            settled = true;
+            reject(err);
+          }
+        });
+      }
+    );
+
+    armTimer(firstByteTimeoutMs);
+    req.on('error', (err) => {
+      if (idleTimer) clearTimeout(idleTimer);
+      if (!settled) {
+        settled = true;
+        reject(err);
+      }
     });
-    const retryableStatuses = new Set([404, 429, 500, 502, 503, 504]);
-    for (let index = 0; index < models.length; index += 1) {
-      try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${models[index]}:generateContent`;
-        const response = await httpsPostJson(
-          url,
-          { 'Content-Type': 'application/json', 'x-goog-api-key': cleanKey },
-          payload,
-          20000
-        );
-        let data;
-        try { data = JSON.parse(response.body); } catch { throw new Error(`Gemini yanıtı çözümlenemedi (HTTP ${response.status}).`); }
-        if (response.status < 200 || response.status >= 300) {
-          const message = data?.error?.message || response.statusText || 'Gemini API isteği reddedildi.';
-          if (retryableStatuses.has(response.status) && index < models.length - 1) continue;
-          throw new Error(`${response.status}: ${message}`);
-        }
-        const answer = data?.candidates?.[0]?.content?.parts?.map((part) => part.text || '').join('').trim();
-        if (!answer && data?.promptFeedback?.blockReason) {
-          throw new Error(`İstek güvenlik filtresine takıldı (${data.promptFeedback.blockReason}).`);
-        }
-        return answer || '';
-      } catch (error) {
-        if (error?.message === 'TIMEOUT' || error?.name === 'AbortError') {
-          if (index < models.length - 1) continue;
-          throw new Error('TIMEOUT');
-        }
-        if (/fetch failed|network|proxy|socket|ECONNRESET|ENOTFOUND/i.test(error?.message || '') && index < models.length - 1) {
-          continue;
-        }
-        throw error;
+    req.write(bodyStr);
+    req.end();
+  });
+}
+
+const _discoveredModelCache = new Map();
+const MODEL_CACHE_TTL_MS = 15 * 60 * 1000;
+
+function _parseVersionTuple(modelId) {
+  const stripped = String(modelId || '').replace(/[-_]?20\d{2}(?:[-_]?\d{2}){1,2}\b/g, '');
+  const matches = stripped.match(/\d+/g);
+  return matches ? matches.slice(0, 3).map((n) => Number(n)) : [0];
+}
+
+function _compareVersionTuples(a, b) {
+  const len = Math.max(a.length, b.length);
+  for (let i = 0; i < len; i += 1) {
+    const da = a[i] || 0;
+    const db = b[i] || 0;
+    if (da !== db) return db - da;
+  }
+  return 0;
+}
+
+const _modelCooldownUntil = new Map();
+
+async function resolveGeminiModels(apiKey) {
+  const cacheKey = `gemini:${String(apiKey || '').slice(-8)}`;
+  const cached = _discoveredModelCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < MODEL_CACHE_TTL_MS) return cached.models;
+
+  // Primary Gemini 4 + Gemini 3 models that support "Gemini 3 and newer" Search Grounding and have Free + Paid tier quota
+  const priorityChain = [
+    'gemini-4-hydrogen',
+    'gemini-3.8-flash',
+    'gemini-3.6-flash',
+    'gemini-3.5-flash-lite',
+    'gemini-3.1-flash-lite',
+  ];
+
+  try {
+    const allModels = [];
+    let pageToken = '';
+    for (let page = 0; page < 4; page += 1) {
+      const qs = `pageSize=100${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`;
+      const res = await httpsGetJsonIpv4(
+        `https://generativelanguage.googleapis.com/v1beta/models?${qs}`,
+        { 'x-goog-api-key': apiKey },
+        4000
+      );
+      if (!res.ok || !res.json) break;
+      if (Array.isArray(res.json.models)) allModels.push(...res.json.models);
+      pageToken = res.json.nextPageToken || '';
+      if (!pageToken) break;
+    }
+
+    if (allModels.length > 0) {
+      const excluded = [
+        'embedding', 'imagen', 'veo', 'tts', 'audio', 'robotics', 'aqa', 'live',
+        'learnlm', 'gemma', 'thinking', 'pro', 'ultra', 'carbon', 'argon',
+        'image', 'computer', 'native', 'dialog', 'transcribe', 'translate', 'banana', 'lyria', 'omni',
+      ];
+      const discovered = [];
+      for (const m of allModels) {
+        const methods = m?.supportedGenerationMethods || [];
+        if (methods.length && !methods.some((x) => String(x).toLowerCase().includes('generatecontent'))) continue;
+        const id = String(m?.name || '').replace(/^models\//, '').trim();
+        const low = id.toLowerCase();
+        if (!low.startsWith('gemini-') || excluded.some((bad) => low.includes(bad))) continue;
+        if (low.includes('exp')) continue;
+        const ver = _parseVersionTuple(low);
+        // Prefer Gemini 4 Hydrogen & Gemini 3.x Flash/Lite (which have active quota + Gemini 3+ Search Grounding)
+        if ((ver[0] || 0) < 3) continue;
+        const tier = low.includes('hydrogen')
+          ? 6
+          : low.includes('flash') && !low.includes('lite')
+            ? 5
+            : low.includes('flash-lite')
+              ? 4
+              : low.includes('neon')
+                ? 3
+                : 2;
+        discovered.push({ id, ver, tier });
+      }
+      discovered.sort((x, y) => _compareVersionTuples(x.ver, y.ver) || y.tier - x.tier);
+      const ranked = [
+        ...new Set([
+          ...priorityChain,
+          ...discovered.slice(0, 4).map((c) => c.id),
+        ]),
+      ];
+      _discoveredModelCache.set(cacheKey, { ts: Date.now(), models: ranked });
+      return ranked;
+    }
+  } catch {}
+  return priorityChain;
+}
+
+async function resolveClaudeModels(apiKey) {
+  const cacheKey = `claude:${String(apiKey || '').slice(-8)}`;
+  const cached = _discoveredModelCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < MODEL_CACHE_TTL_MS) return cached.models;
+
+  const fallback = ['claude-fable-5-2', 'claude-sonnet-5-5', 'claude-opus-5-5', 'claude-haiku-5-5'];
+  try {
+    const res = await httpsGetJsonIpv4(
+      'https://api.anthropic.com/v1/models?limit=50',
+      { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+      4000
+    );
+    if (res.ok && res.json) {
+      const candidates = [];
+      for (const m of res.json?.data || []) {
+        const id = String(m?.id || '').trim();
+        const low = id.toLowerCase();
+        if (!low.startsWith('claude-')) continue;
+        const ver = _parseVersionTuple(low);
+        const tier = low.includes('fable') ? 5 : low.includes('opus') ? 4 : low.includes('sonnet') ? 3 : low.includes('haiku') ? 2 : 1;
+        candidates.push({ id, ver, tier });
+      }
+      candidates.sort((x, y) => _compareVersionTuples(x.ver, y.ver) || y.tier - x.tier);
+      const ranked = [...new Set(candidates.slice(0, 4).map((c) => c.id))];
+      if (ranked.length > 0) {
+        _discoveredModelCache.set(cacheKey, { ts: Date.now(), models: ranked });
+        return ranked;
       }
     }
+  } catch {}
+  return fallback;
+}
+
+async function resolveOpenAiModels(apiKey) {
+  const cacheKey = `openai:${String(apiKey || '').slice(-8)}`;
+  const cached = _discoveredModelCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < MODEL_CACHE_TTL_MS) return cached.models;
+
+  const fallback = ['gpt-6.2-astra', 'gpt-6.2-sol', 'gpt-6-astra', 'gpt-6-sol'];
+  try {
+    const res = await httpsGetJsonIpv4(
+      'https://api.openai.com/v1/models',
+      { Authorization: `Bearer ${apiKey}` },
+      4000
+    );
+    if (res.ok && res.json) {
+      const excluded = ['audio', 'realtime', 'transcribe', 'tts', 'image', 'embedding', 'whisper', 'dall-e', 'moderation'];
+      const candidates = [];
+      for (const m of res.json?.data || []) {
+        const id = String(m?.id || '').trim();
+        const low = id.toLowerCase();
+        if (!low.startsWith('gpt-') || excluded.some((bad) => low.includes(bad))) continue;
+        const ver = _parseVersionTuple(low);
+        const tier = low.includes('astra') ? 5 : low.includes('sol') ? 4 : low.includes('pro') ? 3 : 2;
+        candidates.push({ id, ver, tier });
+      }
+      candidates.sort((x, y) => _compareVersionTuples(x.ver, y.ver) || y.tier - x.tier);
+      const ranked = [...new Set(candidates.slice(0, 4).map((c) => c.id))];
+      if (ranked.length > 0) {
+        _discoveredModelCache.set(cacheKey, { ts: Date.now(), models: ranked });
+        return ranked;
+      }
+    }
+  } catch {}
+  return fallback;
+}
+
+const _lastWorkingModel = { gemini: '', claude: '', openai: '' };
+
+function _extractEffectiveSearchQuery(question, historyTurns = []) {
+  const latest = String(question || '').trim();
+  if (latest.length < 28 && Array.isArray(historyTurns) && historyTurns.length > 0) {
+    const prevSubstantive = [...historyTurns]
+      .reverse()
+      .find((t) => String(t.userText || '').trim().length >= 8);
+    if (prevSubstantive) {
+      return `${prevSubstantive.userText} ${latest}`.trim();
+    }
+  }
+  return latest;
+}
+
+function _shouldRetrieveWebContext(question, historyTurns = []) {
+  const effective = _extractEffectiveSearchQuery(question, historyTurns).toLowerCase();
+  if (effective.length < 4) return false;
+  // Skip pure greetings, short acknowledgements, or code snippets
+  if (/^(merhaba|selam|slm|naber|nasılsın|teşekkürler|sağol|tamam|evet|hayır|hi|hello|thanks)\b[!?.]*$/i.test(effective)) {
+    return false;
+  }
+  if (/```|function\s+\w+|const\s+\w+\s*=|import\s+.+from\s+|def\s+\w+\(/.test(effective)) {
+    return false;
+  }
+  // Trigger for factual, real-time, version, price, weather, sports, entity, or question queries
+  return /(son\b|en yeni|güncel|çıkan|sürüm|model|versiyon|fiyat|kur\b|dolar|euro|sterlin|altın|bitcoin|btc|eth|kripto|bist|hisse|asgari|enflasyon|hava\b|derece|yağmur|maç|skor|puan|haber|bugün|dün|bu yıl|2025|2026|kimdir|kim\b|nedir|nerede|ne zaman|kaç\b|listesi|sırayla|neymiş|araştır|latest|current|price|weather|version|release|who is|what is|\?)/i.test(effective);
+}
+
+async function fetchLiveFxAndCryptoIpv4(queryText) {
+  const q = String(queryText || '');
+  const blocks = [];
+  if (/(dolar|euro|sterlin|usd|eur|gbp|döviz|kur\b|kaç\s*tl)/i.test(q)) {
+    try {
+      const res = await httpsGetJsonIpv4('https://open.er-api.com/v6/latest/USD', {}, 2200);
+      const rates = res.ok ? res.json?.rates : null;
+      if (rates?.TRY) {
+        const usdTry = Number(rates.TRY).toFixed(2);
+        const eurTry = rates.EUR ? (Number(rates.TRY) / Number(rates.EUR)).toFixed(2) : null;
+        const gbpTry = rates.GBP ? (Number(rates.TRY) / Number(rates.GBP)).toFixed(2) : null;
+        const parts = [`1 USD = ${usdTry} TL`];
+        if (eurTry) parts.push(`1 EUR = ${eurTry} TL`);
+        if (gbpTry) parts.push(`1 GBP = ${gbpTry} TL`);
+        blocks.push(`[ANLIK DÖVİZ KURLARI]: ${parts.join(' | ')}`);
+      }
+    } catch {}
+  }
+  if (/(bitcoin|\bbtc\b|ethereum|\beth\b|kripto)/i.test(q)) {
+    try {
+      const [btc, eth] = await Promise.all([
+        httpsGetJsonIpv4('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT', {}, 1800),
+        httpsGetJsonIpv4('https://api.binance.com/api/v3/ticker/price?symbol=ETHUSDT', {}, 1800),
+      ]);
+      const parts = [];
+      if (btc.ok && btc.json?.price) parts.push(`BTC = $${Number(btc.json.price).toLocaleString('en-US', { maximumFractionDigits: 0 })}`);
+      if (eth.ok && eth.json?.price) parts.push(`ETH = $${Number(eth.json.price).toLocaleString('en-US', { maximumFractionDigits: 0 })}`);
+      if (parts.length) blocks.push(`[ANLIK KRİPTO FİYATLARI]: ${parts.join(' | ')}`);
+    } catch {}
+  }
+  return blocks.length ? `${blocks.join('\n')}\n` : '';
+}
+
+async function fetchLiveWeatherIpv4(queryText) {
+  const q = String(queryText || '');
+  if (!/(hava\s+nasıl|hava\s+durumu|kaç\s+derece|yağmur\s+yağacak|weather)/i.test(q)) return '';
+  try {
+    const cityMatch = /\b(istanbul|ankara|izmir|bursa|antalya|adana|konya|gaziantep|kayseri|mersin|eskişehir|samsun|trabzon|diyarbakır|erzurum|london|berlin|new york|paris)\b/i.exec(q);
+    const city = cityMatch ? cityMatch[1] : 'Istanbul';
+    const geo = await httpsGetJsonIpv4(
+      `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=tr&format=json`,
+      {},
+      1800
+    );
+    const loc = geo.ok ? geo.json?.results?.[0] : null;
+    if (!loc) return '';
+    const wx = await httpsGetJsonIpv4(
+      `https://api.open-meteo.com/v1/forecast?latitude=${loc.latitude}&longitude=${loc.longitude}&current=temperature_2m,apparent_temperature,wind_speed_10m,weather_code&timezone=auto`,
+      {},
+      1800
+    );
+    const cur = wx.ok ? wx.json?.current : null;
+    if (!cur) return '';
+    return `[ANLIK HAVA DURUMU — ${loc.name}]: Sıcaklık ${cur.temperature_2m}°C (Hissedilen ${cur.apparent_temperature}°C), Rüzgar ${cur.wind_speed_10m} km/s\n`;
+  } catch {
+    return '';
+  }
+}
+
+async function fetchWikipediaSnippetsIpv4(queryText, isTr) {
+  try {
+    const host = isTr ? 'tr.wikipedia.org' : 'en.wikipedia.org';
+    const cleanQ = String(queryText || '').replace(/\b(nedir|kimdir|ne zaman|kaç|hangi|sırayla|izlemem|lazım|2026)\b/gi, ' ').replace(/\s+/g, ' ').trim();
+    if (cleanQ.length < 3) return [];
+    const res = await httpsGetJsonIpv4(
+      `https://${host}/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(cleanQ)}&srlimit=2&format=json`,
+      { 'User-Agent': 'BedoDesktopAssistant/1.0' },
+      1800
+    );
+    const hits = res.ok ? res.json?.query?.search || [] : [];
+    return hits
+      .map((h) => {
+        const snip = String(h?.snippet || '').replace(/<[^>]+>/g, '').replace(/&quot;/g, '"').replace(/&amp;/g, '&').trim();
+        return snip ? `- [Wikipedia: ${h.title}] ${snip}` : '';
+      })
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+function fetchSingleRssIpv4(q, isTr) {
+  const hl = isTr ? 'hl=tr&gl=TR&ceid=TR:tr' : 'hl=en-US&gl=US&ceid=US:en';
+  const url = `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&${hl}`;
+  return new Promise((resolve) => {
+    try {
+      const parsed = new URL(url);
+      const req = https.request(
+        {
+          hostname: parsed.hostname,
+          port: 443,
+          path: parsed.pathname + parsed.search,
+          method: 'GET',
+          family: 4,
+          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+          timeout: 1800,
+        },
+        (res) => {
+          let xml = '';
+          res.setEncoding('utf8');
+          res.on('data', (c) => { if (xml.length < 56000) xml += c; });
+          res.on('end', () => {
+            const items = [];
+            const itemRe = /<item>([\s\S]*?)<\/item>/gi;
+            let m;
+            while ((m = itemRe.exec(xml)) !== null && items.length < 6) {
+              const block = m[1];
+              const title = (/<title><!\[CDATA\[([\s\S]*?)\]\]><\/title>|<title>([\s\S]*?)<\/title>/i.exec(block) || [])[1]
+                || (/<title>([\s\S]*?)<\/title>/i.exec(block) || [])[2] || '';
+              const desc = (/<description><!\[CDATA\[([\s\S]*?)\]\]><\/description>|<description>([\s\S]*?)<\/description>/i.exec(block) || [])[1]
+                || (/<description>([\s\S]*?)<\/description>/i.exec(block) || [])[2] || '';
+              const pub = (/<pubDate>([\s\S]*?)<\/pubDate>/i.exec(block) || [])[1] || '';
+              const cleanTitle = title.replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/<[^>]+>/g, '').trim();
+              const cleanDesc = desc
+                .replace(/&lt;/g, '<')
+                .replace(/&gt;/g, '>')
+                .replace(/&amp;/g, '&')
+                .replace(/&nbsp;/g, ' ')
+                .replace(/<[^>]+>/g, ' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+              if (cleanTitle) {
+                const snippet = cleanDesc && cleanDesc !== cleanTitle ? ` — ${cleanDesc.slice(0, 180)}` : '';
+                items.push(`- ${cleanTitle}${pub ? ` (${pub.trim()})` : ''}${snippet}`);
+              }
+            }
+            resolve(items);
+          });
+        }
+      );
+      req.on('timeout', () => { req.destroy(); resolve([]); });
+      req.on('error', () => resolve([]));
+      req.end();
+    } catch {
+      resolve([]);
+    }
+  });
+}
+
+// ======================= UNIVERSAL AGENTIC WEB RAG =======================
+// Zero domain-specific rules:
+// 1) Multi-provider LLM Query Planner (coreference, typo repair, multi-query TR+EN decomposition)
+// 2) Parallel Organic Web Search (Yahoo Web + Google News RSS + Wikipedia + live FX/Weather sensors)
+// 3) RRF + lexical + recency ranking + automatic 2nd-hop gap fill
+// 4) Deep Page Reader (JSON-LD structured schema + meta + table-aware BM25 passages + Jina SPA fallback)
+
+function httpsRequestTextIpv4(
+  urlStr,
+  { method = 'GET', headers = {}, body = null, timeoutMs = 4500, maxBytes = 600000, redirects = 4, cookies = '' } = {}
+) {
+  return new Promise((resolve) => {
+    let parsed;
+    try { parsed = new URL(urlStr); } catch { resolve({ ok: false, status: 0, text: '' }); return; }
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+      resolve({ ok: false, status: 0, text: '' });
+      return;
+    }
+    const transport = parsed.protocol === 'https:' ? https : http;
+    let done = false;
+    const finish = (v) => { if (!done) { done = true; resolve(v); } };
+    const req = transport.request(
+      {
+        hostname: parsed.hostname,
+        port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
+        path: parsed.pathname + parsed.search,
+        method,
+        family: 4,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,application/json;q=0.8,*/*;q=0.7',
+          'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+          'Accept-Encoding': 'identity',
+          ...(cookies ? { Cookie: cookies } : {}),
+          ...headers,
+        },
+        timeout: timeoutMs,
+      },
+      (res) => {
+        const status = res.statusCode || 0;
+        const setCookie = (res.headers['set-cookie'] || []).map((c) => String(c).split(';')[0]).filter(Boolean).join('; ');
+        const mergedCookies = [cookies, setCookie].filter(Boolean).join('; ');
+        if ([301, 302, 303, 307, 308].includes(status) && res.headers.location && redirects > 0) {
+          res.resume();
+          let nextUrl = '';
+          try { nextUrl = new URL(res.headers.location, urlStr).toString(); } catch {}
+          if (!nextUrl) { finish({ ok: false, status, text: '' }); return; }
+          httpsRequestTextIpv4(nextUrl, {
+            method: 'GET',
+            headers,
+            timeoutMs,
+            maxBytes,
+            redirects: redirects - 1,
+            cookies: mergedCookies,
+          }).then(finish);
+          return;
+        }
+        const ctype = String(res.headers['content-type'] || '');
+        const chunks = [];
+        let size = 0;
+        res.on('data', (c) => {
+          size += c.length;
+          if (size <= maxBytes) chunks.push(c);
+          else res.destroy();
+        });
+        const end = () =>
+          finish({
+            ok: status >= 200 && status < 300,
+            status,
+            ctype,
+            url: urlStr,
+            text: Buffer.concat(chunks).toString('utf8'),
+          });
+        res.on('end', end);
+        res.on('close', end);
+        res.on('error', end);
+      }
+    );
+    req.on('timeout', () => { req.destroy(); finish({ ok: false, status: 0, text: '' }); });
+    req.on('error', () => finish({ ok: false, status: 0, text: '' }));
+    if (body) req.write(body);
+    req.end();
+  });
+}
+
+const _NAMED_ENTITIES = {
+  nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", mdash: '—', ndash: '–', rsquo: "'", lsquo: "'",
+  rdquo: '"', ldquo: '"', bull: '•', middot: '·', hellip: '…', tl: '₺', euro: '€', copy: '©',
+  Ccedil: 'Ç', ccedil: 'ç', Ouml: 'Ö', ouml: 'ö', Uuml: 'Ü', uuml: 'ü', Idot: 'İ', inodot: 'ı',
+  Gbreve: 'Ğ', gbreve: 'ğ', Scedil: 'Ş', scedil: 'ş',
+};
+
+function _decodeEntities(s) {
+  return String(s || '')
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
+    .replace(/&#(\d+);/g, (_, n) => {
+      const code = Number(n);
+      return Number.isFinite(code) && code > 0 ? String.fromCodePoint(code) : '';
+    })
+    .replace(/&#x([0-9a-f]+);/gi, (_, n) => {
+      const code = parseInt(n, 16);
+      return Number.isFinite(code) && code > 0 ? String.fromCodePoint(code) : '';
+    })
+    .replace(/&([a-zA-Z]+);/g, (full, name) => (_NAMED_ENTITIES[name] !== undefined ? _NAMED_ENTITIES[name] : full));
+}
+
+function _parseRssItems(xml, limit = 8) {
+  const out = [];
+  const re = /<item>([\s\S]*?)<\/item>/gi;
+  let m;
+  while ((m = re.exec(xml)) && out.length < limit) {
+    const b = m[1];
+    const pick = (tag) =>
+      _decodeEntities((new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i').exec(b) || [])[1] || '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    const title = pick('title');
+    const link = pick('link');
+    if (!title || !link) continue;
+    out.push({
+      title,
+      link,
+      snippet: pick('description').slice(0, 340),
+      date: pick('pubDate'),
+    });
+  }
+  return out;
+}
+
+// Organic web search via tr.search.yahoo.com (serves both TR & global EN results without EU/GDPR consent wall)
+async function _searchYahooWeb(q) {
+  const r = await httpsRequestTextIpv4(`https://tr.search.yahoo.com/search?p=${encodeURIComponent(q)}&ei=UTF-8`, { timeoutMs: 4200, maxBytes: 450000 });
+  if (!r.ok || !r.text) return [];
+  // Abort immediately if any bot/challenge screen is detected (never bypass)
+  if (/verify you are human|recaptcha|cf-turnstile/i.test(r.text) && !r.text.includes('compText')) return [];
+
+  const out = [];
+  const blocks = r.text.split(/<div[^>]+class="[^"]*\balgo\b[^"]*"[^>]*>/i).slice(1);
+  for (let idx = 0; idx < blocks.length && out.length < 8; idx += 1) {
+    const b = blocks[idx];
+    const h3 = /<h3[^>]*>([\s\S]*?)<\/h3>/i.exec(b);
+    if (!h3) continue;
+    const hrefM = /href="([^"]+)"/i.exec(h3[1]) || /href="([^"]+)"/i.exec(b);
+    let link = hrefM ? _decodeEntities(hrefM[1]) : '';
+    const ru = /\/RU=([^/]+)\//i.exec(link);
+    if (ru) {
+      try { link = decodeURIComponent(ru[1]); } catch {}
+    }
+    if (!/^https?:\/\//i.test(link) || /yahoo\.com\/|bing\.com\/aclick|gemini\.yahoo/i.test(link)) continue;
+
+    const title = _decodeEntities(
+      h3[1]
+        .replace(/<span[^>]*class="[^"]*(?:d-ib|fc-obsidian|fz-ms|va-bot)[^"]*"[^>]*>[\s\S]*?<\/span>/gi, ' ')
+        .replace(/<[^>]+>/g, ' ')
+    ).replace(/\s+/g, ' ').trim();
+
+    const compM = /<div[^>]+class="[^"]*\bcompText\b[^"]*"[^>]*>([\s\S]*?)<\/div>/i.exec(b);
+    const snippet = _decodeEntities((compM ? compM[1] : '').replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim();
+    if (!title) continue;
+
+    // Extract leading date hint like "18 Kas 2026 · " or "Nov 18, 2026 · "
+    const dateM = /^([0-9]{1,2}\s+[A-Za-zÇĞİÖŞÜçğıöşü]{3,10}\s+20\d{2}|[A-Za-z]{3,9}\s+[0-9]{1,2},\s*20\d{2})\s*[·•-]/u.exec(snippet);
+    out.push({
+      title,
+      link,
+      snippet: snippet.slice(0, 420),
+      date: dateM ? dateM[1] : '',
+      rank: out.length,
+      source: 'web',
+    });
+  }
+  return out;
+}
+
+async function _searchNewsRss(q, isTr) {
+  const hl = isTr ? 'hl=tr&gl=TR&ceid=TR:tr' : 'hl=en-US&gl=US&ceid=US:en';
+  const r = await httpsRequestTextIpv4(`https://news.google.com/rss/search?q=${encodeURIComponent(q)}&${hl}`, { timeoutMs: 3500 });
+  if (!r.ok) return [];
+  const rawItems = r.text.split(/<item>/i).slice(1);
+  return _parseRssItems(r.text, 6).map((x, i) => {
+    const src = /<source[^>]*url="([^"]+)"[^>]*>([\s\S]*?)<\/source>/i.exec(rawItems[i] || '');
+    return {
+      ...x,
+      link: src ? src[1] : x.link,
+      newsLink: x.link,
+      publisher: src ? _decodeEntities(src[2]).trim() : '',
+      rank: i,
+      source: 'news',
+    };
+  });
+}
+
+async function _searchWikipedia(q, isTr) {
+  const host = isTr ? 'tr.wikipedia.org' : 'en.wikipedia.org';
+  const r = await httpsGetJsonIpv4(
+    `https://${host}/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(q)}&srlimit=2&format=json`,
+    { 'User-Agent': 'BedoDesktopAssistant/1.0' },
+    2800
+  );
+  const hits = r.ok ? r.json?.query?.search || [] : [];
+  return hits.map((h, i) => ({
+    title: `Wikipedia: ${h.title}`,
+    link: `https://${host}/wiki/${encodeURIComponent(String(h.title).replace(/ /g, '_'))}`,
+    snippet: _decodeEntities(String(h.snippet || '').replace(/<[^>]+>/g, '')),
+    rank: i,
+    source: 'wiki',
+  }));
+}
+
+function _extractStructuredHtmlFacts(html) {
+  const facts = [];
+  // 1. Meta description / og:description
+  const ogDesc =
+    /<meta[^>]+(?:property="og:description"|name="description")[^>]+content="([^"]{25,500})"/i.exec(html) ||
+    /<meta[^>]+content="([^"]{25,500})"[^>]+(?:property="og:description"|name="description")/i.exec(html);
+  if (ogDesc) {
+    facts.push(_decodeEntities(ogDesc[1]).replace(/\s+/g, ' ').trim());
+  }
+  // 2. Schema.org JSON-LD (prices, offers, dates, headlines, FAQs)
+  const ldRe = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  let m;
+  let count = 0;
+  const walkLd = (node) => {
+    if (!node || count >= 8) return;
+    if (Array.isArray(node)) { node.forEach(walkLd); return; }
+    if (typeof node !== 'object') return;
+    const type = String(node['@type'] || '');
+    const parts = [];
+    if (node.name || node.headline) parts.push(String(node.name || node.headline).slice(0, 140));
+    if (node.datePublished) parts.push(`date=${String(node.datePublished).slice(0, 10)}`);
+    if (node.price !== undefined || node.lowPrice !== undefined) {
+      const p = node.price ?? node.lowPrice;
+      const hi = node.highPrice ? `–${node.highPrice}` : '';
+      const cur = node.priceCurrency || '';
+      parts.push(`price=${p}${hi} ${cur}`.trim());
+    }
+    if (type === 'Question' && node.name && node.acceptedAnswer?.text) {
+      parts.push(`Q: ${node.name} -> A: ${_decodeEntities(String(node.acceptedAnswer.text).replace(/<[^>]+>/g, ' ')).slice(0, 220)}`);
+    }
+    if (parts.length >= 2 || (parts.length === 1 && /price=|Q:/.test(parts[0]))) {
+      facts.push(parts.join(' | '));
+      count += 1;
+    }
+    if (node.offers) walkLd(node.offers);
+    if (node.mainEntity) walkLd(node.mainEntity);
+    if (node['@graph']) walkLd(node['@graph']);
+  };
+  while ((m = ldRe.exec(html)) && count < 8) {
+    try { walkLd(JSON.parse(m[1].trim())); } catch {}
+  }
+  return [...new Set(facts)].slice(0, 5).join('\n');
+}
+
+function _htmlToText(html) {
+  return _decodeEntities(
+    String(html || '')
+      .replace(/<(script|style|noscript|svg|nav|footer|form|iframe)[^>]*>[\s\S]*?<\/\1>/gi, ' ')
+      .replace(/<!--[\s\S]*?-->/g, ' ')
+      .replace(/<\/t[dh]>/gi, ' | ')
+      .replace(/<(br|p|div|li|tr|h[1-6]|section|article)[^>]*>/gi, '\n')
+      .replace(/<[^>]+>/g, ' ')
+  )
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n\s*\|\s*/g, '\n')
+    .replace(/\n\s*\n+/g, '\n')
+    .trim();
+}
+
+const _STOP = new Set([
+  'için', 'icin', 'en', 'kaç', 'kac', 'ne', 'neler', 'nedir', 'mi', 'mı', 'mu', 'mü', 'bir', 've', 'ile', 'bu', 'şu', 'da', 'de',
+  'ki', 'gibi', 'hangi', 'nasıl', 'bana', 'olan', 'olarak', 'daha', 'çok', 'var', 'yok',
+  'the', 'what', 'is', 'are', 'of', 'and', 'for', 'to', 'in', 'on', 'a', 'an', 'with', 'from', 'how', 'much',
+]);
+
+function _terms(q) {
+  return [
+    ...new Set(
+      String(q || '')
+        .toLocaleLowerCase('tr-TR')
+        .replace(/[^\p{L}\p{N}\s.-]/gu, ' ')
+        .split(/\s+/)
+        .filter((w) => w.length >= 2 && !_STOP.has(w))
+        .map((w) => (w.length > 6 && !/\d/.test(w) ? w.slice(0, 6) : w))
+    ),
+  ];
+}
+
+function _scoreText(text, terms) {
+  const low = String(text || '').toLocaleLowerCase('tr-TR');
+  let s = 0;
+  for (const t of terms) if (low.includes(t)) s += 1;
+  if (/\d/.test(low)) s += 0.35;
+  if (/(₺|\btl\b|\busd\b|\beur\b|\$|€)/i.test(low)) s += 0.25;
+  return s;
+}
+
+function _bestPassages(text, terms, maxChars = 1200) {
+  const paras = String(text || '')
+    .split(/\n+/)
+    .map((p) => p.trim())
+    .filter((p) => p.length >= 18 && p.length <= 1400);
+  const ranked = paras
+    .map((p, i) => ({ p, i, s: _scoreText(p, terms) }))
+    .filter((x) => x.s >= 1)
+    .sort((a, b) => b.s - a.s)
+    .slice(0, 5)
+    .sort((a, b) => a.i - b.i);
+  let out = '';
+  for (const r of ranked) {
+    if (out.length + r.p.length > maxChars) break;
+    out += `${r.p}\n`;
+  }
+  return out.trim();
+}
+
+async function _readPageUniversal(urlStr, allTerms) {
+  const r = await httpsRequestTextIpv4(urlStr, { timeoutMs: 3400, maxBytes: 650000 });
+  let structured = '';
+  let bodyPassages = '';
+  if (r.ok && /text\/html|text\/plain|application\/xhtml/i.test(r.ctype || '')) {
+    if (!/verify you are human|cf-turnstile|olağan dışı trafik/i.test(r.text.slice(0, 4000))) {
+      structured = _extractStructuredHtmlFacts(r.text);
+      const plain = _htmlToText(r.text);
+      bodyPassages = _bestPassages(plain, allTerms, 1000);
+      if (plain.length >= 220 || structured.length >= 80) {
+        return [structured, bodyPassages].filter(Boolean).join('\n').trim();
+      }
+    }
+  }
+  // Fallback for JS-rendered docs/blogs when direct HTML was empty (skip if site returned 401/403/429)
+  if (r.status !== 401 && r.status !== 403 && r.status !== 429) {
+    const jr = await httpsRequestTextIpv4(`https://r.jina.ai/${urlStr}`, { timeoutMs: 3500, maxBytes: 280000 });
+    if (jr.ok && jr.text && !/AuthenticationRequiredError|AbuseAlleviationError|<title>403/i.test(jr.text.slice(0, 600))) {
+      const mdPassages = _bestPassages(jr.text, allTerms, 1000);
+      if (mdPassages) return [structured, mdPassages].filter(Boolean).join('\n').trim();
+    }
+  }
+  return [structured, bodyPassages].filter(Boolean).join('\n').trim();
+}
+
+const _TR_MONTH_MAP = {
+  ocak: 0, şubat: 1, subat: 1, mart: 2, nisan: 3, mayıs: 4, mayis: 4, haziran: 5,
+  temmuz: 6, ağustos: 7, agustos: 7, eylül: 8, eylul: 8, ekim: 9, kasım: 10, kasim: 10, aralık: 11, aralik: 11,
+  oca: 0, şub: 1, sub: 1, mar: 2, nis: 3, may: 4, haz: 5, tem: 6, ağu: 7, agu: 7, eyl: 8, eki: 9, kas: 10, ara: 11,
+};
+
+function _parseFlexibleDateMs(dateStr) {
+  if (!dateStr) return NaN;
+  const direct = Date.parse(dateStr);
+  if (Number.isFinite(direct)) return direct;
+  const m = /(\d{1,2})\s+([A-Za-zÇĞİÖŞÜçğıöşü]+)\s+(20\d{2})/u.exec(dateStr);
+  if (m) {
+    const mon = _TR_MONTH_MAP[m[2].toLocaleLowerCase('tr-TR')];
+    if (mon !== undefined) return Date.UTC(Number(m[3]), mon, Number(m[1]));
+  }
+  return NaN;
+}
+
+function _extractDomainLabel(urlStr) {
+  try {
+    return new URL(urlStr).hostname.replace(/^www\./i, '');
+  } catch {
+    return '';
+  }
+}
+
+async function _runSearchBatch(queries, isTr) {
+  const tasks = [];
+  queries.slice(0, 4).forEach((q, idx) => {
+    const cleanQ = String(q || '').trim();
+    if (!cleanQ) return;
+    const looksEn = /^[\x00-\x7F]+$/.test(cleanQ) && /\b(the|latest|release|price|schedule|vs|how|what|when|who)\b/i.test(cleanQ);
+    const useTr = looksEn ? false : isTr;
+    tasks.push(_searchYahooWeb(cleanQ).then((arr) => arr.map((x) => ({ ...x, qIdx: idx }))));
+    if (idx < 3) tasks.push(_searchNewsRss(cleanQ, useTr).then((arr) => arr.map((x) => ({ ...x, qIdx: idx }))));
+  });
+  if (queries[0]) {
+    tasks.push(_searchWikipedia(queries[0], isTr).then((arr) => arr.map((x) => ({ ...x, qIdx: 0 }))));
+  }
+  const batches = await Promise.all(tasks);
+  return batches.flat();
+}
+
+function _rankSearchCandidates(rawItems, perQueryTerms) {
+  const byKey = new Map();
+  for (const h of rawItems) {
+    const k = String(h.newsLink || h.link || '').replace(/[?#].*$/, '').replace(/\/+$/, '').toLowerCase();
+    if (!k) continue;
+    const prev = byKey.get(k);
+    const rrf = 1 / (8 + (h.rank || 0));
+    if (prev) {
+      prev.rrf += rrf;
+      prev.qIdxs.add(h.qIdx ?? 0);
+      if ((h.snippet || '').length > (prev.snippet || '').length) prev.snippet = h.snippet;
+      if (!prev.date && h.date) prev.date = h.date;
+      if (prev.source === 'news' && h.source === 'web') {
+        prev.source = 'web';
+        prev.link = h.link;
+      }
+    } else {
+      byKey.set(k, { ...h, rrf, qIdxs: new Set([h.qIdx ?? 0]) });
+    }
+  }
+
+  const scored = [];
+  for (const h of byKey.values()) {
+    const text = `${h.title} ${h.snippet}`.toLocaleLowerCase('tr-TR');
+    let rel = 0;
+    let bestQIdx = [...h.qIdxs][0] ?? 0;
+    perQueryTerms.forEach((terms, idx) => {
+      if (!terms.length) return;
+      const matched = terms.filter((t) => text.includes(t)).length;
+      const ratio = matched / terms.length;
+      if (ratio > rel) {
+        rel = ratio;
+        bestQIdx = idx;
+      }
+    });
+    const ts = _parseFlexibleDateMs(h.date);
+    const ageDays = Number.isFinite(ts) ? (Date.now() - ts) / 86400000 : NaN;
+    const recency = Number.isFinite(ageDays) ? (ageDays > 450 ? -0.3 : ageDays > 120 ? -0.06 : 0.16) : 0;
+    const srcBonus = h.source === 'web' ? 0.24 : h.source === 'wiki' ? -0.1 : 0.02;
+    const isTeaserOnlyNews =
+      h.source === 'news' &&
+      /\?/.test(h.title || '') &&
+      (h.snippet || '').length <= (h.title || '').length + 35;
+    const score = rel + h.rrf + recency + srcBonus + (isTeaserOnlyNews ? -0.3 : 0);
+    scored.push({ ...h, rel, score, bestQIdx });
+  }
+  scored.sort((a, b) => b.score - a.score);
+  return scored;
+}
+
+function _diversifyAcrossQueries(ranked, queryCount, maxTotal = 12) {
+  const valid = ranked.filter((h) => h.rel >= 0.32 && h.score >= 0.36);
+  if (queryCount <= 1) return valid.slice(0, maxTotal);
+  const picked = [];
+  const seen = new Set();
+  const buckets = Array.from({ length: queryCount }, (_, qi) =>
+    valid.filter((h) => h.qIdxs?.has(qi) || h.bestQIdx === qi)
+  );
+  for (let round = 0; round < 3; round += 1) {
+    for (let qi = 0; qi < queryCount; qi += 1) {
+      const cand = buckets[qi].find((h) => !seen.has(h.link));
+      if (cand && picked.length < maxTotal) {
+        seen.add(cand.link);
+        picked.push(cand);
+      }
+    }
+  }
+  for (const h of valid) {
+    if (picked.length >= maxTotal) break;
+    if (!seen.has(h.link)) {
+      seen.add(h.link);
+      picked.push(h);
+    }
+  }
+  return picked;
+}
+
+// ======================= UNIVERSAL AGENT TOOLS =======================
+// Pure, domain-agnostic tools exposed to Gemini / Claude / OpenAI via native Function Calling.
+
+const GEMINI_AGENT_FUNCTION_DECLARATIONS = [
+  {
+    name: 'web_search',
+    description:
+      'Searches the live web and news index for up-to-date facts, schedules, prices, exchange rates, software/model releases, events, or any verifiable information. Pass 1 to 4 concise, targeted search queries.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        queries: {
+          type: 'ARRAY',
+          items: { type: 'STRING' },
+          description: '1 to 4 focused search engine queries (include current year or English query when helpful).',
+        },
+      },
+      required: ['queries'],
+    },
+  },
+  {
+    name: 'read_webpage',
+    description:
+      'Opens and extracts full text, tables, and structured metadata from 1 to 4 specific webpage URLs returned by web_search when snippets alone do not contain the complete details.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        urls: {
+          type: 'ARRAY',
+          items: { type: 'STRING' },
+          description: '1 to 4 http/https URLs to read in full.',
+        },
+        focus: {
+          type: 'STRING',
+          description: 'Keywords describing the exact information to extract from the pages.',
+        },
+      },
+      required: ['urls'],
+    },
+  },
+];
+
+async function _executeAgentWebSearch(args, onProgress) {
+  const isTr = normalizeLanguage(userSettings.language) === 'tr';
+  const queries = (Array.isArray(args?.queries) ? args.queries : [args?.query])
+    .map((x) => String(x || '').trim())
+    .filter(Boolean)
+    .slice(0, 4);
+  if (!queries.length) return { results: [] };
+
+  if (typeof onProgress === 'function') {
+    try { onProgress({ phase: 'searching', queries: queries.slice(0, 3) }); } catch {}
+  }
+
+  const joined = queries.join(' ');
+  const [fxBlock, weatherBlock, rawHits] = await Promise.all([
+    fetchLiveFxAndCryptoIpv4(joined),
+    fetchLiveWeatherIpv4(joined),
+    _runSearchBatch(queries, isTr),
+  ]);
+
+  const perQueryTerms = queries.map((q) => _terms(q)).filter((t) => t.length);
+  const ranked = _rankSearchCandidates(rawHits, perQueryTerms.length ? perQueryTerms : [_terms(joined)]);
+  const top = _diversifyAcrossQueries(ranked, queries.length, 12);
+  const domains = [...new Set(top.map((h) => _extractDomainLabel(h.link)).filter(Boolean))].slice(0, 5);
+
+  if (typeof onProgress === 'function' && domains.length) {
+    try { onProgress({ phase: 'searching', queries: queries.slice(0, 2), domains, totalSources: top.length }); } catch {}
+  }
+
+  if (process.env.BEDO_DEBUG_LLM) {
+    console.log(`[tool:web_search] queries=${JSON.stringify(queries)} hits=${rawHits.length} top=${top.length}`);
+  }
+
+  return {
+    today: new Date().toISOString().slice(0, 10),
+    ...(fxBlock ? { liveExchangeAndCrypto: fxBlock.trim() } : {}),
+    ...(weatherBlock ? { liveWeather: weatherBlock.trim() } : {}),
+    results: top.map((h) => ({
+      title: h.title,
+      url: h.link,
+      ...(h.date ? { date: h.date } : {}),
+      type: h.source,
+      snippet: h.snippet,
+    })),
+  };
+}
+
+async function _executeAgentReadWebpage(args, onProgress) {
+  const urls = (Array.isArray(args?.urls) ? args.urls : [args?.url])
+    .map((u) => String(u || '').trim())
+    .filter((u) => /^https?:\/\//i.test(u))
+    .slice(0, 4);
+  if (!urls.length) return { pages: [] };
+
+  const domains = [...new Set(urls.map(_extractDomainLabel).filter(Boolean))];
+  const focusTerms = _terms(`${args?.focus || ''} ${urls.join(' ')}`);
+  let readDone = 0;
+
+  if (typeof onProgress === 'function') {
+    try { onProgress({ phase: 'reading', domains, readCount: 0, readableTotal: urls.length, totalSources: urls.length }); } catch {}
+  }
+
+  const pages = [];
+  await Promise.race([
+    Promise.all(
+      urls.map(async (u) => {
+        const content = await _readPageUniversal(u, focusTerms);
+        readDone += 1;
+        if (typeof onProgress === 'function') {
+          try { onProgress({ phase: 'reading', domains, readCount: readDone, readableTotal: urls.length, totalSources: urls.length }); } catch {}
+        }
+        pages.push({
+          url: u,
+          content: content ? content.slice(0, 1800) : 'Sayfa içeriği statik olarak okunamadı; arama özetini veya farklı bir URL\'yi kullanın.',
+        });
+      })
+    ),
+    new Promise((r) => setTimeout(r, 3200)),
+  ]);
+
+  if (process.env.BEDO_DEBUG_LLM) {
+    console.log(`[tool:read_webpage] urls=${JSON.stringify(urls)} read=${pages.length}`);
+  }
+  return { pages };
+}
+
+function sanitizeModelAnswer(text) {
+  return String(text || '')
+    .replace(/^\s*\[(DOĞRULANMIŞ|VERIFIED)[^\]\n]*\]\s*/i, '')
+    .replace(/<\/?(web_context|search_results|sources|flight_search_links)[^>]*>/gi, '')
+    .trimStart();
+}
+
+function _wrapDelta(onDelta) {
+  if (typeof onDelta !== 'function') return null;
+  return (acc) => onDelta(sanitizeModelAnswer(acc));
+}
+
+function buildLiveSystemInstruction(mode = 'agent') {
+  const isTr = normalizeLanguage(userSettings.language) === 'tr';
+  const nowStr = new Date().toLocaleDateString(isTr ? 'tr-TR' : 'en-US', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+  const base = trMain(userSettings.language, 'roboSystemPrompt');
+  const memBlock = loadUserMemoryContextForPrompt();
+
+  if (isTr) {
+    const toolGuidance =
+      mode === 'native_search'
+        ? '- Güncel veya zamana duyarlı her bilgide canlı web aramasını kullan.'
+        : mode === 'agent'
+          ? '- Güncel olaylar, tarihler, fiyatlar, kurlar, takvimler, sürümler veya kesinliğinden emin olmadığın her olgu için eğitim belleğine güvenme; `web_search` aracını çağır. Arama özetleri (snippet) tek başına yeterli detayı içermiyorsa en alakalı URL\'leri `read_webpage` ile açıp tam metni/tabloyu oku; gerekirse farklı açılardan ek `web_search` çağrısı yap.'
+          : '- Yanıtını yalnızca doğrulanmış bilgilere dayandır.';
+    return (
+      `[BUGÜNÜN TARİHİ: ${nowStr}]\n${memBlock}${base}\n` +
+      `İLKELER:\n` +
+      `${toolGuidance}\n` +
+      `- Bugünün tarihini (${nowStr}) her zaman referans al; geçmiş tarihli verileri gelecekteki olaylarla veya eski sürümleri güncel sürümlerle karıştırma.\n` +
+      `- Doğrulanmış kaynaklarda yer almayan hiçbir sayıyı, fiyatı, tarihi veya adı ASLA uydurma; anlık dinamik sorgu gerektiren bir veri kaynaklarda açıkça yoksa uydurmak yerine mevcut doğrulanmış kapsamı netçe belirt.\n` +
+      `- "Arama yapıyorum / lütfen bekleyin" gibi ara cümleler yazma; araştırmanı araçlarla tamamlayıp doğrudan nihai yanıtı ver.\n` +
+      `- Web kaynaklarından yararlandığında yanıtın sonuna "Kaynaklar:" başlığıyla kullandığın gerçek sayfaları [Site Adı](URL) biçiminde ekle.`
+    );
+  }
+
+  const toolGuidanceEn =
+    mode === 'native_search'
+      ? '- Use live web search for any current or time-sensitive fact.'
+      : mode === 'agent'
+        ? '- Never rely on pretraining memory for current events, dates, prices, rates, schedules, releases, or uncertain facts: call `web_search`, and whenever snippets lack complete details, call `read_webpage` on the best URLs (or run a refined `web_search`).'
+        : '- Rely strictly on verified facts.';
+  return (
+    `[TODAY'S DATE: ${nowStr}]\n${memBlock}${base}\n` +
+    `PRINCIPLES:\n` +
+    `${toolGuidanceEn}\n` +
+    `- Anchor all temporal reasoning to today's date (${nowStr}); never confuse past events or legacy versions with current ones.\n` +
+    `- NEVER fabricate numbers, prices, dates, or names absent from retrieved sources; if live interactive data is unavailable in static sources, state the verified scope honestly.\n` +
+    `- Do not output interim filler ("searching, please wait"); complete tool calls first and stream the final answer directly, citing used pages under "Sources:" as [Site](URL).`
+  );
+}
+
+const _searchToolBlockedUntil = { gemini: 0, claude: 0, openai: 0 };
+const SEARCH_BLOCK_MS = 30 * 60 * 1000;
+
+// Zero-example ReAct research controller (fast JSON mode, ~600-900ms/step, avoids Gemini Free-Tier functionDeclarations SSE stalls)
+async function _runGeminiReactStep(apiKey, controllerModels, statePrompt) {
+  for (const modelId of controllerModels) {
+    const coolKey = `${modelId}:react`;
+    if ((_modelCooldownUntil.get(coolKey) || 0) > Date.now()) continue;
+    const t0 = Date.now();
+    const r = await httpsRequestTextIpv4(
+      `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: statePrompt }] }],
+          generationConfig: {
+            temperature: 0,
+            maxOutputTokens: 320,
+            responseMimeType: 'application/json',
+          },
+        }),
+        timeoutMs: 4800,
+      }
+    );
+    if (process.env.BEDO_DEBUG_LLM) {
+      console.log(`[react] ${modelId} status=${r.status} ${Date.now() - t0}ms`);
+    }
+    if (r.status === 429 || r.status === 404 || r.status === 503 || r.status === 0) {
+      _modelCooldownUntil.set(coolKey, Date.now() + 90000);
+      continue;
+    }
+    if (!r.ok) continue;
+    try {
+      const parsed = JSON.parse(r.text || '{}');
+      const txt = (parsed?.candidates?.[0]?.content?.parts || [])
+        .filter((p) => !p?.thought && p?.text)
+        .map((p) => p.text)
+        .join('');
+      const m = /\{[\s\S]*\}/.exec(txt);
+      if (m) return JSON.parse(m[0]);
+    } catch {}
+  }
+  return null;
+}
+
+async function _runUniversalResearchLoop(question, historyTurns, runStepFn, onProgress) {
+  const latest = String(question || '').trim();
+  if (!latest) return '';
+
+  const today = new Date().toISOString().slice(0, 10);
+  const histText = (historyTurns || [])
+    .slice(-4)
+    .map((t) => `User: ${String(t.userText || '').slice(0, 280)}\nAssistant: ${String(t.assistantText || '').slice(0, 280)}`)
+    .join('\n');
+
+  const observations = [];
+  const searchedQueries = new Set();
+  const readUrls = new Set();
+  const discoveredUrls = new Set();
+  const discoveredDomains = new Set();
+
+  for (let step = 0; step < 3; step += 1) {
+    const obsSummary = observations
+      .map((o, i) => `Observation ${i + 1} (${o.kind}):\n${o.summary}`)
+      .join('\n\n');
+
+    const reactPrompt =
+      `Today's date: ${today}.\n` +
+      `You are an autonomous research controller deciding the next step to answer the user accurately.\n\n` +
+      `Conversation history:\n${histText || '(none)'}\n\n` +
+      `Latest user message: "${latest}"\n\n` +
+      `Collected observations so far:\n${obsSummary || '(none yet)'}\n\n` +
+      `Choose ONE action as strict JSON:\n` +
+      `- If the message needs NO live/factual verification (pure greeting, casual chat, coding, math, rewriting, translation) OR if collected observations ALREADY contain the specific facts/dates/opponents/numbers needed to answer completely:\n` +
+      `  {"action": "answer"}\n` +
+      `- If you need to search the web (resolve pronouns from conversation history, fix typos, include current year when time-sensitive, use 1 to 4 targeted queries, include an English query for global topics):\n` +
+      `  {"action": "web_search", "queries": ["query 1", "query 2"]}\n` +
+      `- If search snippets were retrieved but lack exact details (e.g. full table rows, exact schedule opponent/time, full article body, exact specs/pricing), pick 1 to 4 most promising URLs from the observations to read in full:\n` +
+      `  {"action": "read_webpage", "urls": ["https://..."], "focus": "exact info to extract"}`;
+
+    if (step === 0 && typeof onProgress === 'function') {
+      // Only show planning indicator if message isn't a one-word greeting
+      if (latest.length > 6) {
+        try { onProgress({ phase: 'planning' }); } catch {}
+      }
+    }
+
+    const decision = await runStepFn(reactPrompt);
+    if (!decision || decision.action === 'answer') {
+      if (observations.length === 0 && typeof onProgress === 'function') {
+        try { onProgress({ phase: 'idle' }); } catch {}
+      }
+      break;
+    }
+
+    if (decision.action === 'web_search' && Array.isArray(decision.queries)) {
+      const freshQueries = decision.queries
+        .map((q) => String(q || '').trim())
+        .filter((q) => q && !searchedQueries.has(q.toLowerCase()))
+        .slice(0, 4);
+      if (!freshQueries.length) break;
+      freshQueries.forEach((q) => searchedQueries.add(q.toLowerCase()));
+      const res = await _executeAgentWebSearch({ queries: freshQueries }, onProgress);
+      for (const r of res.results || []) {
+        if (r.url) {
+          discoveredUrls.add(r.url);
+          const d = _extractDomainLabel(r.url);
+          if (d) discoveredDomains.add(d);
+        }
+      }
+      const compact = [
+        res.liveExchangeAndCrypto || '',
+        res.liveWeather || '',
+        ...(res.results || []).map(
+          (r, idx) => `[${idx + 1}] ${r.title}${r.date ? ` (${r.date})` : ''} | URL: ${r.url}\nSnippet: ${r.snippet}`
+        ),
+      ]
+        .filter(Boolean)
+        .join('\n');
+      observations.push({ kind: `web_search(${freshQueries.join('; ')})`, summary: compact || 'No results.' });
+      continue;
+    }
+
+    if (decision.action === 'read_webpage' && Array.isArray(decision.urls)) {
+      const freshUrls = decision.urls
+        .map((u) => String(u || '').trim())
+        .filter((u) => /^https?:\/\//i.test(u) && !readUrls.has(u))
+        .slice(0, 4);
+      if (!freshUrls.length) break;
+      freshUrls.forEach((u) => readUrls.add(u));
+      const res = await _executeAgentReadWebpage({ urls: freshUrls, focus: decision.focus || latest }, onProgress);
+      const compact = (res.pages || [])
+        .map((p) => `URL: ${p.url}\nContent:\n${p.content}`)
+        .join('\n\n');
+      observations.push({ kind: `read_webpage(${freshUrls.length} pages)`, summary: compact || 'Empty.' });
+      continue;
+    }
+
+    break;
+  }
+
+  if (!observations.length) return '';
+  if (typeof onProgress === 'function') {
+    try {
+      onProgress({
+        phase: 'writing',
+        domains: [...discoveredDomains].slice(0, 5),
+        totalSources: discoveredUrls.size || observations.length,
+      });
+    } catch {}
+  }
+  return `<web_context retrieved="${new Date().toISOString()}">\n${observations
+    .map((o) => `--- ${o.kind} ---\n${o.summary}`)
+    .join('\n\n')}\n</web_context>\n\n`;
+}
+
+function callGeminiApi(apiKey, prompt, onDelta = null, historyTurns = [], onProgress = null) {
+  return (async () => {
+    const cleanKey = String(apiKey || '').trim();
+    const discoveredModels = await resolveGeminiModels(cleanKey);
+    const controllerModels = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'];
+    const synthesisOrder = [
+      'gemini-3.5-flash-lite',
+      'gemini-3.1-flash-lite',
+      'gemini-4-hydrogen',
+      'gemini-3.8-flash',
+      'gemini-3.6-flash',
+      ...discoveredModels,
+      'gemma-4-31b-it',
+    ];
+    const models = _lastWorkingModel.gemini
+      ? [...new Set([_lastWorkingModel.gemini, ...synthesisOrder])]
+      : [...new Set(synthesisOrder)];
+
+    const baseHistory = [];
+    for (const turn of historyTurns) {
+      baseHistory.push({ role: 'user', parts: [{ text: turn.userText }] });
+      baseHistory.push({ role: 'model', parts: [{ text: turn.assistantText }] });
+    }
+
+    const retryableStatuses = new Set([400, 404, 429, 500, 502, 503, 504]);
+    let lastError = null;
+    const emit = _wrapDelta(onDelta);
+
+    // 1) Paid / Tier-1 Native Google Search Grounding (skipped for 30m once Free Tier returns 429/400)
+    if (Date.now() >= _searchToolBlockedUntil.gemini) {
+      for (const modelId of models) {
+        if (modelId.startsWith('gemma-')) continue;
+        const coolKey = `${modelId}:native_search`;
+        if ((_modelCooldownUntil.get(coolKey) || 0) > Date.now()) continue;
+        let acc = '';
+        const _t0 = Date.now();
+        try {
+          const res = await httpsStreamSseIpv4(
+            `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:streamGenerateContent?alt=sse`,
+            { 'Content-Type': 'application/json', 'x-goog-api-key': cleanKey },
+            JSON.stringify({
+              system_instruction: { parts: [{ text: buildLiveSystemInstruction('native_search') }] },
+              contents: [...baseHistory, { role: 'user', parts: [{ text: prompt }] }],
+              tools: [{ google_search: {} }],
+              generationConfig: { maxOutputTokens: 4096, temperature: 0.2 },
+            }),
+            (chunk) => {
+              for (const part of chunk?.candidates?.[0]?.content?.parts || []) {
+                if (!part?.thought && part?.text) {
+                  acc += part.text;
+                  if (emit) emit(acc);
+                }
+              }
+            },
+            9000
+          );
+          if (process.env.BEDO_DEBUG_LLM) console.log(`[llm] ${modelId} mode=native_search status=${res.status} ${Date.now() - _t0}ms`);
+          if (res.ok && sanitizeModelAnswer(acc).trim()) {
+            _lastWorkingModel.gemini = modelId;
+            return sanitizeModelAnswer(acc).trim();
+          }
+          if (res.status === 429 || res.status === 400) {
+            _searchToolBlockedUntil.gemini = Date.now() + SEARCH_BLOCK_MS;
+            break;
+          }
+          if (res.status === 401 || res.status === 403) {
+            throw new Error(`${res.status}: ${res.errJson?.error?.message || `HTTP ${res.status}`}`);
+          }
+          break;
+        } catch (err) {
+          if (/^(401|403):/.test(err?.message || '')) throw err;
+          break;
+        }
+      }
+    }
+
+    // 2) Autonomous multi-step ReAct research loop (LLM decides whether to answer directly, search, or read pages)
+    const webContext = await _runUniversalResearchLoop(
+      prompt,
+      historyTurns,
+      (statePrompt) => _runGeminiReactStep(cleanKey, controllerModels, statePrompt),
+      onProgress
+    );
+
+    // 3) Stream grounded final synthesis over SSE (zero functionDeclarations payload -> fast 1.5-3s streaming)
+    const sysText = buildLiveSystemInstruction('plain');
+    const finalUserText = `${webContext}${prompt}`;
+
+    for (const modelId of models) {
+      const isGemma = modelId.startsWith('gemma-');
+      const coolKey = `${modelId}:synth`;
+      if ((_modelCooldownUntil.get(coolKey) || 0) > Date.now()) continue;
+      const _t0 = Date.now();
+      try {
+        let acc = '';
+        let blockReason = '';
+        const contents = isGemma
+          ? [{ role: 'user', parts: [{ text: `${sysText}\n\n${finalUserText}` }] }]
+          : [...baseHistory, { role: 'user', parts: [{ text: finalUserText }] }];
+
+        const res = await httpsStreamSseIpv4(
+          `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:streamGenerateContent?alt=sse`,
+          { 'Content-Type': 'application/json', 'x-goog-api-key': cleanKey },
+          JSON.stringify({
+            ...(isGemma ? {} : { system_instruction: { parts: [{ text: sysText }] } }),
+            contents,
+            generationConfig: { maxOutputTokens: 4096, temperature: 0.2 },
+          }),
+          (chunk) => {
+            if (chunk?.promptFeedback?.blockReason) blockReason = chunk.promptFeedback.blockReason;
+            for (const part of chunk?.candidates?.[0]?.content?.parts || []) {
+              if (!part?.thought && part?.text) {
+                acc += part.text;
+                if (emit) emit(acc);
+              }
+            }
+          },
+          10000
+        );
+        if (process.env.BEDO_DEBUG_LLM) console.log(`[llm] ${modelId} mode=synth status=${res.status} ${Date.now() - _t0}ms`);
+        if (!res.ok) {
+          const msg = res.errJson?.error?.message || `HTTP ${res.status}`;
+          lastError = new Error(`${res.status}: ${msg}`);
+          if (res.status === 429 || res.status === 404 || res.status === 503) {
+            _modelCooldownUntil.set(coolKey, Date.now() + 90000);
+          }
+          if (_lastWorkingModel.gemini === modelId && (res.status === 429 || res.status === 503)) {
+            _lastWorkingModel.gemini = '';
+          }
+          if (res.status === 401 || res.status === 403) throw lastError;
+          if (retryableStatuses.has(res.status)) continue;
+          throw lastError;
+        }
+        const cleanAnswer = sanitizeModelAnswer(acc).trim();
+        if (!cleanAnswer && blockReason) {
+          throw new Error(`İstek güvenlik filtresine takıldı (${blockReason}).`);
+        }
+        if (cleanAnswer) {
+          if (!isGemma) _lastWorkingModel.gemini = modelId;
+          return cleanAnswer;
+        }
+      } catch (error) {
+        if (error?.message === 'TIMEOUT') {
+          lastError = new Error('TIMEOUT');
+          _modelCooldownUntil.set(coolKey, Date.now() + 90000);
+          if (_lastWorkingModel.gemini === modelId) _lastWorkingModel.gemini = '';
+          continue;
+        }
+        if (/^(401|403):/.test(error?.message || '') || /güvenlik filtresine/i.test(error?.message || '')) {
+          throw error;
+        }
+        lastError = error;
+      }
+    }
+    if (lastError) throw lastError;
     return '';
   })();
 }
 
-// Anthropic Claude API query
-function callClaudeApi(apiKey, prompt) {
-  return new Promise((resolve, reject) => {
-    const payload = JSON.stringify({
-      model: 'claude-sonnet-4-5-20250929',
-      max_tokens: 500,
-      messages: [
-        {
-          role: 'user',
-          content: `${trMain(userSettings.language, 'roboSystemPrompt')}\n\n${trMain(userSettings.language, 'roboUserQuestionPrefix')}${prompt}`,
-        },
-      ],
-    });
-    const req = https.request(
-      'https://api.anthropic.com/v1/messages',
-      {
-        method: 'POST',
-        headers: {
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-          'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(payload),
-        },
-        timeout: 10000,
-      },
-      (res) => {
-        let b = '';
-        res.on('data', (c) => (b += c));
-        res.on('end', () => {
-          try {
-            const j = JSON.parse(b);
-            const text = j?.content?.[0]?.text;
-            if (text) return resolve(text.trim());
-            if (j?.error?.message) return reject(new Error(j.error.message));
-          } catch (e) {
-            return reject(e);
+// Anthropic Claude API streaming query (+ native web_search & universal agentic tool fallback)
+async function callClaudeApi(apiKey, prompt, onDelta = null, historyTurns = [], onProgress = null) {
+  const cleanKey = String(apiKey || '').trim();
+  const models = await resolveClaudeModels(cleanKey);
+  const baseMessages = [];
+  for (const turn of historyTurns) {
+    baseMessages.push({ role: 'user', content: turn.userText });
+    baseMessages.push({ role: 'assistant', content: turn.assistantText });
+  }
+  baseMessages.push({ role: 'user', content: prompt });
+
+  const claudeAgentTools = GEMINI_AGENT_FUNCTION_DECLARATIONS.map((fn) => ({
+    name: fn.name,
+    description: fn.description,
+    input_schema: {
+      type: 'object',
+      properties: Object.fromEntries(
+        Object.entries(fn.parameters.properties).map(([k, v]) => [
+          k,
+          v.type === 'ARRAY'
+            ? { type: 'array', items: { type: 'string' }, description: v.description }
+            : { type: 'string', description: v.description },
+        ])
+      ),
+      required: fn.parameters.required,
+    },
+  }));
+
+  let lastErr = null;
+  const modes = Date.now() < _searchToolBlockedUntil.claude ? ['agent'] : ['native_search', 'agent'];
+
+  for (const mode of modes) {
+    let abortMode = false;
+    for (let i = 0; i < models.length && !abortMode; i += 1) {
+      try {
+        const messages = baseMessages.map((m) => ({ ...m }));
+        const maxRounds = mode === 'agent' ? 4 : 1;
+
+        for (let round = 0; round < maxRounds; round += 1) {
+          let roundText = '';
+          const toolUses = [];
+          let curTool = null;
+
+          const res = await httpsStreamSseIpv4(
+            'https://api.anthropic.com/v1/messages',
+            {
+              'x-api-key': cleanKey,
+              'anthropic-version': '2023-06-01',
+              'Content-Type': 'application/json',
+            },
+            JSON.stringify({
+              model: models[i],
+              max_tokens: 3072,
+              system: buildLiveSystemInstruction(mode),
+              stream: true,
+              ...(mode === 'native_search'
+                ? { tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }] }
+                : round < maxRounds - 1
+                  ? { tools: claudeAgentTools }
+                  : {}),
+              messages,
+            }),
+            (ev) => {
+              if (ev?.type === 'content_block_start' && ev?.content_block?.type === 'tool_use') {
+                curTool = { id: ev.content_block.id, name: ev.content_block.name, json: '' };
+              } else if (ev?.type === 'content_block_delta') {
+                if (ev.delta?.type === 'text_delta' && ev.delta.text) {
+                  roundText += ev.delta.text;
+                  if (!curTool && toolUses.length === 0 && typeof onDelta === 'function') {
+                    onDelta(sanitizeModelAnswer(roundText));
+                  }
+                } else if (ev.delta?.type === 'input_json_delta' && curTool) {
+                  curTool.json += ev.delta.partial_json || '';
+                }
+              } else if (ev?.type === 'content_block_stop' && curTool) {
+                let input = {};
+                try { input = JSON.parse(curTool.json || '{}'); } catch {}
+                toolUses.push({ id: curTool.id, name: curTool.name, input });
+                curTool = null;
+              }
+            },
+            18000
+          );
+
+          if (!res.ok) {
+            const msg = res.errJson?.error?.message || `HTTP ${res.status}`;
+            lastErr = new Error(`${res.status}: ${msg}`);
+            if (mode === 'native_search' && (res.status === 400 || res.status === 429)) {
+              _searchToolBlockedUntil.claude = Date.now() + SEARCH_BLOCK_MS;
+              abortMode = true;
+              break;
+            }
+            if (res.status === 401 || res.status === 403) throw lastErr;
+            break;
           }
-          resolve('');
-        });
+
+          if (mode === 'agent' && toolUses.length > 0 && round < maxRounds - 1) {
+            if (typeof onDelta === 'function') onDelta('');
+            const assistantContent = [];
+            if (roundText) assistantContent.push({ type: 'text', text: roundText });
+            for (const tu of toolUses) assistantContent.push({ type: 'tool_use', id: tu.id, name: tu.name, input: tu.input });
+            messages.push({ role: 'assistant', content: assistantContent });
+
+            const toolResults = await Promise.all(
+              toolUses.map(async (tu) => {
+                const out =
+                  tu.name === 'web_search'
+                    ? await _executeAgentWebSearch(tu.input, onProgress)
+                    : await _executeAgentReadWebpage(tu.input, onProgress);
+                return { type: 'tool_result', tool_use_id: tu.id, content: JSON.stringify(out) };
+              })
+            );
+            messages.push({ role: 'user', content: toolResults });
+            if (typeof onProgress === 'function') {
+              try { onProgress({ phase: 'writing' }); } catch {}
+            }
+            continue;
+          }
+
+          const clean = sanitizeModelAnswer(roundText).trim();
+          if (clean) return clean;
+          break;
+        }
+      } catch (err) {
+        if (/^(401|403):/.test(err?.message || '')) throw err;
+        lastErr = err;
       }
-    );
-    req.on('error', reject);
-    req.on('timeout', () => {
-      req.destroy();
-      reject(new Error('TIMEOUT'));
-    });
-    req.write(payload);
-    req.end();
-  });
+    }
+  }
+  if (lastErr) throw lastErr;
+  return '';
 }
 
-// OpenAI API query
-function callOpenAiApi(apiKey, prompt) {
-  return new Promise((resolve, reject) => {
-    const payload = JSON.stringify({
-      model: 'gpt-4o-mini',
-      max_tokens: 500,
-      messages: [
-        {
-          role: 'system',
-          content: trMain(userSettings.language, 'roboSystemPrompt'),
-        },
-        { role: 'user', content: prompt },
-      ],
-    });
-    const req = https.request(
-      'https://api.openai.com/v1/chat/completions',
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(payload),
-        },
-        timeout: 10000,
+// OpenAI API streaming query (+ Responses web_search_preview & universal Chat Completions tool loop)
+async function callOpenAiApi(apiKey, prompt, onDelta = null, historyTurns = [], onProgress = null) {
+  const cleanKey = String(apiKey || '').trim();
+  const models = await resolveOpenAiModels(cleanKey);
+
+  const inputItems = [];
+  const baseChatMessages = [{ role: 'system', content: buildLiveSystemInstruction('agent') }];
+  for (const turn of historyTurns) {
+    inputItems.push({ role: 'user', content: turn.userText });
+    inputItems.push({ role: 'assistant', content: turn.assistantText });
+    baseChatMessages.push({ role: 'user', content: turn.userText });
+    baseChatMessages.push({ role: 'assistant', content: turn.assistantText });
+  }
+  inputItems.push({ role: 'user', content: prompt });
+  baseChatMessages.push({ role: 'user', content: prompt });
+
+  const openAiTools = GEMINI_AGENT_FUNCTION_DECLARATIONS.map((fn) => ({
+    type: 'function',
+    function: {
+      name: fn.name,
+      description: fn.description,
+      parameters: {
+        type: 'object',
+        properties: Object.fromEntries(
+          Object.entries(fn.parameters.properties).map(([k, v]) => [
+            k,
+            v.type === 'ARRAY'
+              ? { type: 'array', items: { type: 'string' }, description: v.description }
+              : { type: 'string', description: v.description },
+          ])
+        ),
+        required: fn.parameters.required,
       },
-      (res) => {
-        let b = '';
-        res.on('data', (c) => (b += c));
-        res.on('end', () => {
-          try {
-            const j = JSON.parse(b);
-            const text = j?.choices?.[0]?.message?.content;
-            if (text) return resolve(text.trim());
-            if (j?.error?.message) return reject(new Error(j.error.message));
-          } catch (e) {
-            return reject(e);
+    },
+  }));
+
+  let lastErr = null;
+  for (let i = 0; i < models.length; i += 1) {
+    if (Date.now() >= _searchToolBlockedUntil.openai) {
+      try {
+        let accumulated = '';
+        const res = await httpsStreamSseIpv4(
+          'https://api.openai.com/v1/responses',
+          { Authorization: `Bearer ${cleanKey}`, 'Content-Type': 'application/json' },
+          JSON.stringify({
+            model: models[i],
+            instructions: buildLiveSystemInstruction('native_search'),
+            input: inputItems,
+            tools: [{ type: 'web_search_preview' }],
+            stream: true,
+          }),
+          (ev) => {
+            if (ev?.type === 'response.output_text.delta' && ev.delta) {
+              accumulated += ev.delta;
+              if (typeof onDelta === 'function') onDelta(sanitizeModelAnswer(accumulated));
+            }
+          },
+          15000
+        );
+        if (res.ok && accumulated.trim()) return sanitizeModelAnswer(accumulated).trim();
+        if (res.status === 400 || res.status === 429) {
+          _searchToolBlockedUntil.openai = Date.now() + SEARCH_BLOCK_MS;
+        }
+      } catch {}
+    }
+
+    try {
+      const chatMessages = baseChatMessages.map((m) => ({ ...m }));
+      for (let round = 0; round < 4; round += 1) {
+        let roundText = '';
+        const toolCallMap = new Map();
+        const res = await httpsStreamSseIpv4(
+          'https://api.openai.com/v1/chat/completions',
+          { Authorization: `Bearer ${cleanKey}`, 'Content-Type': 'application/json' },
+          JSON.stringify({
+            model: models[i],
+            max_tokens: 3072,
+            stream: true,
+            ...(round < 3 ? { tools: openAiTools } : {}),
+            messages: chatMessages,
+          }),
+          (ev) => {
+            const delta = ev?.choices?.[0]?.delta;
+            if (delta?.tool_calls) {
+              for (const tc of delta.tool_calls) {
+                const slot = toolCallMap.get(tc.index) || { id: '', name: '', arguments: '' };
+                if (tc.id) slot.id = tc.id;
+                if (tc.function?.name) slot.name += tc.function.name;
+                if (tc.function?.arguments) slot.arguments += tc.function.arguments;
+                toolCallMap.set(tc.index, slot);
+              }
+            } else if (delta?.content) {
+              roundText += delta.content;
+              if (toolCallMap.size === 0 && typeof onDelta === 'function') {
+                onDelta(sanitizeModelAnswer(roundText));
+              }
+            }
+          },
+          16000
+        );
+        if (!res.ok) {
+          const msg = res.errJson?.error?.message || `HTTP ${res.status}`;
+          lastErr = new Error(`${res.status}: ${msg}`);
+          if (res.status === 401 || res.status === 403) throw lastErr;
+          break;
+        }
+        const toolCalls = [...toolCallMap.values()].filter((t) => t.name);
+        if (toolCalls.length > 0 && round < 3) {
+          if (typeof onDelta === 'function') onDelta('');
+          chatMessages.push({
+            role: 'assistant',
+            content: roundText || null,
+            tool_calls: toolCalls.map((tc) => ({
+              id: tc.id,
+              type: 'function',
+              function: { name: tc.name, arguments: tc.arguments || '{}' },
+            })),
+          });
+          for (const tc of toolCalls) {
+            let parsedArgs = {};
+            try { parsedArgs = JSON.parse(tc.arguments || '{}'); } catch {}
+            const out =
+              tc.name === 'web_search'
+                ? await _executeAgentWebSearch(parsedArgs, onProgress)
+                : await _executeAgentReadWebpage(parsedArgs, onProgress);
+            chatMessages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(out) });
           }
-          resolve('');
-        });
+          if (typeof onProgress === 'function') {
+            try { onProgress({ phase: 'writing' }); } catch {}
+          }
+          continue;
+        }
+        if (roundText.trim()) return sanitizeModelAnswer(roundText).trim();
+        break;
       }
-    );
-    req.on('error', reject);
-    req.on('timeout', () => {
-      req.destroy();
-      reject(new Error('TIMEOUT'));
-    });
-    req.write(payload);
-    req.end();
-  });
+    } catch (err) {
+      if (/^(401|403):/.test(err?.message || '')) throw err;
+      lastErr = err;
+    }
+  }
+  if (lastErr) throw lastErr;
+  return '';
 }
 
 function getLocalSmartReply(q, mode) {
@@ -5718,15 +7627,27 @@ ipcMain.handle('validate-api-key', async (_event, payload = {}) => {
 });
 
 ipcMain.handle('ask-robo', async (_event, payload = {}) => {
-  const { question, provider, mode } = payload || {};
+  const { question, provider, mode, sessionId: requestedSessionId } = payload || {};
   const q = (question || '').trim();
   if (!q) return { text: 'Lütfen bir soru veya metin girin.' };
+  if (requestedSessionId && typeof requestedSessionId === 'string') {
+    activeBedoSessionId = requestedSessionId;
+    explicitBedoSession = true;
+    activeLiveBedoTurnId = null;
+  }
 
-  // Mode: Translate
+  const hasAnyConfiguredKey = Boolean(
+    (userSettings.geminiApiKey || process.env.GEMINI_API_KEY || '').trim() ||
+    (userSettings.codexApiKey || userSettings.openaiApiKey || process.env.OPENAI_API_KEY || '').trim() ||
+    (userSettings.claudeApiKey || process.env.ANTHROPIC_API_KEY || '').trim()
+  );
+
+  // Mode: Translate — only use free MyMemory fallback when no LLM API key is configured
   if (
-    mode === 'Translate' ||
-    q.toLowerCase().startsWith('çevir:') ||
-    q.toLowerCase().startsWith('translate:')
+    !hasAnyConfiguredKey &&
+    (mode === 'Translate' ||
+      q.toLowerCase().startsWith('çevir:') ||
+      q.toLowerCase().startsWith('translate:'))
   ) {
     const textToTranslate = q.replace(/^(çevir|translate):\s*/i, '');
     const isTurkish =
@@ -5736,7 +7657,9 @@ ipcMain.handle('ask-robo', async (_event, payload = {}) => {
     const to = isTurkish ? 'en' : 'tr';
     const translated = await translateTextMyMemory(textToTranslate, from, to);
     if (translated) {
-      return { text: `Çeviri (${from.toUpperCase()} → ${to.toUpperCase()}):\n${translated}` };
+      const replyText = `Çeviri (${from.toUpperCase()} → ${to.toUpperCase()}):\n${translated}`;
+      appendBedoChatEntry({ userText: q, assistantText: replyText, provider: 'Çeviri', source: 'text' });
+      return { text: replyText };
     }
   }
 
@@ -5782,14 +7705,144 @@ ipcMain.handle('ask-robo', async (_event, payload = {}) => {
   }
   if (!selectedProvider.key) {
     const localReply = getLocalSmartReply(q, mode);
-    if (localReply) return { text: localReply, provider: 'Robo' };
+    if (localReply) {
+      appendBedoChatEntry({ userText: q, assistantText: localReply, provider: 'Bedo', source: 'text' });
+      return { text: localReply, provider: 'Robo' };
+    }
     return { error: trMain(lang, 'roboMissingApiKey', { provider: selectedProvider.label, setup: selectedProvider.setup }) };
   }
 
+  const sessionId = ensureActiveBedoSessionId();
+  broadcastBedoChatSync({
+    type: 'turn-start',
+    sessionId,
+    userText: q,
+    provider: selectedProvider.label,
+  });
+
   try {
-    const reply = await selectedProvider.call(selectedProvider.key, q);
-    if (reply) return { text: reply, provider: selectedProvider.label };
-    return { error: trMain(lang, 'roboEmptyReply', { provider: selectedProvider.label }) };
+    const historyTurns = getCleanSessionTurns(sessionId, 6);
+    const effectiveQuestion =
+      mode === 'Translate' && !/^(çevir|translate):/i.test(q)
+        ? `Şu metni doğal ve akıcı şekilde çevir (Türkçe ise İngilizceye, yabancı dilde ise Türkçeye): ${q}`
+        : q;
+    // Adaptive 45fps word-boundary stream pacer so coarse SSE packets glide word-by-word like Claude/Gemini
+    // instead of dumping 600+ characters onto the screen in a single frame.
+    let targetStreamText = '';
+    let shownLen = 0;
+    let streamDone = false;
+    let finishResolve = null;
+    let finishDeadline = 0;
+    const emitSlice = (len) => {
+      shownLen = len;
+      broadcastBedoChatSync({
+        type: 'turn-stream',
+        sessionId,
+        userText: q,
+        assistantText: targetStreamText.slice(0, shownLen),
+        provider: selectedProvider.label,
+      });
+    };
+    const nextBoundaryIndex = (full, fromIdx, stepChars) => {
+      let idx = Math.min(full.length, fromIdx + stepChars);
+      // Hold before an in-progress Markdown link [label](url) until its closing ')' arrives in SSE,
+      // then emit the entire [label](url) atomically so partial "[Hürr" syntax never flashes on screen.
+      const openBr = full.lastIndexOf('[', idx);
+      if (openBr !== -1 && idx >= openBr && idx - openBr < 180) {
+        const rest = full.slice(openBr);
+        const completeLink = /^\[[^\]]+\]\(https?:\/\/(?:[^\s()]+|\([^\s()]*\))+\)/.exec(rest);
+        if (completeLink) {
+          const endOfLink = openBr + completeLink[0].length;
+          if (idx < endOfLink) return endOfLink;
+        } else if (!streamDone && /^\[[^\]]*(?:\]\([^\s)]*)?$/.test(rest) && rest.length < 260) {
+          return openBr;
+        }
+      }
+      if (idx >= full.length) return full.length;
+      // Snap forward up to 9 chars to end of current word
+      for (let k = idx; k < Math.min(full.length, idx + 9); k += 1) {
+        const ch = full[k];
+        if (ch === ' ' || ch === '\n' || ch === '\t') return k + 1;
+      }
+      return idx;
+    };
+    const pacerTimer = setInterval(() => {
+      const total = targetStreamText.length;
+      if (shownLen < total) {
+        const backlog = total - shownLen;
+        let step = Math.max(4, Math.min(20, Math.ceil(backlog / 13)));
+        if (streamDone && finishDeadline) {
+          const remTicks = Math.max(1, Math.ceil((finishDeadline - Date.now()) / 22));
+          step = Math.max(step, Math.ceil(backlog / remTicks));
+        }
+        const nextLen = nextBoundaryIndex(targetStreamText, shownLen, step);
+        emitSlice(nextLen);
+      }
+      if (streamDone && shownLen >= targetStreamText.length) {
+        clearInterval(pacerTimer);
+        if (finishResolve) {
+          const r = finishResolve;
+          finishResolve = null;
+          r();
+        }
+      }
+    }, 22);
+
+    const handleStreamDelta = (partialText) => {
+      targetStreamText = String(partialText || '');
+    };
+    const handleResearchProgress = (researchPatch) => {
+      broadcastBedoChatSync({
+        type: 'turn-research',
+        sessionId,
+        userText: q,
+        provider: selectedProvider.label,
+        research: researchPatch,
+      });
+    };
+    let reply = '';
+    try {
+      reply = await selectedProvider.call(
+        selectedProvider.key,
+        effectiveQuestion,
+        handleStreamDelta,
+        historyTurns,
+        handleResearchProgress
+      );
+    } catch (callErr) {
+      clearInterval(pacerTimer);
+      throw callErr;
+    }
+    if (reply) {
+      targetStreamText = reply;
+      streamDone = true;
+      finishDeadline = Date.now() + Math.min(2200, Math.max(320, (reply.length - shownLen) * 2.1));
+      if (shownLen < reply.length) {
+        await new Promise((resolve) => {
+          finishResolve = resolve;
+          setTimeout(resolve, 2400);
+        });
+      } else {
+        clearInterval(pacerTimer);
+      }
+      const entry = appendBedoChatEntry({
+        sessionId,
+        userText: q,
+        assistantText: reply,
+        provider: selectedProvider.label,
+        source: 'text',
+      });
+      broadcastBedoChatSync({
+        type: 'turn-done',
+        sessionId: entry?.sessionId || sessionId,
+        entry,
+      });
+      return { text: reply, provider: selectedProvider.label };
+    }
+    clearInterval(pacerTimer);
+    const emptyErr = trMain(lang, 'roboEmptyReply', { provider: selectedProvider.label });
+    broadcastBedoChatSync({ type: 'turn-error', sessionId, error: emptyErr });
+    return { error: emptyErr };
   } catch (err) {
     console.error(`${selectedProvider.label} API call failed:`, err.message);
     const reason = /TIMEOUT/i.test(err.message)
@@ -5799,7 +7852,9 @@ ipcMain.handle('ask-robo', async (_event, payload = {}) => {
       : /401|403|API.?KEY.?INVALID|invalid API key|unauthorized/i.test(err.message)
         ? `${trMain(lang, 'roboBadApiKey')}${err.message ? ` (${err.message.slice(0, 140)})` : ''}`
         : trMain(lang, 'roboRequestFailed', { message: err.message });
-    return { error: `${selectedProvider.label}: ${reason}` };
+    const fullErr = `${selectedProvider.label}: ${reason}`;
+    broadcastBedoChatSync({ type: 'turn-error', sessionId, error: fullErr });
+    return { error: fullErr };
   }
 });
 
@@ -5838,8 +7893,69 @@ ipcMain.handle('bedo:status', async () => {
 });
 
 ipcMain.handle('bedo:send-text', async (_event, text) => {
+  const cleanText = String(text || '').trim();
+  if (cleanText) {
+    upsertLiveBedoChatTurn('user', cleanText, { isNewTurn: true, source: 'text', provider: 'Bedo' });
+  }
   const ok = getBedoService().sendText(text);
   return { ok };
+});
+
+ipcMain.handle('bedo:get-chat-history', async () => {
+  return loadBedoChatHistory();
+});
+
+ipcMain.handle('bedo:delete-chat-entry', async (_event, id) => {
+  const list = loadBedoChatHistory();
+  bedoChatHistoryCache = list.filter((item) => item.id !== id);
+  if (activeLiveBedoTurnId === id) activeLiveBedoTurnId = null;
+  flushBedoChatHistoryToDisk();
+  broadcastBedoChatHistory(bedoChatHistoryCache);
+  return { ok: true, history: bedoChatHistoryCache };
+});
+
+ipcMain.handle('bedo:clear-chat-history', async () => {
+  bedoChatHistoryCache = [];
+  activeLiveBedoTurnId = null;
+  activeBedoSessionId = createBedoSessionId();
+  flushBedoChatHistoryToDisk();
+  broadcastBedoChatHistory(bedoChatHistoryCache);
+  return { ok: true, history: [], sessionId: activeBedoSessionId };
+});
+
+ipcMain.handle('bedo:new-chat-session', async () => {
+  activeLiveBedoTurnId = null;
+  activeBedoSessionId = createBedoSessionId();
+  explicitBedoSession = true;
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    try { mainWindow.webContents.send('bedo-chat-session-reset', { sessionId: activeBedoSessionId }); } catch {}
+  }
+  broadcastBedoChatSync({ type: 'session-new', sessionId: activeBedoSessionId });
+  return { ok: true, sessionId: activeBedoSessionId };
+});
+
+ipcMain.handle('bedo:select-chat-session', async (_event, sessionId) => {
+  if (sessionId && typeof sessionId === 'string') {
+    activeBedoSessionId = sessionId;
+    explicitBedoSession = true;
+    activeLiveBedoTurnId = null;
+    const list = loadBedoChatHistory();
+    const latestEntry = list.find((item) => item.sessionId === sessionId) || null;
+    broadcastBedoChatSync({ type: 'session-selected', sessionId, latestEntry });
+  }
+  return { ok: true, sessionId: activeBedoSessionId };
+});
+
+ipcMain.handle('bedo:delete-chat-session', async (_event, sessionId) => {
+  const list = loadBedoChatHistory();
+  bedoChatHistoryCache = list.filter((item) => item.sessionId !== sessionId);
+  if (activeBedoSessionId === sessionId) {
+    activeBedoSessionId = createBedoSessionId();
+    activeLiveBedoTurnId = null;
+  }
+  flushBedoChatHistoryToDisk();
+  broadcastBedoChatHistory(bedoChatHistoryCache);
+  return { ok: true, history: bedoChatHistoryCache, sessionId: activeBedoSessionId };
 });
 
 ipcMain.handle('bedo:set-muted', async (_event, muted) => {
@@ -6192,7 +8308,7 @@ ipcMain.handle('ask-robo-vision', async (_event, payload = {}) => {
         : 'Analyze this screen capture. If it contains text, check spelling/grammar or translate if foreign; if it is code, an error, or a chart, explain it clearly and concisely in English.')
   );
 
-  const models = ['gemini-flash-latest', 'gemini-3.5-flash-lite', 'gemini-3.8-flash'];
+  const models = await resolveGeminiModels(apiKey);
   const retryableStatuses = new Set([404, 429, 500, 502, 503, 504]);
   const body = JSON.stringify({
     contents: [
@@ -6230,7 +8346,15 @@ ipcMain.handle('ask-robo-vision', async (_event, payload = {}) => {
         .map((p) => p.text || '')
         .join('')
         .trim();
-      if (text) return { ok: true, text };
+      if (text) {
+        appendBedoChatEntry({
+          userText: String(payload.question || '').trim() || (isTr ? 'Ekrandan seçilen bölge' : 'Selected screen region'),
+          assistantText: text,
+          provider: 'Gemini Vision',
+          source: 'vision',
+        });
+        return { ok: true, text };
+      }
       return { ok: false, error: 'Yanıt boş döndü.' };
     } catch (err) {
       lastErr = err?.message || 'Bağlantı hatası.';

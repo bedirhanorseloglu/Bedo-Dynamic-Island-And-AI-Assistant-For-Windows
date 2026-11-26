@@ -400,12 +400,13 @@ export default {
 
   // SettingsApp.jsx — Sidebar & Window Controls
   'settings.subtitle': 'Ayarlar',
-  'settings.navGroup.twocode': 'BEDO',
+  'settings.navGroup.twocode': 'GENEL BAKIŞ',
   'settings.navGroup.robo': 'BEDO',
   'settings.navGroup.settings': 'AYARLAR',
   'settings.nav.home': 'Ana Sayfa',
   'settings.nav.connections': 'Ajanlar',
   'settings.nav.aichat': 'AI & Sohbet',
+  'settings.nav.bedochat': 'Sohbet Geçmişi',
   'settings.nav.apps': 'Uygulamalar',
   'settings.nav.robo': 'Bedo',
   'settings.nav.wardrobe': 'Gardırop',
@@ -432,6 +433,8 @@ export default {
   'settings.header.connections.sub': 'Codex ve Antigravity’yi Bedo’ya bağla',
   'settings.header.aichat.title': 'AI & Sohbet',
   'settings.header.aichat.sub': 'Bedo’nun ses ve yapay zeka ayarları',
+  'settings.header.bedochat.title': 'Sohbet Geçmişi',
+  'settings.header.bedochat.sub': 'Bedo ile yaptığın yazılı, sesli ve ekran analizi sohbetleri',
   'settings.header.apps.title': 'Uygulamalar',
   'settings.header.apps.sub': 'Bedo’nda yer alacak uygulamaları seç',
   'settings.header.robo.title': 'Bedo',

@@ -93,6 +93,8 @@ export default function BedoStage({
   userTranscript,
   reply,
   loading,
+  researchState = null,
+  isStreaming = false,
   question,
   pendingBuddyImage = null,
   hasApiKey = true,
@@ -125,6 +127,8 @@ export default function BedoStage({
   const [copied, setCopied] = useState(false);
   const [inputFocused, setInputFocused] = useState(false);
   const [wakeSeq, setWakeSeq] = useState(0);
+  const [launchState, setLaunchState] = useState(null);
+  const [sendSeq, setSendSeq] = useState(0);
   const [setupProvider, setSetupProvider] = useState('gemini');
   const [apiKeyDraft, setApiKeyDraft] = useState('');
   const [showKeyPlain, setShowKeyPlain] = useState(false);
@@ -133,7 +137,14 @@ export default function BedoStage({
   const prevPausedRef = useRef(paused);
   const replyScrollRef = useRef(null);
   const inputRef = useRef(null);
+  const launchTimerRef = useRef(null);
   const autoScrollPinnedRef = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      if (launchTimerRef.current) clearTimeout(launchTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (pendingBuddyImage) {
@@ -143,13 +154,39 @@ export default function BedoStage({
 
   useEffect(() => {
     autoScrollPinnedRef.current = true;
+    if (replyScrollRef.current) replyScrollRef.current.scrollTop = 0;
   }, [userTranscript]);
 
   useEffect(() => {
     const el = replyScrollRef.current;
     if (!el || !reply || !autoScrollPinnedRef.current) return;
-    el.scrollTop = el.scrollHeight;
+    // Gentle, incremental follow during streaming so text never jumps abruptly inside the compact Island
+    const maxScroll = el.scrollHeight - el.clientHeight;
+    if (maxScroll <= 0) return;
+    const diff = maxScroll - el.scrollTop;
+    if (diff > 2) {
+      el.scrollTop += Math.min(8, Math.max(2, Math.ceil(diff * 0.22)));
+    }
   }, [reply]);
+
+  useEffect(() => {
+    const el = replyScrollRef.current;
+    if (!el) return undefined;
+    const onWheel = (e) => {
+      if (el.scrollHeight <= el.clientHeight) return;
+      e.preventDefault();
+      e.stopPropagation();
+      // Dampen large Windows wheel notches (~100-120px) down to ~22-26px (~1 line) for controlled Island reading
+      const raw = e.deltaMode === 1 ? e.deltaY * 18 : e.deltaY;
+      const step = Math.sign(raw) * Math.min(26, Math.max(10, Math.abs(raw) * 0.24));
+      if (step < 0) autoScrollPinnedRef.current = false;
+      el.scrollTop += step;
+      const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      if (distFromBottom <= 10) autoScrollPinnedRef.current = true;
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [Boolean(reply || loading || researchState), status?.jarvisState, status?.paused]);
 
   const needsApiKey = !hasApiKey && !running;
   const isTextOnlyMode = !running && (activeProvider === 'openai' || activeProvider === 'claude');
@@ -237,6 +274,19 @@ export default function BedoStage({
     onCopyReply?.();
     setCopied(true);
     setTimeout(() => setCopied(false), 1400);
+  };
+
+  const handleSend = () => {
+    if (!canSendNow) return;
+    const trimmed = question.trim();
+    const nextSeq = sendSeq + 1;
+    setSendSeq(nextSeq);
+    setLaunchState({ id: nextSeq, text: trimmed });
+    if (launchTimerRef.current) clearTimeout(launchTimerRef.current);
+    launchTimerRef.current = setTimeout(() => {
+      setLaunchState((cur) => (cur?.id === nextSeq ? null : cur));
+    }, 340);
+    onSubmit?.();
   };
 
   if (needsApiKey) {
@@ -559,7 +609,8 @@ export default function BedoStage({
                       type="button"
                       className="bedo-v2-ctrl-btn"
                       onClick={onClearReply}
-                      aria-label="Temizle"
+                      aria-label={langCode === 'tr' ? 'Yeni Sohbet' : 'New Chat'}
+                      title={langCode === 'tr' ? 'Yeni Sohbet' : 'New Chat'}
                     >
                       <X size={13} />
                     </button>
@@ -689,12 +740,18 @@ export default function BedoStage({
                 transition={{ duration: 0.2 }}
               >
                 {userTranscript && (
-                  <div className="bedo-v2-user-pill">
+                  <motion.div
+                    key={`pill-${sendSeq}-${userTranscript}`}
+                    className="bedo-v2-user-pill"
+                    initial={{ opacity: 0, y: 10, scale: 0.985 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    transition={{ type: 'spring', stiffness: 460, damping: 32, mass: 0.72 }}
+                  >
                     <span>{langCode === 'tr' ? 'Siz' : 'You'}</span>
                     <p>{userTranscript}</p>
-                  </div>
+                  </motion.div>
                 )}
-                {(reply || isThinking) && (
+                {(reply || isThinking || researchState) && (
                   <div
                     ref={replyScrollRef}
                     className="bedo-v2-reply-scroll"
@@ -705,13 +762,36 @@ export default function BedoStage({
                     }}
                   >
                     {reply ? (
-                      <RoboMarkdown content={reply} />
+                      <div className={`bedo-v2-reply-stream-wrap ${isStreaming ? 'is-streaming' : ''}`}>
+                        <RoboMarkdown content={reply} />
+                      </div>
+                    ) : researchState && researchState.phase ? (
+                      <div className={`bedo-v2-research-strip is-${researchState.phase}`}>
+                        <span className="bedo-v2-orbital-ring" aria-hidden="true" />
+                        <span className="bedo-v2-shimmer-label">
+                          {researchState.phase === 'planning'
+                            ? (langCode === 'tr' ? 'Düşünüyor' : 'Thinking')
+                            : researchState.phase === 'searching'
+                              ? (langCode === 'tr' ? 'Web taranıyor' : 'Searching web')
+                              : researchState.phase === 'reading'
+                                ? (langCode === 'tr'
+                                    ? `Kaynaklar okunuyor${researchState.readableTotal ? ` · ${researchState.readCount || 0}/${researchState.readableTotal}` : ''}`
+                                    : `Reading sources${researchState.readableTotal ? ` · ${researchState.readCount || 0}/${researchState.readableTotal}` : ''}`)
+                                : (langCode === 'tr' ? 'Yanıt yazılıyor' : 'Writing response')}
+                        </span>
+                        {Array.isArray(researchState.domains) && researchState.domains.length > 0 && (
+                          <span className="bedo-v2-research-chips">
+                            {researchState.domains.slice(0, 3).map((d) => (
+                              <i key={d} className="bedo-v2-domain-pill">{d}</i>
+                            ))}
+                          </span>
+                        )}
+                      </div>
                     ) : (
-                      <div className="bedo-v2-thinking-line">
+                      <div className="bedo-v2-thinking-line" aria-label={langCode === 'tr' ? 'Düşünüyor' : 'Thinking'}>
                         <span className="bedo-v2-thinking-dots" aria-hidden="true">
                           <i /><i /><i />
                         </span>
-                        <span>{langCode === 'tr' ? 'Yanıt hazırlanıyor...' : 'Preparing response...'}</span>
                       </div>
                     )}
                   </div>
@@ -760,41 +840,73 @@ export default function BedoStage({
             <motion.div
               layout
               transition={LAYOUT_SPRING}
-              className={`bedo-v2-input-bar ${loading || jarvisState === 'THINKING' ? 'is-thinking' : ''} ${isTop ? 'is-top' : 'is-centered'}`}
+              className={`bedo-v2-input-bar ${loading || jarvisState === 'THINKING' ? 'is-thinking' : ''} ${launchState ? 'is-launching' : ''} ${isTop ? 'is-top' : 'is-centered'}`}
             >
-              <input
-                ref={inputRef}
-                type="text"
-                placeholder={
-                  loading
-                    ? (langCode === 'tr' ? 'Bedo yanıtlıyor...' : 'Bedo is replying...')
-                    : pendingBuddyImage
-                      ? (langCode === 'tr' ? 'Görselle ilgili sor veya direkt gönder...' : 'Ask about this capture or press Enter...')
-                      : isTextOnlyMode
-                        ? activeProvider === 'openai'
-                          ? (langCode === 'tr' ? "GPT'ye yaz..." : 'Ask GPT...')
-                          : (langCode === 'tr' ? "Claude'a yaz..." : 'Ask Claude...')
-                        : (langCode === 'tr' ? "Bedo'ya konuş veya yaz..." : 'Talk or type to Bedo...')
-                }
-                value={question}
-                onFocus={() => {
-                  setInputFocused(true);
-                  if (paused && !pendingBuddyImage) onTogglePause?.();
-                }}
-                onBlur={() => setInputFocused(false)}
-                onChange={(e) => onQuestionChange(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && canSendNow && onSubmit()}
-                aria-label="Bedo komutu"
-              />
-              <button
+              <div className="bedo-v2-input-wrap">
+                <input
+                  ref={inputRef}
+                  type="text"
+                  placeholder={
+                    loading
+                      ? (langCode === 'tr' ? 'Bedo yanıtlıyor...' : 'Bedo is replying...')
+                      : pendingBuddyImage
+                        ? (langCode === 'tr' ? 'Görselle ilgili sor veya direkt gönder...' : 'Ask about this capture or press Enter...')
+                        : isTextOnlyMode
+                          ? activeProvider === 'openai'
+                            ? (langCode === 'tr' ? "GPT'ye yaz..." : 'Ask GPT...')
+                            : (langCode === 'tr' ? "Claude'a yaz..." : 'Ask Claude...')
+                          : (langCode === 'tr' ? "Bedo'ya konuş veya yaz..." : 'Talk or type to Bedo...')
+                  }
+                  value={question}
+                  onFocus={() => {
+                    setInputFocused(true);
+                    if (paused && !pendingBuddyImage) onTogglePause?.();
+                  }}
+                  onBlur={() => setInputFocused(false)}
+                  onChange={(e) => onQuestionChange(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.nativeEvent?.isComposing && canSendNow) {
+                      e.preventDefault();
+                      handleSend();
+                    }
+                  }}
+                  aria-label="Bedo komutu"
+                />
+                <AnimatePresence>
+                  {launchState?.text && (
+                    <motion.div
+                      key={launchState.id}
+                      className="bedo-v2-input-ghost"
+                      aria-hidden="true"
+                      initial={{ opacity: 0.96, y: 0, scale: 1, filter: 'blur(0px)' }}
+                      animate={{ opacity: 0, y: -18, scale: 0.985, filter: 'blur(3px)' }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+                    >
+                      <span>{launchState.text}</span>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+              <motion.button
                 type="button"
-                className={`bedo-v2-send ${canSendNow ? 'is-ready' : ''}`}
-                onClick={onSubmit}
+                className={`bedo-v2-send ${canSendNow ? 'is-ready' : ''} ${launchState ? 'is-launching' : ''}`}
+                onClick={handleSend}
                 disabled={!canSendNow}
                 aria-label="Gönder"
+                animate={launchState ? { scale: [1, 0.88, 1.06, 1] } : { scale: 1 }}
+                transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
               >
-                <ArrowUp size={14} strokeWidth={2.5} />
-              </button>
+                <motion.span
+                  key={sendSeq}
+                  className="bedo-v2-send-icon"
+                  initial={sendSeq > 0 ? { y: 8, opacity: 0 } : false}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ type: 'spring', stiffness: 520, damping: 28 }}
+                >
+                  <ArrowUp size={14} strokeWidth={2.5} />
+                </motion.span>
+              </motion.button>
             </motion.div>
           </div>
         </div>
