@@ -2578,6 +2578,7 @@ export default function App() {
   }, [resolvedCollapsedMode, dynamicMusicBarWidth, hasRestingSlots, hasLeftRestingSlot, hasRightRestingSlot, islandSettings.roboEyesVisible]);
 
   const hasBedoFeed = Boolean(
+    !tourActive &&
     activeTab === 'robo' &&
     (roboReply ||
       bedoUserTranscript ||
@@ -4241,7 +4242,7 @@ export default function App() {
     >
       <div
         ref={morphShellRef}
-        className={`notch-morph-shell state-${islandMode} mode-${activeTab} ${isShellMorphing ? 'is-morphing' : ''} ${hasRestingSlots ? 'has-resting-slots' : ''} ${islandSettings.islandStyle === 'Floating' ? 'style-floating' : 'style-attached'} ${islandSettings.islandSize === 'Compact' ? 'size-compact' : islandSettings.islandSize === 'Large' ? 'size-large' : 'size-normal'} ${Number(islandSettings.islandSeeThrough ?? 4) >= 10 ? 'is-see-through' : ''} ${batteryAlertKind === 'charging' ? 'is-charging' : ''} ${activeTab === 'home' && isCustomizingClock ? 'customizing-clock' : ''
+        className={`notch-morph-shell state-${islandMode} mode-${activeTab} ${tourActive ? 'is-tour-active' : ''} ${isShellMorphing ? 'is-morphing' : ''} ${hasRestingSlots ? 'has-resting-slots' : ''} ${islandSettings.islandStyle === 'Floating' ? 'style-floating' : 'style-attached'} ${islandSettings.islandSize === 'Compact' ? 'size-compact' : islandSettings.islandSize === 'Large' ? 'size-large' : 'size-normal'} ${Number(islandSettings.islandSeeThrough ?? 4) >= 10 ? 'is-see-through' : ''} ${batteryAlertKind === 'charging' ? 'is-charging' : ''} ${activeTab === 'home' && isCustomizingClock ? 'customizing-clock' : ''
           } ${activeTab === 'robo' && !bedoStatus.paused && (roboLoading || bedoStatus.jarvisState === 'THINKING') ? 'is-bedo-thinking' : ''
           } ${hasBedoFeed ? 'has-bedo-feed' : ''} ${musicAccent.hasColor ? 'has-cover-color' : ''} ${islandMode === 'hud' && hudOverlay.ghelper?.category === 'aura'
             ? `has-aura-hud effect-${hudOverlay.ghelper.effectType || 'static'}`
@@ -4873,7 +4874,7 @@ export default function App() {
           {shouldRenderExpanded && (
             <>
           {/* TOP STATUS BAR */}
-          {(activeTab !== 'robo' || Boolean(islandOverlay)) && (
+          {!tourActive && (activeTab !== 'robo' || Boolean(islandOverlay)) && (
           <header className="island-topbar">
             <div className="topbar-left">
               {islandOverlay === 'all-apps' ? (

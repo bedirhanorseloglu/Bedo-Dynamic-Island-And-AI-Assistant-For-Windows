@@ -18258,12 +18258,25 @@ body.game-mode-no-blur *::after {
 /* ==========================================================================
    Bedo First-Launch Interactive Tour Overlay (Apple-style isolated classes)
    ========================================================================== */
+.notch-morph-shell.state-expanded.is-tour-active,
+.notch-morph-shell.state-expanded.is-tour-active .morph-layer.layer-expanded {
+  height: 256px;
+}
+
+.notch-morph-shell.state-expanded.is-tour-active .morph-layer.layer-expanded {
+  padding: 10px 18px 12px;
+}
+
 .bedo-tour-card {
   position: relative;
   display: flex;
   flex-direction: column;
+  justify-content: space-between;
+  flex: 1 1 auto;
+  height: 100%;
+  min-height: 0;
   gap: 6px;
-  padding: 8px 16px 10px;
+  padding: 2px 6px 2px;
   color: #f8fafc;
   width: 100%;
   box-sizing: border-box;
