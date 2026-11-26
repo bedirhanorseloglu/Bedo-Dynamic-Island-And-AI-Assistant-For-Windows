@@ -15,7 +15,7 @@ export default function BedoIslandOverlay({
   micLevel = 0,
   roboMood,
   roboReaction,
-  outfit = 'Crown',
+  outfit = 'None',
   seasonalOutfits = false,
   blinkingEnabled = true,
   userTranscript,

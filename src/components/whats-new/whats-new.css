@@ -1,0 +1,505 @@
+/* ==========================================================================
+   BEDO "WHAT'S NEW" — MINIMAL MONOCHROME APPLE-STYLE SHEET
+   ========================================================================== */
+
+.wn-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 950;
+  background: rgba(4, 5, 8, 0.72);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.wn-modal-shell {
+  width: 100%;
+  max-width: 420px;
+}
+
+.wn-sheet {
+  position: relative;
+  border-radius: 26px;
+  padding: 20px 22px 20px;
+  background: linear-gradient(180deg, rgba(20, 21, 26, 0.96) 0%, rgba(10, 11, 14, 0.98) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 32px 80px rgba(0, 0, 0, 0.7);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  color: #f4f4f5;
+}
+
+.wn-sheet.is-embedded {
+  max-width: 460px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 16px 40px rgba(0, 0, 0, 0.35);
+}
+
+/* Top bar */
+.wn-top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 26px;
+}
+
+.wn-brand-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.wn-pips {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.wn-pip {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  border: none;
+  padding: 0;
+  background: rgba(255, 255, 255, 0.2);
+  cursor: pointer;
+  transition: width 0.28s cubic-bezier(0.22, 1, 0.36, 1), background 0.22s ease;
+}
+
+.wn-pip.is-done {
+  background: rgba(255, 255, 255, 0.48);
+}
+
+.wn-pip.is-active {
+  width: 20px;
+  background: #ffffff;
+}
+
+.wn-icon-close {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.07);
+  color: rgba(255, 255, 255, 0.6);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.16s ease, color 0.16s ease;
+}
+
+.wn-icon-close:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+}
+
+.wn-top-spacer {
+  width: 26px;
+}
+
+/* Stage */
+.wn-stage {
+  height: 156px;
+  border-radius: 18px;
+  background: radial-gradient(circle at 50% 24%, rgba(255, 255, 255, 0.055), rgba(6, 7, 10, 0.94) 76%);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wn-stage-slot {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px;
+  box-sizing: border-box;
+}
+
+.wn-display-frame {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding-top: 14px;
+  box-sizing: border-box;
+  transition: border-color 0.3s ease, background 0.3s ease;
+}
+
+.wn-display-frame.is-fullscreen {
+  background: rgba(255, 255, 255, 0.035);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.wn-display-frame.is-agents {
+  justify-content: space-between;
+  padding: 16px 14px 16px;
+}
+
+.wn-display-frame.is-chat {
+  flex-direction: row;
+  align-items: stretch;
+  padding: 12px;
+  gap: 10px;
+}
+
+.wn-chat-sidebar {
+  width: 24px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+.wn-chat-thread-dot {
+  width: 10px;
+  height: 3.5px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.2);
+  transition: background 0.2s ease, width 0.2s ease;
+}
+
+.wn-chat-thread-dot.is-active {
+  width: 13px;
+  background: #ffffff;
+}
+
+.wn-chat-canvas {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 12px;
+  padding: 0 6px;
+}
+
+.wn-chat-user-pill {
+  align-self: flex-end;
+  width: 68px;
+  height: 16px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.wn-chat-reply-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wn-chat-stream-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow: hidden;
+}
+
+.wn-display-frame.is-hud {
+  justify-content: center;
+  padding-top: 0;
+}
+
+.wn-sim-island.is-hud-pill {
+  width: 214px;
+  height: 34px;
+  border-radius: 999px;
+  padding: 0 12px;
+}
+
+.wn-hud-track {
+  flex: 1;
+  height: 5px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.14);
+  overflow: hidden;
+}
+
+.wn-hud-fill {
+  width: 100%;
+  height: 100%;
+  border-radius: 99px;
+  background: #ffffff;
+  transform-origin: left center;
+}
+
+.wn-hud-eta {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.72);
+  letter-spacing: -0.01em;
+}
+
+.wn-sim-island {
+  background: #030305;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.65);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  overflow: hidden;
+}
+
+.wn-sim-island.is-agent-host {
+  width: 108px;
+  height: 32px;
+  border-radius: 999px;
+  justify-content: center;
+}
+
+.wn-sim-eyes {
+  display: flex;
+  align-items: center;
+  transform: scale(0.72);
+  transform-origin: left center;
+  flex-shrink: 0;
+}
+
+.wn-sim-eyes.is-centered {
+  transform-origin: center;
+}
+
+.wn-sim-notif-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.wn-bar-primary {
+  width: 72px;
+  height: 4.5px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.wn-bar-secondary {
+  width: 46px;
+  height: 3.5px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.36);
+}
+
+.wn-bar-primary.is-dim {
+  width: 52px;
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.wn-bar-secondary.is-dim {
+  width: 34px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.wn-sim-os-toast {
+  position: absolute;
+  right: 12px;
+  bottom: 10px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.wn-os-sq {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+/* Fullscreen subtle corner brackets */
+.wn-corners i {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  border-color: rgba(255, 255, 255, 0.26);
+  border-style: solid;
+}
+.wn-corners i:nth-child(1) { top: 10px; left: 10px; border-width: 1.5px 0 0 1.5px; border-top-left-radius: 3px; }
+.wn-corners i:nth-child(2) { top: 10px; right: 10px; border-width: 1.5px 1.5px 0 0; border-top-right-radius: 3px; }
+.wn-corners i:nth-child(3) { bottom: 10px; left: 10px; border-width: 0 0 1.5px 1.5px; border-bottom-left-radius: 3px; }
+.wn-corners i:nth-child(4) { bottom: 10px; right: 10px; border-width: 0 1.5px 1.5px 0; border-bottom-right-radius: 3px; }
+
+/* Agent orbs */
+.wn-agent-dock {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.wn-agent-orb {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.48;
+  transition: opacity 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+
+.wn-agent-orb.is-active {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.24);
+}
+
+/* Copy */
+.wn-copy {
+  text-align: center;
+  padding: 2px 8px;
+  min-height: 50px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+
+.wn-copy h3 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 650;
+  letter-spacing: -0.024em;
+  color: #ffffff;
+}
+
+.wn-copy p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.56);
+  max-width: 330px;
+}
+
+/* Footer */
+.wn-bottom-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.wn-bottom-left,
+.wn-bottom-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wn-btn-ghost {
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 12.5px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  transition: background 0.16s ease, color 0.16s ease, border-color 0.16s ease;
+}
+
+.wn-btn-ghost:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+}
+
+.wn-btn-primary {
+  height: 34px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: none;
+  background: #ffffff;
+  color: #09090b;
+  font-size: 12.5px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  transition: opacity 0.15s ease, transform 0.12s ease;
+}
+
+.wn-btn-primary:hover {
+  opacity: 0.9;
+}
+
+.wn-btn-primary:active {
+  transform: scale(0.98);
+}
+
+/* Settings News Page */
+.wn-page-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.wn-version-switcher {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wn-ver-chip {
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.wn-ver-chip.is-active {
+  background: #ffffff;
+  border-color: #ffffff;
+  color: #09090b;
+}
+
+/* Sidebar unread dot */
+.sidebar-unread-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ffffff;
+  margin-left: auto;
+}

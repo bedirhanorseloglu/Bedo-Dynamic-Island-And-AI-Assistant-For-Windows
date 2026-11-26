@@ -86,7 +86,7 @@ export default function BedoStage({
   micLevel = 0,
   roboMood,
   roboReaction,
-  outfit = 'Crown',
+  outfit = 'None',
   seasonalOutfits = false,
   blinkingEnabled = true,
   documentVisible,

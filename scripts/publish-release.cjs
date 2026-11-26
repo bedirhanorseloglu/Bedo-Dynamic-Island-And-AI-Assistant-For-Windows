@@ -39,6 +39,23 @@ async function main() {
       process.exit(1);
     }
 
+    try {
+      const { pathToFileURL } = require('url');
+      const releasesModulePath = path.join(ROOT, 'src', 'releases', 'releasesData.mjs');
+      const { getReleaseByVersion } = await import(pathToFileURL(releasesModulePath).href);
+      if (!getReleaseByVersion(nextVersion)) {
+        const proceedNoNotes = await ask(
+          rl,
+          `\n[!] Uyari: src/releases/releasesData.mjs icinde v${nextVersion} icin "Yenilikler" karti tanimli degil.\n` +
+            `Yine de devam edilsin mi? (E/H): `
+        );
+        if (!/^e(vet)?|y(es)?$/i.test(proceedNoNotes)) {
+          console.log('Yayin iptal edildi. Once src/releases/releasesData.mjs dosyasina surum notunu ekleyebilirsiniz.');
+          process.exit(0);
+        }
+      }
+    } catch {}
+
     const confirm = await ask(
       rl,
       `\nBedo v${nextVersion} TUM KULLANICILAR icin otomatik guncelleme olarak yayinlansin mi? (E/H): `

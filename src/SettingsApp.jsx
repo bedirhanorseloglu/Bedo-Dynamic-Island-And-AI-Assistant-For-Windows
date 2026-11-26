@@ -58,6 +58,9 @@ import './settings.css';
 import { playRoboSound, playNotifSound } from './sounds';
 import { applyTypographyTokens, CLOCK_FONT_OPTIONS, CLOCK_STORAGE_KEY, normalizeFontIndex, readTypographyPreferences, TEXT_FONT_OPTIONS, TYPOGRAPHY_STORAGE_KEY } from './typography';
 import { LanguageProvider, createTranslator, getLocale, languageLabel, normalizeLanguage } from './i18n';
+import { RELEASES } from './releases/releasesData.mjs';
+import { hasUnseenRelease, resolveActiveRelease } from './releases/releaseState.mjs';
+import WhatsNewModal, { WhatsNewPage } from './components/whats-new/WhatsNewModal';
 
 function ProviderSymbol({ provider, size = 16 }) {
   if (provider === 'claude') {
@@ -148,8 +151,8 @@ const DEFAULT_SETTINGS = {
   fallAsleepMinutes: 10,
   startupAnimEnabled: true,
   hungerEnabled: true,
-  outfit: 'Best',
-  bodyColor: 'Cloud',
+  outfit: 'None',
+  bodyColor: 'Night',
   eyeColorName: 'White',
   eyeColorHex: '#ffffff',
   soundEffects: true,
@@ -158,6 +161,8 @@ const DEFAULT_SETTINGS = {
   seasonalOutfits: true,
   language: 'English',
   windowsNotifications: true,
+  suppressWindowsBanners: false,
+  lastSeenReleaseVersion: '',
   doNotDisturb: false,
   notifShowWhere: 'In the island',
   notifSize: 'Big',
@@ -274,8 +279,8 @@ const BODY_COLOR_HEX = {
 };
 
 // Crowned Robo SVG Avatar matching the screenshots
-function RoboCrownAvatar({ outfit = 'Best', size = 64, eyeHex = '#ffffff', bodyColor = 'Cloud' }) {
-  const domeColor = BODY_COLOR_HEX[bodyColor] || '#ffffff';
+function RoboCrownAvatar({ outfit = 'None', size = 64, eyeHex = '#ffffff', bodyColor = 'Night' }) {
+  const domeColor = BODY_COLOR_HEX[bodyColor] || '#27272a';
   return (
     <div className="robo-stage-avatar" style={{ width: size, height: size }}>
       <svg viewBox="0 0 120 120" width="100%" height="100%">
@@ -510,6 +515,11 @@ export default function SettingsApp() {
   const [showKeyAntigravity, setShowKeyAntigravity] = useState(false);
   const [bedoStatus, setBedoStatus] = useState({ running: false, ready: false, paused: true, available: true, jarvisState: 'INITIALISING', lastError: null });
   const [bedoBusy, setBedoBusy] = useState(false);
+  const [winBannerStatus, setWinBannerStatus] = useState({ supported: true, active: false, suppressedCount: 0 });
+  const [winBannerBusy, setWinBannerBusy] = useState(false);
+  const [winBannerError, setWinBannerError] = useState('');
+  const [appVersion, setAppVersion] = useState('');
+  const [whatsNewModalRelease, setWhatsNewModalRelease] = useState(null);
   const [previewingVoice, setPreviewingVoice] = useState('');
   const [voicePreviewError, setVoicePreviewError] = useState('');
   const [activeTestEmotion, setActiveTestEmotion] = useState('');
@@ -574,10 +584,22 @@ export default function SettingsApp() {
     });
 
     const unsubNavigate = window.twocode.onNavigateSettingsTab?.((tabId) => {
+      if (tabId === 'whats-new') {
+        setActivePage('news');
+        window.twocode.getAppVersion?.().then((ver) => {
+          const rel = resolveActiveRelease(ver);
+          if (rel) setWhatsNewModalRelease(rel);
+        }).catch(() => {});
+        return;
+      }
       if (tabId && PAGE_HEADERS[tabId]) {
         setActivePage(tabId);
       }
     });
+
+    window.twocode.getAppVersion?.().then((ver) => {
+      if (ver) setAppVersion(String(ver));
+    }).catch(() => {});
 
     window.twocode.getAiHistory?.().then((hist) => {
       if (hist) setAiHistory(hist);
@@ -589,6 +611,14 @@ export default function SettingsApp() {
 
     window.twocode.getGHelperBridgeStatus?.().then((status) => {
       if (status) setGhelperStatus(status);
+    });
+
+    window.twocode.getWindowsBannerStatus?.().then((status) => {
+      if (status) setWinBannerStatus(status);
+    });
+
+    const unsubWinBanner = window.twocode.onWindowsBannerStatusUpdate?.((status) => {
+      if (status) setWinBannerStatus(status);
     });
 
     const unsubAi = window.twocode.onAiHistoryUpdate?.((hist) => {
@@ -725,6 +755,7 @@ export default function SettingsApp() {
     return () => {
       if (unsubSettings) unsubSettings();
       if (unsubNavigate) unsubNavigate();
+      if (unsubWinBanner) unsubWinBanner();
       if (unsubAi) unsubAi();
       if (unsubMedia) unsubMedia();
       if (unsubBedo) unsubBedo();
@@ -805,6 +836,38 @@ export default function SettingsApp() {
 
   const testGHelperHud = async (sample) => {
     await window.twocode?.testGHelperHud?.(sample);
+  };
+
+  const toggleWindowsBannerSuppression = async () => {
+    if (winBannerBusy) return;
+    const nextEnabled = !settings.suppressWindowsBanners;
+    setWinBannerBusy(true);
+    setWinBannerError('');
+    setSettings((prev) => ({
+      ...prev,
+      suppressWindowsBanners: nextEnabled,
+      ...(nextEnabled ? { windowsNotifications: true } : {}),
+    }));
+    try {
+      if (window.twocode?.setWindowsBannerSuppression) {
+        const res = await window.twocode.setWindowsBannerSuppression(nextEnabled);
+        if (res) {
+          setWinBannerStatus(res);
+          if (res.ok === false && res.error) {
+            setWinBannerError(res.error);
+          }
+        }
+      } else {
+        updateSetting({
+          suppressWindowsBanners: nextEnabled,
+          ...(nextEnabled ? { windowsNotifications: true } : {}),
+        });
+      }
+    } catch (err) {
+      setWinBannerError(err?.message || String(err));
+    } finally {
+      setWinBannerBusy(false);
+    }
   };
 
   const chooseAntigravityIde = async () => {
@@ -1010,7 +1073,7 @@ export default function SettingsApp() {
               <span>{t('settings.subtitle')}</span>
             </div>
           </div>
-          <span className="beta-pill">v1.0</span>
+          <span className="beta-pill">v{appVersion || '1.0'}</span>
         </div>
 
         <div className="sidebar-scroll-nav">
@@ -1021,6 +1084,16 @@ export default function SettingsApp() {
               { id: 'connections', label: t('settings.nav.connections'), icon: Plug },
               { id: 'aichat', label: t('settings.nav.aichat'), icon: MessageSquare },
               { id: 'apps', label: t('settings.nav.apps'), icon: LayoutGrid },
+              {
+                id: 'news',
+                label: t('settings.nav.news'),
+                icon: Newspaper,
+                unread: hasUnseenRelease({
+                  currentVersion: appVersion,
+                  lastSeenReleaseVersion: settings.lastSeenReleaseVersion,
+                  onboardingCompleted: settings.onboardingCompleted,
+                }),
+              },
             ].map((item) => {
               const Icon = item.icon;
               return (
@@ -1028,10 +1101,19 @@ export default function SettingsApp() {
                   key={item.id}
                   type="button"
                   className={`sidebar-nav-btn ${activePage === item.id ? 'active' : ''}`}
-                  onClick={() => setActivePage(item.id)}
+                  onClick={() => {
+                    setActivePage(item.id);
+                    if (item.id === 'news') {
+                      const activeRel = resolveActiveRelease(appVersion);
+                      if (activeRel && settings.lastSeenReleaseVersion !== activeRel.version) {
+                        updateSetting({ lastSeenReleaseVersion: activeRel.version });
+                      }
+                    }
+                  }}
                 >
                   <Icon size={16} strokeWidth={2} />
                   <span>{item.label}</span>
+                  {item.unread && <span className="sidebar-unread-dot" aria-hidden="true" />}
                 </button>
               );
             })}
@@ -1090,7 +1172,7 @@ export default function SettingsApp() {
               outfit={settings.outfit}
               size={34}
               eyeHex={settings.eyeColorHex || '#ffffff'}
-              bodyColor={settings.bodyColor || 'Cloud'}
+              bodyColor={settings.bodyColor || 'Night'}
             />
           </div>
           <div className="mini-robo-meta">
@@ -3584,7 +3666,7 @@ export default function SettingsApp() {
                     outfit={settings.outfit}
                     size={96}
                     eyeHex={settings.eyeColorHex || '#ffffff'}
-                    bodyColor={settings.bodyColor || 'Cloud'}
+                    bodyColor={settings.bodyColor || 'Night'}
                   />
                 </div>
                 <div className="ai-lg-hero-copy">
@@ -3737,7 +3819,7 @@ export default function SettingsApp() {
             PAGE 6: WARDROBE (Liquid Glass & Glassmorphism)
             ============================================================ */}
         {activePage === 'wardrobe' && (() => {
-          const normalizedOutfit = settings.outfit === 'Best' ? 'Crown' : (settings.outfit || 'Crown');
+          const normalizedOutfit = !settings.outfit || settings.outfit === 'Best' ? 'None' : settings.outfit;
           const outfitLabelMap = {
             None: langCode === 'tr' ? 'Yok' : 'None',
             Crown: langCode === 'tr' ? 'Taç' : 'Crown',
@@ -3788,14 +3870,14 @@ export default function SettingsApp() {
                     className="wardrobe-lg-preview-glow"
                     aria-hidden="true"
                     style={{
-                      background: `radial-gradient(circle at center, ${BODY_COLOR_HEX[settings.bodyColor || 'Cloud'] || '#ffffff'}33 0%, transparent 72%)`,
+                      background: `radial-gradient(circle at center, ${BODY_COLOR_HEX[settings.bodyColor || 'Night'] || '#27272a'}33 0%, transparent 72%)`,
                     }}
                   />
                   <RoboCrownAvatar
                     outfit={normalizedOutfit}
                     size={164}
                     eyeHex={settings.eyeColorHex || '#ffffff'}
-                    bodyColor={settings.bodyColor || 'Cloud'}
+                    bodyColor={settings.bodyColor || 'Night'}
                   />
                   <div className="wardrobe-lg-preview-meta">
                     <strong>Bedo</strong>
@@ -4294,7 +4376,67 @@ export default function SettingsApp() {
                   <button
                     type="button"
                     className={`settings-switch ${settings.windowsNotifications !== false ? 'on' : ''}`}
-                    onClick={() => updateSetting({ windowsNotifications: settings.windowsNotifications === false })}
+                    onClick={() => {
+                      const nextOn = settings.windowsNotifications === false;
+                      updateSetting({
+                        windowsNotifications: nextOn,
+                        ...(!nextOn && settings.suppressWindowsBanners ? { suppressWindowsBanners: false } : {}),
+                      });
+                    }}
+                  >
+                    <i />
+                  </button>
+                </div>
+
+                <div className="settings-row">
+                  <div className="row-text-col">
+                    <div className="notif-lg-bridge-title">
+                      <strong>
+                        {langCode === 'tr'
+                          ? 'Windows Bildirim Başlıklarını Gizle'
+                          : 'Hide Windows Notification Banners'}
+                      </strong>
+                      {winBannerBusy ? (
+                        <span className="status-badge amber">
+                          {langCode === 'tr' ? 'Uygulanıyor…' : 'Applying…'}
+                        </span>
+                      ) : settings.suppressWindowsBanners && winBannerStatus.active ? (
+                        <span className="status-badge green">
+                          <span className="dot" />
+                          {langCode === 'tr'
+                            ? `${winBannerStatus.suppressedCount} uygulama`
+                            : `${winBannerStatus.suppressedCount} apps`}
+                        </span>
+                      ) : null}
+                    </div>
+                    <span>
+                      {langCode === 'tr'
+                        ? 'Çakışmayı önlemek için Windows sağ alt bildirim pencerelerini kapatır; bildirimler yalnızca Ada’da ve Bildirim Merkezi’nde görünür. Kapatıldığında eski uygulama ayarlarınız geri yüklenir.'
+                        : 'Hides Windows bottom-right toast banners so alerts only appear in the Island and Notification Center. Restores your original per-app settings when turned off.'}
+                    </span>
+                    <div className="notif-lg-inline-actions">
+                      <button
+                        type="button"
+                        className="notif-lg-link-btn"
+                        onClick={() => window.twocode?.openWindowsNotificationSettings?.()}
+                      >
+                        <ExternalLink size={12} />
+                        <span>
+                          {langCode === 'tr'
+                            ? 'Windows Bildirim Ayarlarını Aç'
+                            : 'Open Windows Notification Settings'}
+                        </span>
+                      </button>
+                    </div>
+                    {winBannerError && (
+                      <em className="notif-lg-bridge-msg is-error">{winBannerError}</em>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    className={`settings-switch ${settings.suppressWindowsBanners ? 'on' : ''}`}
+                    onClick={toggleWindowsBannerSuppression}
+                    disabled={winBannerBusy}
                   >
                     <i />
                   </button>
@@ -5425,12 +5567,40 @@ export default function SettingsApp() {
           );
         })()}
 
+        {activePage === 'news' && (
+          <WhatsNewPage
+            releases={RELEASES}
+            langCode={langCode}
+            roboAppearance={settings}
+            onNavigateTab={(tab) => {
+              if (tab && PAGE_HEADERS[tab]) setActivePage(tab);
+            }}
+          />
+        )}
+
         {/* ============================================================
             PAGE 12: END
             ============================================================ */}
           </motion.div>
         </AnimatePresence>
       </div>
+
+      <WhatsNewModal
+        open={Boolean(whatsNewModalRelease)}
+        release={whatsNewModalRelease}
+        langCode={langCode}
+        roboAppearance={settings}
+        onClose={() => {
+          const closedVer = whatsNewModalRelease?.version || resolveActiveRelease(appVersion)?.version;
+          setWhatsNewModalRelease(null);
+          if (closedVer && settings.lastSeenReleaseVersion !== closedVer) {
+            updateSetting({ lastSeenReleaseVersion: closedVer });
+          }
+        }}
+        onNavigateTab={(tab) => {
+          if (tab && PAGE_HEADERS[tab]) setActivePage(tab);
+        }}
+      />
 
       <AnimatePresence>
       {settingsLoaded && (showOnboarding || settings.onboardingCompleted === false) && (

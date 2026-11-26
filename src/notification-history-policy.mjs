@@ -44,6 +44,7 @@ export function shouldSuppressPowerNotificationToast(
 
 export function shouldPersistNotification(notification) {
   if (!notification || notification.isAgentActivity) return false;
+  if (notification.notificationKind === 'release-whats-new') return false;
 
   const appId = String(notification.appId || '');
   if (/^twocode-agent-/i.test(appId)) return false;

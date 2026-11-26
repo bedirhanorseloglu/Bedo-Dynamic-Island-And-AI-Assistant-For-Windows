@@ -84,6 +84,8 @@ import NotifToastContent from './components/NotifToastContent';
 import BedoStage from './components/BedoStage';
 import BedoIslandOverlay from './components/BedoIslandOverlay';
 import BedoTourOverlay from './components/BedoTourOverlay';
+import BedoLogoMark from './components/BedoLogoMark';
+import { hasUnseenRelease, resolveActiveRelease } from './releases/releaseState.mjs';
 import {
   HomeLiveAndContextStrip,
 } from './components/LiveActivityBar';
@@ -248,6 +250,7 @@ const NOTIFICATION_BRANDS = [
   { match: /codex/, rgb: '97, 152, 255', hex: '#6198FF', secondaryRgb: '138, 92, 246', secondaryHex: '#8A5CF6', brand: 'codex' },
   { match: /antigravity/, rgb: '73, 218, 202', hex: '#49DACA', secondaryRgb: '42, 157, 143', secondaryHex: '#2A9D8F', brand: 'antigravity' },
   { match: /ghelper|g-helper/, rgb: '56, 166, 255', hex: '#38A6FF', secondaryRgb: '0, 184, 116', secondaryHex: '#00B874', brand: 'ghelper' },
+  { match: /\bbedo\b|com\.bedo\.assistant/, rgb: '212, 212, 216', hex: '#D4D4D8', secondaryRgb: '113, 113, 122', secondaryHex: '#71717A', brand: 'bedo' },
   { match: /twocode|two.?code/, rgb: '97, 152, 255', hex: '#6198FF', secondaryRgb: '138, 92, 246', secondaryHex: '#8A5CF6', brand: 'twocode' },
   { match: /chrome|google chrome/, rgb: '66, 133, 244', hex: '#4285F4', secondaryRgb: '234, 67, 53', secondaryHex: '#EA4335', brand: 'chrome' },
   { match: /microsoft edge|\bedge\b/, rgb: '10, 155, 140', hex: '#0A9B8C', secondaryRgb: '0, 120, 212', secondaryHex: '#0078D4', brand: 'edge' },
@@ -367,7 +370,7 @@ function formatNotifTime(timestamp, lang = 'tr') {
   return d.toLocaleDateString(isTr ? 'tr-TR' : 'en-US', { day: 'numeric', month: 'short' });
 }
 
-function NotificationAvatar({ banner, brand, presentation }) {
+function NotificationAvatar({ banner, brand, presentation, roboAppearance }) {
   const profileImage = isSafeNotificationImage(banner?.profileImage) ? banner.profileImage : '';
   const initials = presentation.sender
     .split(/\s+/)
@@ -384,11 +387,11 @@ function NotificationAvatar({ banner, brand, presentation }) {
           <span className="notif-toast-initials is-image-fallback">{initials || '?'}</span>
           <img className="notif-toast-profile-image" src={profileImage} alt={`${presentation.sender} profil fotoğrafı`} onError={(event) => { event.currentTarget.style.display = 'none'; }} />
           <span className="notif-toast-app-chip" aria-label={`${presentation.app} logosu`}>
-            <NotifBrandIcon key={`${brand}-${banner?.logo || 'brand'}`} brand={brand} logo={banner?.logo} appName={presentation.app || banner?.app} banner={banner} />
+            <NotifBrandIcon key={`${brand}-${banner?.logo || 'brand'}`} brand={brand} logo={banner?.logo} appName={presentation.app || banner?.app} banner={banner} roboAppearance={roboAppearance} />
           </span>
         </>
       ) : (
-        <NotifBrandIcon key={`${brand}-${banner?.logo || 'brand'}`} brand={brand} logo={banner?.logo} appName={presentation.app || banner?.app} banner={banner} />
+        <NotifBrandIcon key={`${brand}-${banner?.logo || 'brand'}`} brand={brand} logo={banner?.logo} appName={presentation.app || banner?.app} banner={banner} roboAppearance={roboAppearance} />
       )}
     </div>
   );
@@ -427,7 +430,7 @@ function resolveCachedAppLogo(appName, appId, title) {
   return promise;
 }
 
-function NotifBrandIcon({ brand, logo, appName, banner }) {
+function NotifBrandIcon({ brand, logo, appName, banner, roboAppearance }) {
   const [logoFailed, setLogoFailed] = useState(false);
   const resolvedAppName = appName || banner?.app || '';
   const resolvedAppId = banner?.appId || '';
@@ -489,6 +492,9 @@ function NotifBrandIcon({ brand, logo, appName, banner }) {
   }
 
   const b = String(brand || '').toLowerCase();
+  if (b === 'bedo' || /\bbedo\b|com\.bedo\.assistant/i.test(`${resolvedAppName} ${resolvedAppId}`)) {
+    return <BedoLogoMark size={28} appearance={roboAppearance} />;
+  }
   if (b === 'gemini' || /gemini/i.test(`${resolvedAppName} ${resolvedAppId}`)) {
     return <RealAppIcon sc={{ id: 'gemini-agent-mark', type: 'gemini' }} size={26} />;
   }
@@ -2134,6 +2140,9 @@ export default function App() {
   const suppressShortcutClickRef = useRef(false);
   const [islandSettings, setIslandSettings] = useState({
     language: 'English',
+    outfit: 'None',
+    bodyColor: 'Night',
+    eyeColorName: 'White',
     eyeColorHex: '#ffffff',
     islandOpenMode: 'On hover',
     islandSeeThrough: 4,
@@ -2204,6 +2213,8 @@ export default function App() {
   const [tourStep, setTourStep] = useState(0);
   const [updateBanner, setUpdateBanner] = useState(null);
   const [updateState, setUpdateState] = useState({ state: 'idle', version: '', percent: 0 });
+  const [appVersion, setAppVersion] = useState('');
+  const announcedReleaseRef = useRef('');
   const [pythonBootstrapStatus, setPythonBootstrapStatus] = useState({ state: 'idle', detail: '' });
   const wasOnboardingIncompleteRef = useRef(false);
   const lastReplayTourNonceRef = useRef(0);
@@ -2325,6 +2336,10 @@ export default function App() {
     isShowingNotifToastRef.current = false;
     setNotificationHistoryOpen(false);
     setIslandMode((mode) => (mode === 'notif-toast' || mode === 'expanded') ? resolvedCollapsedModeRef.current : mode);
+    if (item?.notificationKind === 'release-whats-new') {
+      window.twocode?.openSettingsWindow?.('whats-new');
+      return;
+    }
     if (item?.targetUrl || item?.appId || item?.app) {
       window.twocode?.openNotificationTarget?.({
         id: item.id || '',
@@ -3088,7 +3103,8 @@ export default function App() {
 
     const showIslandNotification = (notif) => {
       if (!notif || (!notif.title && !notif.body)) return;
-      if (islandSettings.doNotDisturb || islandSettings.windowsNotifications === false) return;
+      const isReleaseAnnouncement = notif.notificationKind === 'release-whats-new';
+      if (islandSettings.doNotDisturb || (!isReleaseAnnouncement && islandSettings.windowsNotifications === false)) return;
       const isGHelperFeedback = /^(ghelper|g-helper)$/i.test(`${notif.app || ''}`) || /(?:^|[\s_-])g-?helper(?:$|[\s_-])/i.test(`${notif.appId || ''}`);
       if (timerRunningRef.current && !islandSettingsRef.current?.notifDuringFocus && !isGHelperFeedback) return;
       if (!notif.isAgentActivity && !isGHelperFeedback && modeToggles.onlyClaude && !/claude|anthropic/i.test(`${notif.app || ''} ${notif.appId || ''}`)) return;
@@ -3202,9 +3218,42 @@ export default function App() {
           setTourActive(false);
         } else if (saved.onboardingCompleted === true && saved.islandTourCompleted === false) {
           setTimeout(() => startIslandTour(), 550);
+        } else {
+          window.twocode.getAppVersion?.().then((ver) => {
+            const cleanVer = String(ver || '');
+            if (cleanVer) setAppVersion(cleanVer);
+            const rel = resolveActiveRelease(cleanVer);
+            if (
+              rel &&
+              !saved.doNotDisturb &&
+              announcedReleaseRef.current !== rel.version &&
+              hasUnseenRelease({
+                currentVersion: cleanVer,
+                lastSeenReleaseVersion: saved.lastSeenReleaseVersion,
+                onboardingCompleted: saved.onboardingCompleted,
+              })
+            ) {
+              announcedReleaseRef.current = rel.version;
+              const isTr = normalizeLanguage(saved.language) === 'tr';
+              setTimeout(() => {
+                showIslandNotification({
+                  id: `release_whats_new_${rel.version}`,
+                  app: 'Bedo',
+                  notificationKind: 'release-whats-new',
+                  accentHex: '#D4D4D8',
+                  title: `Bedo ${rel.version}`,
+                  body: isTr ? 'Yenilikleri gör' : 'See what’s new',
+                });
+              }, 1100);
+            }
+          }).catch(() => {});
         }
       }
     });
+
+    window.twocode.getAppVersion?.().then((ver) => {
+      if (ver) setAppVersion(String(ver));
+    }).catch(() => {});
 
     const unsubSettings = window.twocode.onSettingsUpdated?.((updated) => {
       if (updated && typeof updated === 'object') {
@@ -4334,7 +4383,7 @@ export default function App() {
             Purple: '#8b5cf6',
             Pink: '#ec4899',
             Gold: '#f59e0b',
-          }[islandSettings.bodyColor || 'Cloud'] || '#f4f4f5'),
+          }[islandSettings.bodyColor || 'Night'] || '#27272a'),
           '--robo-body-rgb': ({
             Cloud: '255, 255, 255',
             Mint: '110, 231, 183',
@@ -4346,7 +4395,7 @@ export default function App() {
             Purple: '139, 92, 246',
             Pink: '236, 72, 153',
             Gold: '245, 158, 11',
-          }[islandSettings.bodyColor || 'Cloud'] || '255, 255, 255'),
+          }[islandSettings.bodyColor || 'Night'] || '82, 82, 91'),
           '--dynamic-music-w': `${dynamicMusicBarWidth}px`,
           '--dynamic-notif-w': `${dynamicNotifToastWidth}px`,
           '--dynamic-notif-h': `${dynamicNotifToastHeight}px`,
@@ -4463,7 +4512,7 @@ export default function App() {
                     active={documentVisible && islandMode === 'idle'}
                     trackCursor={false}
                     blinkingEnabled={islandSettings.blinkingEnabled !== false}
-                    outfit={islandSettings.outfit || 'Best'}
+                    outfit={islandSettings.outfit || 'None'}
                     seasonalOutfits={Boolean(islandSettings.seasonalOutfits)}
                     size="normal"
                     onPoke={() => {
@@ -4778,7 +4827,7 @@ export default function App() {
             micLevel={bedoMicLevel}
             roboMood={roboMood}
             roboReaction={roboReaction}
-            outfit={islandSettings.outfit || 'Crown'}
+            outfit={islandSettings.outfit || 'None'}
             seasonalOutfits={Boolean(islandSettings.seasonalOutfits)}
             blinkingEnabled={islandSettings.blinkingEnabled !== false}
             userTranscript={bedoUserTranscript}
@@ -4852,6 +4901,7 @@ export default function App() {
                 banner={toastBanner}
                 brand={notifBrand.brand}
                 presentation={notifPresentation}
+                roboAppearance={islandSettings}
               />
             }
             presentation={notifPresentation}
@@ -5174,7 +5224,7 @@ export default function App() {
                     reaction={roboReaction}
                     active={documentVisible && (islandMode === 'expanded' || Boolean(roboReaction))}
                     blinkingEnabled={islandSettings.blinkingEnabled !== false}
-                    outfit={islandSettings.outfit || 'Best'}
+                    outfit={islandSettings.outfit || 'None'}
                     seasonalOutfits={Boolean(islandSettings.seasonalOutfits)}
                     batteryPercent={previewEmotion ? 100 : batteryPercent}
                     batteryCharging={previewEmotion ? false : batteryCharging}
@@ -5555,6 +5605,7 @@ export default function App() {
                             banner={item}
                             brand={accent.brand}
                             presentation={cardPresentation}
+                            roboAppearance={islandSettings}
                           />
                         </div>
 
@@ -5689,7 +5740,7 @@ export default function App() {
               open={tourActive}
               langCode={langCode}
               soundEffects={islandSettings.soundEffects !== false}
-              outfit={islandSettings.outfit || 'Best'}
+              outfit={islandSettings.outfit || 'None'}
               seasonalOutfits={Boolean(islandSettings.seasonalOutfits)}
               step={tourStep}
               onStepChange={setTourStep}
@@ -5707,7 +5758,7 @@ export default function App() {
                     active={documentVisible}
                     trackCursor={true}
                     blinkingEnabled={true}
-                    outfit={islandSettings.outfit || 'Best'}
+                    outfit={islandSettings.outfit || 'None'}
                     seasonalOutfits={false}
                     size="normal"
                   />
@@ -6275,7 +6326,7 @@ export default function App() {
                                     size="mini"
                                     trackCursor={false}
                                     blinkingEnabled={islandSettings.blinkingEnabled !== false}
-                                    outfit={islandSettings.outfit || 'Best'}
+                                    outfit={islandSettings.outfit || 'None'}
                                     seasonalOutfits={Boolean(islandSettings.seasonalOutfits)}
                                     active={documentVisible && islandMode === 'expanded' && activeTab === 'home'}
                                   />
@@ -6715,7 +6766,7 @@ export default function App() {
                         micLevel={bedoMicLevel}
                         roboMood={roboMood}
                         roboReaction={roboReaction}
-                        outfit={islandSettings.outfit || 'Crown'}
+                        outfit={islandSettings.outfit || 'None'}
                         seasonalOutfits={Boolean(islandSettings.seasonalOutfits)}
                         blinkingEnabled={islandSettings.blinkingEnabled !== false}
                         documentVisible={documentVisible}

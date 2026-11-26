@@ -68,6 +68,14 @@ contextBridge.exposeInMainWorld('twocode', {
   connectAgentIntegrations: () => ipcRenderer.invoke('connect-agent-integrations'),
   testAgentIntegration: (agent) => ipcRenderer.invoke('test-agent-integration', agent),
   getGHelperBridgeStatus: () => ipcRenderer.invoke('get-ghelper-bridge-status'),
+  getWindowsBannerStatus: () => ipcRenderer.invoke('get-windows-banner-status'),
+  setWindowsBannerSuppression: (enabled) => ipcRenderer.invoke('set-windows-banner-suppression', enabled),
+  openWindowsNotificationSettings: () => ipcRenderer.invoke('open-windows-notification-settings'),
+  onWindowsBannerStatusUpdate: (cb) => {
+    const listener = (_event, data) => cb(data);
+    ipcRenderer.on('windows-banner-status-update', listener);
+    return () => ipcRenderer.removeListener('windows-banner-status-update', listener);
+  },
   installGHelperBridge: () => ipcRenderer.invoke('install-ghelper-bridge'),
   startGHelperBridge: () => ipcRenderer.invoke('start-ghelper-bridge'),
   testGHelperHud: (sampleText) => ipcRenderer.invoke('test-ghelper-hud', sampleText),

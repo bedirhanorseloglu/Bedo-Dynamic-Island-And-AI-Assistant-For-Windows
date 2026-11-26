@@ -182,7 +182,7 @@ export default function RoboEyes({ mood = 'normal', reaction = null, active = tr
   const isFocus = activeMood === 'focus-arc' || activeMood === 'focus';
   const isDndSleep = activeMood === 'dnd-sleep';
   const effectiveOutfit = resolveEffectiveOutfit(outfit, seasonalOutfits);
-  const showCrown = effectiveOutfit === 'Best' || effectiveOutfit === 'Crown';
+  const showCrown = effectiveOutfit === 'Crown';
   const showPartyHat = effectiveOutfit === 'Party hat';
   const showSunglasses = !isFocus && effectiveOutfit === 'Sunglasses';
   const showHeadphones = effectiveOutfit === 'Headphones';

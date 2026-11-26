@@ -40,8 +40,45 @@ const { BedoService } = require('./bedo-service.cjs');
 const { ensurePythonRuntimeBackground, getAvailablePythonExe, getPythonBootstrapStatus } = require('./python-bootstrap.cjs');
 const { isKickStream, fetchKickStreamerCover } = require('./kick-cover.cjs');
 const { queryWindowsBatteryEta } = require('./battery-eta.cjs');
+const { createWindowsBannerSuppressor } = require('./win-banner-suppressor.cjs');
 const perfMonitor = createPerfMonitor();
 let bedoService = null;
+let windowsBannerSuppressor = null;
+
+function getWindowsBannerSuppressor() {
+  if (!windowsBannerSuppressor) {
+    windowsBannerSuppressor = createWindowsBannerSuppressor({
+      backupFilePath: path.join(app.getPath('userData'), 'windows-banner-backup.json'),
+    });
+  }
+  return windowsBannerSuppressor;
+}
+
+function broadcastWindowsBannerStatus() {
+  if (!settingsWindow || settingsWindow.isDestroyed()) return;
+  try {
+    const status = getWindowsBannerSuppressor().getStatusSync();
+    settingsWindow.webContents.send('windows-banner-status-update', status);
+  } catch {}
+}
+
+function syncWindowsBannerSuppressorBackground() {
+  try {
+    return getWindowsBannerSuppressor()
+      .syncWithSettings(userSettings)
+      .then((res) => {
+        broadcastWindowsBannerStatus();
+        return res;
+      })
+      .catch((err) => {
+        console.warn('[win-banner-suppressor] sync failed:', err?.message || err);
+        broadcastWindowsBannerStatus();
+        return { ok: false, error: err?.message || String(err) };
+      });
+  } catch (err) {
+    return Promise.resolve({ ok: false, error: err?.message || String(err) });
+  }
+}
 
 // =========================================================================
 // BEDO CHAT HISTORY (Persistent JSON in userData)
@@ -727,8 +764,12 @@ let userSettings = {
   apps: [],
   islandOpenMode: 'On hover',
   islandSeeThrough: 4,
-  outfit: 'Best',
+  outfit: 'None',
+  bodyColor: 'Night',
+  eyeColorName: 'White',
   eyeColorHex: '#ffffff',
+  suppressWindowsBanners: false,
+  lastSeenReleaseVersion: '',
   gameOptEnabled: true,
   gameOptHideIsland: true,
   gameOptPauseAnimations: true,
@@ -985,6 +1026,9 @@ function loadSettingsFromDisk() {
       if (parsed.onboardingCompleted === undefined) {
         parsed.onboardingCompleted = true;
       }
+      if (parsed.outfit === 'Best') {
+        parsed.outfit = 'None';
+      }
       if (Array.isArray(parsed.apps)) {
         parsed.apps = parsed.apps
           .filter((a) => !['yt', 'ghlp', 'gm'].includes(a.id))
@@ -1002,9 +1046,29 @@ function loadSettingsFromDisk() {
   return userSettings;
 }
 
-function saveSettingsToDisk(nextSettings) {
+function saveSettingsToDisk(nextSettings, opts = {}) {
   const prevLang = normalizeLanguage(userSettings.language);
+  const prevOnboarding = Boolean(userSettings.onboardingCompleted);
+  const prevSuppressBanners = Boolean(userSettings.suppressWindowsBanners);
+  const prevWinNotifs = userSettings.windowsNotifications !== false;
   userSettings = { ...userSettings, ...(nextSettings || {}) };
+  if (!prevOnboarding && userSettings.onboardingCompleted === true && !userSettings.lastSeenReleaseVersion) {
+    // Fresh installs completing onboarding shouldn't immediately be shown a release popup too.
+    userSettings.lastSeenReleaseVersion = app.getVersion();
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(nextSettings || {}, 'windowsNotifications') &&
+    userSettings.windowsNotifications === false &&
+    userSettings.suppressWindowsBanners
+  ) {
+    // Safety guard: never leave Windows banners suppressed if Ada notifications are turned off.
+    userSettings.suppressWindowsBanners = false;
+  }
+  const nextSuppressBanners = Boolean(userSettings.suppressWindowsBanners);
+  const nextWinNotifs = userSettings.windowsNotifications !== false;
+  if (!opts.skipBannerSync && (prevSuppressBanners !== nextSuppressBanners || prevWinNotifs !== nextWinNotifs)) {
+    syncWindowsBannerSuppressorBackground();
+  }
   if (Object.prototype.hasOwnProperty.call(nextSettings || {}, 'startWithWindows')) {
     applyStartWithWindows(userSettings.startWithWindows !== false);
   }
@@ -2937,6 +3001,16 @@ function startSystemWatcher() {
           } else if (ev.event === 'media-changed') {
             scheduleNextMediaPoll(40);
           } else if (ev.event === 'notification') {
+            if (userSettings.suppressWindowsBanners && userSettings.windowsNotifications !== false && ev.appId) {
+              getWindowsBannerSuppressor()
+                .ensureAppSuppressed(ev.appId)
+                .then((r) => {
+                  if (r && !r.alreadySuppressed && !r.skipped) {
+                    broadcastWindowsBannerStatus();
+                  }
+                })
+                .catch(() => {});
+            }
             const isEmail = /gmail|outlook|mail|posta/i.test(`${ev.app || ''} ${ev.appId || ''} ${ev.title || ''}`);
             if (isEmail && localGoogleState.connected) {
               localGoogleState.mailCounts.primary = (localGoogleState.mailCounts.primary || 0) + 1;
@@ -3134,6 +3208,12 @@ app.whenReady().then(() => {
   } catch {}
   loadSettingsFromDisk();
   try {
+    const initialBannerStatus = getWindowsBannerSuppressor().getStatusSync();
+    if (userSettings.suppressWindowsBanners || initialBannerStatus.active) {
+      syncWindowsBannerSuppressorBackground();
+    }
+  } catch {}
+  try {
     const readyPy = getAvailablePythonExe(app.getPath('userData'));
     if (readyPy) process.env.BEDO_BOOTSTRAP_PYTHON = readyPy;
   } catch {}
@@ -3308,6 +3388,28 @@ ipcMain.handle('get-ghelper-bridge-status', async () => {
   }
   const status = await checkGHelperTaskStatus();
   return { ...status, ghelperInstalled: true };
+});
+
+ipcMain.handle('get-windows-banner-status', async () => {
+  return getWindowsBannerSuppressor().getStatus();
+});
+
+ipcMain.handle('set-windows-banner-suppression', async (_event, enabled) => {
+  const wantEnabled = Boolean(enabled);
+  const patch = wantEnabled
+    ? { suppressWindowsBanners: true, windowsNotifications: true }
+    : { suppressWindowsBanners: false };
+  saveSettingsToDisk(patch, { skipBannerSync: true });
+  const res = await syncWindowsBannerSuppressorBackground();
+  const status = getWindowsBannerSuppressor().getStatusSync();
+  return { ...status, ok: res?.ok !== false, error: res?.error || '' };
+});
+
+ipcMain.handle('open-windows-notification-settings', async () => {
+  if (process.platform === 'win32') {
+    await shell.openExternal('ms-settings:notifications');
+  }
+  return true;
 });
 
 ipcMain.handle('get-ghelper-status', () => {
