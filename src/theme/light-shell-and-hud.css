@@ -1,0 +1,1152 @@
+/* ==========================================================================
+   BEDO LIGHT THEME — DYNAMIC ISLAND SHELL, ALL HUDs & ALL NOTIFICATIONS
+   Covers:
+   - Root tokens & frosted scrollbars
+   - Morph Shell across every state (idle, mini-progress, battery, hud, aura,
+     phone-upload, notif-toast, music-bar, focus-bar, bedo-live, expanded)
+   - Detached Media & Notification Droplets
+   - Volume, Brightness, Expanded Floating HUD, G-Helper & Aura HUDs, Phone HUD
+   - Battery Charging & Low Alert HUD
+   - Resting Slots, Live Activity Pill, Download Orb, Compact Music & Focus Bars
+   - Bedo Live Inline Pill & Island Overlay
+   - Live Island Notification Toast + Notification History Panel & Preview Card
+   ========================================================================== */
+
+:root[data-theme="light"] {
+  --glass-scrollbar-thumb: rgba(15, 23, 42, 0.18);
+  --glass-scrollbar-thumb-hover: rgba(15, 23, 42, 0.34);
+  --glass-scrollbar-border: rgba(15, 23, 42, 0.12);
+  --twocode-text-primary: #182235;
+  --twocode-text-primary-rgb: 24, 34, 53;
+  --twocode-surface-raised: rgba(255, 255, 255, 0.94);
+  --twocode-surface-base-rgb: 24, 34, 53;
+}
+
+:root[data-theme="light"] body,
+:root[data-theme="light"] #root {
+  color: #182235;
+}
+
+:root[data-theme="light"] *::-webkit-scrollbar-thumb {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+:root[data-theme="light"] *::-webkit-scrollbar-thumb:hover {
+  border-color: rgba(15, 23, 42, 0.22);
+}
+
+/* ==========================================================================
+   1. DYNAMIC ISLAND MORPH SHELL (TRUE LIQUID GLASS + BOTTOM AMBIENT GRADIENT)
+   ========================================================================== */
+:root[data-theme="light"] .notch-morph-shell {
+  --shell-border-tint: 15, 23, 42;
+  --shell-liquid-sheen: linear-gradient(
+    168deg,
+    rgba(255, 255, 255, 0.28) 0%,
+    rgba(255, 255, 255, 0.08) 26%,
+    transparent 54%
+  );
+  --shell-liquid-body: linear-gradient(
+    180deg,
+    rgba(238, 243, 252, var(--island-bg-opacity, 0.69)) 0%,
+    rgba(226, 234, 247, calc(var(--island-bg-opacity, 0.69) * 0.92)) 46%,
+    rgba(218, 228, 244, calc(var(--island-bg-opacity, 0.69) * 0.95)) 100%
+  );
+  background: var(--shell-liquid-sheen), var(--shell-liquid-body);
+  backdrop-filter: blur(28px) saturate(190%) brightness(1.1);
+  -webkit-backdrop-filter: blur(28px) saturate(190%) brightness(1.1);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.78),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.55),
+    0 12px 30px rgba(15, 23, 42, 0.16),
+    0 2px 8px rgba(15, 23, 42, 0.08);
+}
+
+:root[data-theme="light"] .notch-morph-shell::before {
+  border-color: rgba(15, 23, 42, 0.14);
+}
+
+:root[data-theme="light"] .notch-morph-shell.style-floating::before {
+  border-top-color: rgba(255, 255, 255, 0.68);
+}
+
+/* Idle Pill */
+:root[data-theme="light"] .notch-morph-shell.state-idle {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.24) 0%, transparent 60%),
+    rgba(232, 239, 250, var(--island-bg-opacity, 0.69));
+  border-color: rgba(15, 23, 42, 0.15);
+  box-shadow:
+    inset 0 -1px 0 rgba(255, 255, 255, 0.78),
+    0 6px 18px rgba(15, 23, 42, 0.15),
+    0 1px 4px rgba(15, 23, 42, 0.08);
+}
+
+/* Mini Progress Strip */
+:root[data-theme="light"] .notch-morph-shell.state-mini-progress {
+  background:
+    radial-gradient(
+      ellipse 88% 64% at 50% 112%,
+      rgba(var(--island-light-ambient-rgb, 66, 126, 232), 0.42) 0%,
+      rgba(var(--island-light-ambient-rgb, 66, 126, 232), 0.14) 52%,
+      transparent 80%
+    ),
+    rgba(232, 239, 250, calc(var(--island-bg-opacity, 0.69) * 0.78));
+  box-shadow:
+    inset 0 -1px 4px rgba(var(--island-light-ambient-rgb, 66, 126, 232), 0.28),
+    0 4px 14px rgba(15, 23, 42, 0.14);
+}
+
+:root[data-theme="light"] .mini-progress-track {
+  background: rgba(15, 23, 42, 0.16);
+}
+
+:root[data-theme="light"] .mini-progress-fill {
+  background: color-mix(in srgb, var(--music-accent-hex, #2563eb) 78%, #0f172a);
+  box-shadow: 0 0 6px rgba(var(--island-light-ambient-rgb, 66, 126, 232), 0.45);
+}
+
+/* Battery Alert Shell (Low & Charging) */
+:root[data-theme="light"] .notch-morph-shell.state-battery {
+  --shell-border-tint: 239, 68, 68;
+  background:
+    radial-gradient(
+      ellipse 90% 56% at 50% 108%,
+      rgba(239, 68, 68, 0.34) 0%,
+      rgba(225, 29, 72, 0.12) 52%,
+      transparent 80%
+    ),
+    rgba(234, 240, 250, calc(var(--island-bg-opacity, 0.69) * 0.82));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.78),
+    inset 0 -2px 12px rgba(239, 68, 68, 0.24),
+    0 12px 28px rgba(15, 23, 42, 0.16);
+}
+
+:root[data-theme="light"] .notch-morph-shell.state-battery.is-charging {
+  --shell-border-tint: 16, 185, 129;
+  background:
+    radial-gradient(
+      ellipse 90% 56% at 50% 108%,
+      rgba(16, 185, 129, 0.34) 0%,
+      rgba(16, 185, 129, 0.12) 52%,
+      transparent 80%
+    ),
+    rgba(234, 240, 250, calc(var(--island-bg-opacity, 0.69) * 0.82));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.78),
+    inset 0 -2px 12px rgba(16, 185, 129, 0.24),
+    0 12px 28px rgba(15, 23, 42, 0.16);
+}
+
+/* HUD Shell (Volume, Brightness, G-Helper, Aura, Phone Upload) */
+:root[data-theme="light"] .notch-morph-shell.state-hud {
+  --hud-accent: var(--island-light-ambient-rgb, 66, 126, 232);
+  background:
+    radial-gradient(
+      ellipse 90% 58% at 50% 110%,
+      rgba(var(--hud-accent), 0.36) 0%,
+      rgba(var(--hud-accent), 0.13) 50%,
+      transparent 80%
+    ),
+    rgba(232, 239, 250, calc(var(--island-bg-opacity, 0.69) * 0.78));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.8),
+    inset 0 -1.5px 8px rgba(var(--hud-accent), 0.24),
+    0 10px 26px rgba(15, 23, 42, 0.16),
+    0 2px 6px rgba(15, 23, 42, 0.07);
+}
+
+:root[data-theme="light"] .notch-morph-shell.state-hud:has(.cat-mode) {
+  border-color: color-mix(in srgb, var(--hud-mode-color, #2563eb) 34%, rgba(15, 23, 42, 0.15));
+  background:
+    radial-gradient(
+      ellipse 90% 58% at 50% 110%,
+      color-mix(in srgb, var(--hud-mode-color, #2563eb) 36%, transparent) 0%,
+      color-mix(in srgb, var(--hud-mode-color, #2563eb) 12%, transparent) 50%,
+      transparent 80%
+    ),
+    rgba(232, 239, 250, calc(var(--island-bg-opacity, 0.69) * 0.78));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.8),
+    inset 0 -1.5px 8px color-mix(in srgb, var(--hud-mode-color, #2563eb) 26%, transparent),
+    0 10px 26px rgba(15, 23, 42, 0.16);
+}
+
+:root[data-theme="light"] .notch-morph-shell.state-hud:has(.cat-gpu) {
+  border-color: color-mix(in srgb, var(--hud-mode-color, #059669) 34%, rgba(15, 23, 42, 0.15));
+  background:
+    radial-gradient(
+      ellipse 90% 58% at 50% 110%,
+      color-mix(in srgb, var(--hud-mode-color, #059669) 36%, transparent) 0%,
+      color-mix(in srgb, var(--hud-mode-color, #059669) 12%, transparent) 50%,
+      transparent 80%
+    ),
+    rgba(232, 239, 250, calc(var(--island-bg-opacity, 0.69) * 0.78));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.8),
+    inset 0 -1.5px 8px color-mix(in srgb, var(--hud-mode-color, #059669) 26%, transparent),
+    0 10px 26px rgba(15, 23, 42, 0.16);
+}
+
+:root[data-theme="light"] .notch-morph-shell.state-hud.has-aura-hud {
+  --shell-border-tint: 15, 23, 42;
+  background:
+    radial-gradient(
+      ellipse 90% 58% at 50% 110%,
+      color-mix(in srgb, var(--ghelper-aura-color, #0ea5e9) 36%, transparent) 0%,
+      color-mix(in srgb, var(--ghelper-aura-color2, #0ea5e9) 12%, transparent) 48%,
+      transparent 80%
+    ),
+    rgba(232, 239, 250, calc(var(--island-bg-opacity, 0.69) * 0.78)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.82),
+    inset 0 -1.5px 8px color-mix(in srgb, var(--ghelper-aura-color, #0ea5e9) 28%, transparent),
+    0 10px 26px rgba(15, 23, 42, 0.16) !important;
+}
+
+:root[data-theme="light"] .notch-morph-shell.state-hud:has(.layer-hud.is-phone-upload) {
+  --hud-accent: 13, 148, 136;
+  background:
+    radial-gradient(
+      ellipse 90% 58% at 50% 110%,
+      rgba(20, 184, 166, 0.34) 0%,
+      rgba(20, 184, 166, 0.12) 50%,
+      transparent 80%
+    ),
+    rgba(232, 239, 250, calc(var(--island-bg-opacity, 0.69) * 0.8));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.82),
+    inset 0 -1.5px 8px rgba(13, 148, 136, 0.25),
+    0 10px 26px rgba(15, 23, 42, 0.16);
+}
+
+/* Notification Toast Shell */
+:root[data-theme="light"] .notch-morph-shell.state-notif-toast {
+  --shell-border-tint: var(--notif-accent-rgb, 37, 99, 235);
+  background:
+    radial-gradient(
+      ellipse 90% 58% at 50% 110%,
+      rgba(var(--notif-accent-rgb, 37, 99, 235), 0.34) 0%,
+      rgba(var(--notif-accent-rgb, 37, 99, 235), 0.12) 50%,
+      transparent 80%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(242, 246, 253, calc(var(--island-bg-opacity, 0.69) * 0.88)) 0%,
+      rgba(228, 236, 248, calc(var(--island-bg-opacity, 0.69) * 0.84)) 100%
+    );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.84),
+    inset 0 -2px 10px rgba(var(--notif-accent-rgb, 37, 99, 235), 0.24),
+    0 14px 32px rgba(15, 23, 42, 0.18),
+    0 2px 8px rgba(15, 23, 42, 0.08);
+}
+
+:root[data-theme="light"] .notch-morph-shell.state-notif-toast:hover {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    inset 0 -2px 12px rgba(var(--notif-accent-rgb, 37, 99, 235), 0.32),
+    0 16px 36px rgba(15, 23, 42, 0.22);
+}
+
+/* Compact Music Bar, Focus Bar & Bedo Live Shell */
+:root[data-theme="light"] .notch-morph-shell.state-music-bar {
+  background:
+    radial-gradient(
+      ellipse 90% 58% at 50% 110%,
+      rgba(var(--island-light-ambient-rgb, 66, 126, 232), 0.38) 0%,
+      rgba(var(--island-light-ambient-rgb, 66, 126, 232), 0.14) 50%,
+      transparent 80%
+    ),
+    rgba(232, 239, 250, calc(var(--island-bg-opacity, 0.69) * 0.78));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.8),
+    inset 0 -1.5px 8px rgba(var(--island-light-ambient-rgb, 66, 126, 232), 0.24),
+    0 8px 22px rgba(15, 23, 42, 0.15);
+}
+
+:root[data-theme="light"] .notch-morph-shell.state-music-bar.has-live-activity {
+  background:
+    radial-gradient(ellipse 36% 95% at 92% 108%, rgba(14, 165, 233, 0.32) 0%, transparent 88%),
+    radial-gradient(
+      ellipse 90% 88% at 50% 114%,
+      rgba(var(--island-light-ambient-rgb, 66, 126, 232), 0.38) 0%,
+      transparent 84%
+    ),
+    rgba(232, 239, 250, calc(var(--island-bg-opacity, 0.69) * 0.82));
+}
+
+:root[data-theme="light"] .notch-morph-shell.state-focus-bar,
+:root[data-theme="light"] .notch-morph-shell.state-focus-bar-media {
+  background:
+    radial-gradient(
+      ellipse 88% 58% at 50% 110%,
+      rgba(139, 92, 246, 0.36) 0%,
+      rgba(124, 58, 237, 0.12) 50%,
+      transparent 80%
+    ),
+    rgba(232, 239, 250, calc(var(--island-bg-opacity, 0.69) * 0.78));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.8),
+    inset 0 -1.5px 8px rgba(124, 58, 237, 0.24),
+    0 8px 22px rgba(15, 23, 42, 0.15);
+}
+
+:root[data-theme="light"] .notch-morph-shell.state-bedo-live {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.26) 0%, transparent 55%),
+    radial-gradient(
+      120% 140% at 50% 108%,
+      rgba(56, 189, 248, 0.32) 0%,
+      rgba(232, 239, 250, calc(var(--island-bg-opacity, 0.69) * 0.82)) 70%
+    );
+  border-color: rgba(15, 23, 42, 0.15);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.84),
+    inset 0 -1.5px 6px rgba(14, 165, 233, 0.26),
+    0 10px 26px rgba(15, 23, 42, 0.16);
+}
+
+:root[data-theme="light"] .notch-morph-shell.state-bedo-live:has(.tone-listening) {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.84),
+    inset 0 -1.5px 6px rgba(14, 165, 233, 0.38),
+    0 10px 26px rgba(15, 23, 42, 0.16),
+    0 4px 16px rgba(14, 165, 233, 0.2);
+}
+
+:root[data-theme="light"] .notch-morph-shell.state-bedo-live:has(.tone-thinking) {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.84),
+    inset 0 -1.5px 6px rgba(168, 85, 247, 0.38),
+    0 10px 26px rgba(15, 23, 42, 0.16),
+    0 4px 16px rgba(168, 85, 247, 0.2);
+}
+
+:root[data-theme="light"] .notch-morph-shell.state-bedo-live:has(.tone-speaking) {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.84),
+    inset 0 -1.5px 6px rgba(16, 185, 129, 0.38),
+    0 10px 26px rgba(15, 23, 42, 0.16),
+    0 4px 16px rgba(16, 185, 129, 0.2);
+}
+
+/* Shell Rim Highlights & Bottom Ambient Laser Line */
+:root[data-theme="light"] .notch-morph-shell.state-battery::before,
+:root[data-theme="light"] .notch-morph-shell.state-hud::before,
+:root[data-theme="light"] .notch-morph-shell.state-notif-toast::before,
+:root[data-theme="light"] .notch-morph-shell.state-music-bar::before,
+:root[data-theme="light"] .notch-morph-shell.state-idle::before,
+:root[data-theme="light"] .notch-morph-shell.state-focus-bar::before,
+:root[data-theme="light"] .notch-morph-shell.state-focus-bar-media::before {
+  border-color: rgba(var(--shell-border-tint), 0.2);
+  box-shadow: inset 0 -1px 2px rgba(255, 255, 255, 0.72);
+}
+
+:root[data-theme="light"] .notch-morph-shell.state-battery::after,
+:root[data-theme="light"] .notch-morph-shell.state-hud:not(.has-aura-hud)::after,
+:root[data-theme="light"] .notch-morph-shell.state-notif-toast::after,
+:root[data-theme="light"] .notch-morph-shell.state-music-bar::after,
+:root[data-theme="light"] .notch-morph-shell.state-idle::after,
+:root[data-theme="light"] .notch-morph-shell.state-focus-bar::after,
+:root[data-theme="light"] .notch-morph-shell.state-focus-bar-media::after {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.55) 28%,
+    rgba(var(--island-light-ambient-rgb, 66, 126, 232), 0.72) 50%,
+    rgba(255, 255, 255, 0.55) 72%,
+    transparent 100%
+  );
+  opacity: 0.85;
+}
+
+/* Expanded Shell — Luminous Bottom Ambient Gradient + Translucent Liquid Glass */
+:root[data-theme="light"] .notch-morph-shell.state-expanded,
+:root[data-theme="light"] .notch-morph-shell.state-expanded.has-cover-color,
+:root[data-theme="light"] .notch-morph-shell.state-expanded.mode-code,
+:root[data-theme="light"] .notch-morph-shell.state-expanded.mode-music,
+:root[data-theme="light"] .notch-morph-shell.state-expanded.mode-tray,
+:root[data-theme="light"] .notch-morph-shell.state-expanded.mode-clips,
+:root[data-theme="light"] .notch-morph-shell.state-expanded.mode-notes,
+:root[data-theme="light"] .notch-morph-shell.state-expanded.mode-inbox,
+:root[data-theme="light"] .notch-morph-shell.state-expanded.mode-robo,
+:root[data-theme="light"] .notch-morph-shell.state-expanded.mode-timer,
+:root[data-theme="light"] .notch-morph-shell.state-expanded.mode-sleep,
+:root[data-theme="light"] .notch-morph-shell.state-expanded.mode-cal,
+:root[data-theme="light"] .notch-morph-shell.state-expanded.mode-music.has-cover-color {
+  background:
+    radial-gradient(
+      ellipse 94% 58% at 50% 108%,
+      rgba(var(--island-light-ambient-rgb, 66, 126, 232), 0.44) 0%,
+      rgba(var(--island-light-ambient-rgb, 66, 126, 232), 0.2) 46%,
+      rgba(var(--island-light-ambient-rgb, 66, 126, 232), 0.06) 70%,
+      transparent 86%
+    ),
+    var(--shell-liquid-sheen),
+    var(--shell-liquid-body);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.82),
+    inset 0 -2px 16px rgba(var(--island-light-ambient-rgb, 66, 126, 232), 0.28),
+    0 18px 42px rgba(15, 23, 42, 0.18),
+    0 2px 10px rgba(15, 23, 42, 0.08);
+}
+
+:root[data-theme="light"] .notch-morph-shell.state-expanded.mode-robo.is-bedo-thinking {
+  background:
+    radial-gradient(
+      ellipse 72% 56% at 50% 108%,
+      rgba(var(--island-light-ambient-rgb, 66, 126, 232), 0.5) 0%,
+      rgba(var(--island-light-ambient-rgb, 66, 126, 232), 0.22) 46%,
+      transparent 82%
+    ),
+    var(--shell-liquid-sheen),
+    var(--shell-liquid-body);
+  background-size: 170% 100%, 100% 100%, 100% 100%;
+}
+
+:root[data-theme="light"] .notch-morph-shell.state-expanded::before {
+  border-color: rgba(15, 23, 42, 0.15);
+  box-shadow:
+    inset 0 -1px 2px rgba(255, 255, 255, 0.72),
+    inset 1px 0 0 rgba(255, 255, 255, 0.52),
+    inset -1px 0 0 rgba(255, 255, 255, 0.52);
+}
+
+:root[data-theme="light"] .notch-morph-shell.state-expanded::after {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(var(--island-light-ambient-rgb, 66, 126, 232), 0.48) 24%,
+    rgba(var(--island-light-ambient-rgb, 66, 126, 232), 0.88) 50%,
+    rgba(var(--island-light-ambient-rgb, 66, 126, 232), 0.48) 76%,
+    transparent 100%
+  );
+  opacity: 0.9;
+}
+
+:root[data-theme="light"] .notch-morph-shell.state-expanded.customizing-clock {
+  background:
+    radial-gradient(ellipse 88% 54% at 50% 106%, rgba(225, 29, 72, 0.34) 0%, rgba(225, 29, 72, 0.12) 50%, transparent 80%),
+    var(--shell-liquid-sheen),
+    var(--shell-liquid-body);
+}
+
+/* Detached Media & Notification Droplets */
+:root[data-theme="light"] .detached-media-droplet {
+  background:
+    radial-gradient(
+      ellipse 90% 90% at 50% 112%,
+      rgba(var(--island-light-ambient-rgb, 66, 126, 232), 0.36) 0%,
+      transparent 78%
+    ),
+    rgba(232, 239, 250, calc(var(--island-bg-opacity, 0.69) * 0.82));
+  backdrop-filter: blur(22px) saturate(185%);
+  -webkit-backdrop-filter: blur(22px) saturate(185%);
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-top: none;
+  box-shadow:
+    inset 0 -1.5px 6px rgba(var(--island-light-ambient-rgb, 66, 126, 232), 0.26),
+    0 8px 20px rgba(15, 23, 42, 0.15),
+    0 0 0 0.5px rgba(15, 23, 42, 0.1);
+}
+
+:root[data-theme="light"] .detached-notif-droplet {
+  background:
+    radial-gradient(
+      ellipse 90% 90% at 50% 112%,
+      rgba(var(--notif-droplet-rgb, 59, 130, 246), 0.34) 0%,
+      transparent 78%
+    ),
+    rgba(232, 239, 250, calc(var(--island-bg-opacity, 0.69) * 0.82));
+  backdrop-filter: blur(22px) saturate(185%);
+  -webkit-backdrop-filter: blur(22px) saturate(185%);
+  border-color: rgba(255, 255, 255, 0.72);
+  box-shadow:
+    inset 0 -1.5px 6px rgba(var(--notif-droplet-rgb, 59, 130, 246), 0.24),
+    0 10px 22px rgba(15, 23, 42, 0.16),
+    0 0 0 0.5px rgba(15, 23, 42, 0.1);
+}
+
+:root[data-theme="light"] .detached-notif-droplet.is-floating {
+  border-top-color: rgba(15, 23, 42, 0.14);
+}
+
+/* ==========================================================================
+   2. IDLE RESTING SLOTS, LIVE ACTIVITY, COMPACT BARS & BEDO LIVE PILL
+   ========================================================================== */
+:root[data-theme="light"] .robo-body-dome {
+  border-color: rgba(15, 23, 42, 0.18);
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.48),
+    0 2px 6px rgba(15, 23, 42, 0.22);
+}
+
+:root[data-theme="light"] .robo-face-mouth {
+  color: rgba(15, 23, 42, 0.72);
+}
+
+:root[data-theme="light"] .idle-slot-badge {
+  color: #0f172a;
+}
+
+:root[data-theme="light"] .idle-slot-badge.is-battery.is-charging {
+  color: #059669;
+}
+
+:root[data-theme="light"] .idle-slot-badge.is-battery.is-low {
+  color: #dc2626;
+}
+
+:root[data-theme="light"] .idle-slot-badge.is-icon.is-on {
+  color: #0284c7;
+}
+
+:root[data-theme="light"] .idle-slot-badge.is-icon.is-off {
+  color: rgba(15, 23, 42, 0.38);
+}
+
+:root[data-theme="light"] .idle-minimal-bar {
+  background: rgba(15, 23, 42, 0.28);
+}
+
+/* Live Activity Pill & Inline Download Orb */
+:root[data-theme="light"] .idle-live-activity {
+  color: #0f172a;
+}
+
+:root[data-theme="light"] .idle-live-liquid-fill {
+  background: linear-gradient(90deg, rgba(14, 165, 233, 0.16), rgba(56, 189, 248, 0.28));
+  border-right-color: rgba(2, 132, 199, 0.65);
+}
+
+:root[data-theme="light"] .idle-live-icon {
+  color: #0284c7;
+}
+
+:root[data-theme="light"] .idle-live-activity.is-done .idle-live-icon {
+  color: #059669;
+}
+
+:root[data-theme="light"] .idle-live-title {
+  color: #0f172a;
+}
+
+:root[data-theme="light"] .idle-live-pct {
+  color: #0369a1;
+}
+
+:root[data-theme="light"] .idle-live-activity.is-done .idle-live-pct {
+  color: #047857;
+}
+
+:root[data-theme="light"] .compact-dl-divider {
+  background: linear-gradient(180deg, transparent, rgba(15, 23, 42, 0.18), transparent);
+}
+
+:root[data-theme="light"] .download-droplet-orb {
+  border-color: rgba(2, 132, 199, 0.55);
+  background: rgba(241, 245, 249, 0.92);
+  box-shadow: inset 0 1px 0 #ffffff, 0 2px 8px rgba(14, 165, 233, 0.2);
+}
+
+:root[data-theme="light"] .download-droplet-icon {
+  color: #0f172a;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.85);
+}
+
+:root[data-theme="light"] .inline-download-wrap.is-done .download-droplet-icon {
+  color: #064e3b;
+}
+
+/* Compact Music Bar & Focus Bar */
+:root[data-theme="light"] .compact-lyric {
+  color: #0f172a;
+}
+
+:root[data-theme="light"] .soundwave span {
+  background: color-mix(in srgb, var(--music-accent-hex, #2563eb) 78%, #0f172a);
+}
+
+:root[data-theme="light"] .compact-album-placeholder {
+  background: rgba(15, 23, 42, 0.08);
+  color: rgba(15, 23, 42, 0.65);
+}
+
+:root[data-theme="light"] .focus-notch-countdown {
+  color: #0f172a;
+}
+
+/* Bedo Live Inline Pill & Expanded Live Overlay */
+:root[data-theme="light"] .bedo-inline-lens {
+  background: rgba(15, 23, 42, 0.06);
+  border-color: rgba(15, 23, 42, 0.1);
+}
+
+:root[data-theme="light"] .bedo-inline-label,
+:root[data-theme="light"] .bedo-island-content.is-inline-pill .bedo-inline-label {
+  color: #0f172a;
+}
+
+:root[data-theme="light"] .bedo-island-content.is-inline-pill.tone-listening .bedo-inline-label {
+  color: #0284c7;
+}
+
+:root[data-theme="light"] .bedo-island-content.is-inline-pill.tone-thinking .bedo-inline-label {
+  color: #b45309;
+}
+
+:root[data-theme="light"] .bedo-island-content.is-inline-pill.tone-speaking .bedo-inline-label {
+  color: #047857;
+}
+
+:root[data-theme="light"] .bedo-inline-close {
+  background: rgba(15, 23, 42, 0.08);
+  color: rgba(15, 23, 42, 0.68);
+}
+
+:root[data-theme="light"] .bedo-inline-close:hover {
+  background: rgba(239, 68, 68, 0.18);
+  color: #dc2626;
+}
+
+:root[data-theme="light"] .bedo-island-avatar {
+  background: radial-gradient(circle at 50% 40%, rgba(14, 165, 233, 0.16), #0f172a);
+  border-color: rgba(15, 23, 42, 0.14);
+}
+
+:root[data-theme="light"] .bedo-island-name {
+  color: #0f172a;
+}
+
+:root[data-theme="light"] .bedo-island-sep {
+  color: rgba(15, 23, 42, 0.32);
+}
+
+:root[data-theme="light"] .bedo-island-state {
+  color: #0284c7;
+}
+
+:root[data-theme="light"] .bedo-island-content.tone-thinking .bedo-island-state {
+  color: #b45309;
+}
+
+:root[data-theme="light"] .bedo-island-content.tone-speaking .bedo-island-state {
+  color: #059669;
+}
+
+:root[data-theme="light"] .bedo-island-content.tone-error .bedo-island-state {
+  color: #dc2626;
+}
+
+:root[data-theme="light"] .bedo-island-caption {
+  color: rgba(15, 23, 42, 0.84);
+}
+
+:root[data-theme="light"] .bedo-island-eq i {
+  background: rgba(15, 23, 42, 0.2);
+}
+
+:root[data-theme="light"] .bedo-island-btn {
+  border-color: rgba(15, 23, 42, 0.12);
+  background: rgba(15, 23, 42, 0.055);
+  color: rgba(15, 23, 42, 0.76);
+}
+
+:root[data-theme="light"] .bedo-island-btn:hover {
+  background: rgba(15, 23, 42, 0.12);
+  color: #0f172a;
+}
+
+/* ==========================================================================
+   3. ALL HUD LAYERS (VOLUME, BRIGHTNESS, BATTERY, G-HELPER, AURA, PHONE)
+   ========================================================================== */
+
+/* Volume & Brightness HUD (+ Expanded-Island Floating HUD) */
+:root[data-theme="light"] .hud-notch-icon {
+  color: rgb(var(--hud-accent, 37, 99, 235));
+}
+
+:root[data-theme="light"] .hud-notch-track {
+  background: rgba(15, 23, 42, 0.12);
+  box-shadow:
+    inset 0 1px 2px rgba(15, 23, 42, 0.14),
+    0 0 0 0.5px rgba(15, 23, 42, 0.08);
+}
+
+:root[data-theme="light"] .hud-notch-fill {
+  background: rgb(var(--hud-accent, 37, 99, 235));
+  box-shadow: 0 0 8px rgba(var(--hud-accent, 37, 99, 235), 0.35);
+}
+
+:root[data-theme="light"] .hud-notch-fill.is-brightness {
+  background: #f59e0b;
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.42);
+}
+
+:root[data-theme="light"] .hud-notch-label {
+  color: rgba(15, 23, 42, 0.62);
+}
+
+:root[data-theme="light"] .hud-notch-val {
+  color: #0f172a;
+}
+
+:root[data-theme="light"] .notch-morph-shell.state-expanded .layer-hud.is-visible {
+  border-color: rgba(255, 255, 255, 0.72);
+  background:
+    radial-gradient(ellipse at 50% 120%, rgba(var(--hud-accent), 0.26), transparent 72%),
+    linear-gradient(155deg, rgba(255, 255, 255, 0.62) 0%, rgba(236, 242, 252, 0.44) 100%);
+  backdrop-filter: blur(22px) saturate(185%);
+  -webkit-backdrop-filter: blur(22px) saturate(185%);
+  box-shadow:
+    0 10px 26px rgba(15, 23, 42, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 0 0 0.5px rgba(15, 23, 42, 0.1);
+}
+
+/* Battery Alert HUD */
+:root[data-theme="light"] .battery-icon-badge {
+  background: rgba(255, 255, 255, 0.85);
+  border-color: rgba(15, 23, 42, 0.12);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.1);
+}
+
+:root[data-theme="light"] .layer-battery.is-charging .battery-icon-badge {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.18) 0%, rgba(16, 185, 129, 0.08) 100%);
+  border-color: rgba(16, 185, 129, 0.38);
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.2), inset 0 1px 0 #ffffff;
+}
+
+:root[data-theme="light"] .layer-battery.is-low .battery-icon-badge {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.18) 0%, rgba(225, 29, 72, 0.08) 100%);
+  border-color: rgba(239, 68, 68, 0.38);
+  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.2), inset 0 1px 0 #ffffff;
+}
+
+:root[data-theme="light"] .battery-capsule-svg {
+  filter: drop-shadow(0 1px 2px rgba(15, 23, 42, 0.18));
+}
+
+:root[data-theme="light"] .battery-capsule-svg rect[stroke*="255"] {
+  stroke: rgba(15, 23, 42, 0.55);
+}
+
+:root[data-theme="light"] .battery-warning-mark {
+  border-color: #ffffff;
+  box-shadow: 0 2px 6px rgba(239, 68, 68, 0.35);
+}
+
+:root[data-theme="light"] .battery-alert-headline strong {
+  color: #0f172a;
+}
+
+:root[data-theme="light"] .layer-battery.is-charging .battery-alert-pct-pill {
+  background: rgba(16, 185, 129, 0.16);
+  color: #047857;
+  border-color: rgba(16, 185, 129, 0.34);
+  box-shadow: none;
+}
+
+:root[data-theme="light"] .layer-battery.is-low .battery-alert-pct-pill {
+  background: rgba(239, 68, 68, 0.15);
+  color: #dc2626;
+  border-color: rgba(239, 68, 68, 0.34);
+  box-shadow: none;
+}
+
+:root[data-theme="light"] .battery-alert-sub {
+  color: rgba(15, 23, 42, 0.64);
+}
+
+:root[data-theme="light"] .layer-battery.is-charging .battery-alert-sub {
+  color: #065f46;
+}
+
+:root[data-theme="light"] .layer-battery.is-low .battery-alert-sub {
+  color: #991b1b;
+}
+
+:root[data-theme="light"] .battery-mini-bar-track {
+  background: rgba(15, 23, 42, 0.12);
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.14);
+}
+
+:root[data-theme="light"] .layer-battery.is-charging .battery-mini-bar-label {
+  color: #059669;
+}
+
+:root[data-theme="light"] .layer-battery.is-low .battery-mini-bar-label {
+  color: #dc2626;
+}
+
+/* G-Helper HUDs (Performance Mode, GPU Mode, Backlight, Mic, Touchpad, Aura) */
+:root[data-theme="light"] .hud-notch-icon.is-ghelper-icon {
+  background: rgba(15, 23, 42, 0.06);
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.1);
+  color: #0d9488;
+}
+
+:root[data-theme="light"] .hud-ghelper-wrap.cat-backlight .hud-notch-icon.is-ghelper-icon {
+  color: #d97706;
+  background: rgba(245, 158, 11, 0.15);
+  box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.32);
+}
+
+:root[data-theme="light"] .hud-ghelper-wrap.cat-backlight.is-off .hud-notch-icon.is-ghelper-icon {
+  color: rgba(15, 23, 42, 0.4);
+  background: rgba(15, 23, 42, 0.055);
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.1);
+}
+
+:root[data-theme="light"] .hud-ghelper-wrap.cat-mic .hud-notch-icon.is-ghelper-icon {
+  color: #059669;
+  background: rgba(16, 185, 129, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(16, 185, 129, 0.3);
+}
+
+:root[data-theme="light"] .hud-ghelper-wrap.cat-mic .hud-notch-icon.is-ghelper-icon.is-mic-muted {
+  color: #dc2626;
+  background: rgba(239, 68, 68, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(239, 68, 68, 0.32);
+}
+
+:root[data-theme="light"] .hud-ghelper-label {
+  color: rgba(15, 23, 42, 0.52);
+}
+
+:root[data-theme="light"] .hud-ghelper-val {
+  color: #0f172a;
+  text-shadow: none;
+}
+
+:root[data-theme="light"] .hud-ghelper-val.cat-mode {
+  color: color-mix(in srgb, var(--mode-perf-color, #0284c7) 78%, #0f172a);
+  text-shadow: none;
+}
+
+:root[data-theme="light"] .hud-ghelper-val.cat-gpu {
+  color: color-mix(in srgb, var(--mode-gpu-color, #059669) 78%, #0f172a);
+  text-shadow: none;
+}
+
+:root[data-theme="light"] .hud-level-dot {
+  background: rgba(15, 23, 42, 0.18);
+}
+
+:root[data-theme="light"] .hud-level-dot.is-active {
+  background: #f59e0b;
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.55);
+}
+
+/* G-Helper Aura Clean HUD */
+:root[data-theme="light"] .hud-aura-icon {
+  color: color-mix(in srgb, var(--glow-color, #0284c7) 82%, #0f172a 18%);
+}
+
+:root[data-theme="light"] .hud-aura-label {
+  color: rgba(15, 23, 42, 0.5);
+}
+
+:root[data-theme="light"] .hud-aura-val {
+  color: #0f172a;
+  text-shadow: none;
+}
+
+:root[data-theme="light"] .hud-aura-pill {
+  background: rgba(15, 23, 42, 0.08);
+  border-color: rgba(15, 23, 42, 0.16);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.6), 0 2px 8px color-mix(in srgb, var(--pill-color, #0ea5e9) 22%, transparent);
+}
+
+/* Phone Upload HUD */
+:root[data-theme="light"] .hud-phone-orb-core {
+  color: #0d9488;
+  background: radial-gradient(circle at 30% 25%, rgba(20, 184, 166, 0.25), rgba(20, 184, 166, 0.1) 70%);
+  box-shadow: inset 0 1px 0 #ffffff, inset 0 0 0 1px rgba(13, 148, 136, 0.3);
+}
+
+:root[data-theme="light"] .hud-phone-title {
+  color: #0f172a;
+}
+
+:root[data-theme="light"] .hud-phone-size {
+  color: #0f766e;
+  background: rgba(20, 184, 166, 0.14);
+  border-color: rgba(13, 148, 136, 0.28);
+}
+
+:root[data-theme="light"] .hud-phone-badge {
+  color: #0f766e;
+  background: rgba(20, 184, 166, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(13, 148, 136, 0.32);
+}
+
+:root[data-theme="light"] .hud-phone-upload-wrap.is-receiving .hud-phone-badge {
+  color: #0284c7;
+  background: rgba(14, 165, 233, 0.15);
+  box-shadow: inset 0 0 0 1px rgba(14, 165, 233, 0.32);
+}
+
+/* ==========================================================================
+   4. ALL NOTIFICATIONS (LIVE ISLAND TOAST, HISTORY PANEL & PREVIEW PORTAL)
+   ========================================================================== */
+
+/* Live Island Notification Toast */
+:root[data-theme="light"] .notif-toast-ambient {
+  background: radial-gradient(
+    ellipse 92% 90% at 50% 115%,
+    rgba(var(--notif-accent-rgb, 37, 99, 235), 0.16) 0%,
+    transparent 72%
+  );
+}
+
+:root[data-theme="light"] .notif-toast-sheen {
+  background: linear-gradient(105deg, transparent 30%, rgba(255, 255, 255, 0.65) 50%, transparent 70%);
+}
+
+:root[data-theme="light"] .notif-toast-avatar.is-person-avatar {
+  background: linear-gradient(
+    145deg,
+    rgba(var(--notif-accent-rgb, 37, 99, 235), 0.92),
+    rgba(30, 41, 59, 0.92)
+  );
+  border-color: rgba(15, 23, 42, 0.14);
+}
+
+:root[data-theme="light"] .notif-toast-app-chip {
+  border-color: #ffffff;
+  background: #ffffff;
+  box-shadow: 0 2px 5px rgba(15, 23, 42, 0.18);
+}
+
+:root[data-theme="light"] .notif-toast-app-logo {
+  filter: drop-shadow(0 2px 5px rgba(15, 23, 42, 0.14));
+}
+
+:root[data-theme="light"] .notif-custom-app-badge {
+  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.16), inset 0 1px 1px rgba(255, 255, 255, 0.45);
+  border-color: rgba(15, 23, 42, 0.12);
+}
+
+:root[data-theme="light"] .notif-toast-app-label {
+  color: rgba(15, 23, 42, 0.78);
+}
+
+:root[data-theme="light"] .layer-notif-toast .notif-toast-app-name,
+:root[data-theme="light"] .notif-toast-app-name {
+  background: linear-gradient(
+    90deg,
+    #0f172a 0%,
+    color-mix(in srgb, var(--notif-accent-hex, #2563eb) 78%, #0f172a) 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+:root[data-theme="light"] .notif-toast-sep {
+  color: rgba(15, 23, 42, 0.28);
+}
+
+:root[data-theme="light"] .notif-toast-time {
+  color: rgba(15, 23, 42, 0.52);
+}
+
+:root[data-theme="light"] .notif-toast-arrow {
+  color: rgba(15, 23, 42, 0.52);
+}
+
+:root[data-theme="light"] .layer-notif-toast:hover .notif-toast-arrow {
+  color: #0f172a;
+}
+
+:root[data-theme="light"] .notif-kinetic-title,
+:root[data-theme="light"] .notif-toast-headline,
+:root[data-theme="light"] .notif-toast-content strong {
+  color: #0f172a;
+  text-shadow: none;
+}
+
+:root[data-theme="light"] .notif-kinetic-sub,
+:root[data-theme="light"] .notif-toast-body,
+:root[data-theme="light"] .notif-toast-content span {
+  color: rgba(15, 23, 42, 0.72);
+}
+
+:root[data-theme="light"] .notif-toast-countdown-track {
+  background: rgba(15, 23, 42, 0.08);
+}
+
+:root[data-theme="light"] .notif-toast-countdown-bar {
+  background: linear-gradient(
+    90deg,
+    rgba(var(--notif-accent-rgb, 37, 99, 235), 0.35) 0%,
+    rgba(var(--notif-accent-rgb, 37, 99, 235), 0.85) 100%
+  );
+  box-shadow: none;
+}
+
+/* Notification History Panel & Cards (Inside Expanded Island) */
+:root[data-theme="light"] .notification-history-panel,
+:root[data-theme="light"] .notification-history-panel.is-empty {
+  border-color: rgba(255, 255, 255, 0.75);
+  color: #0f172a;
+  background:
+    linear-gradient(to top, rgba(var(--notif-panel-rgb, 56, 189, 248), 0.16) 0%, transparent 56%),
+    linear-gradient(165deg, rgba(244, 248, 254, 0.72) 0%, rgba(230, 238, 250, 0.62) 100%);
+  backdrop-filter: blur(26px) saturate(190%);
+  -webkit-backdrop-filter: blur(26px) saturate(190%);
+  box-shadow:
+    0 22px 52px rgba(15, 23, 42, 0.2),
+    0 4px 14px rgba(15, 23, 42, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 0 0 0.5px rgba(15, 23, 42, 0.12);
+}
+
+:root[data-theme="light"] .notification-history-header {
+  border-bottom-color: rgba(15, 23, 42, 0.08);
+}
+
+:root[data-theme="light"] .notification-history-icon,
+:root[data-theme="light"] .notification-history-panel.is-empty .notification-history-icon {
+  border-color: color-mix(in srgb, var(--notif-panel-hex, #0284c7) 26%, rgba(15, 23, 42, 0.12));
+  color: color-mix(in srgb, var(--notif-panel-hex, #0284c7) 75%, #0f172a);
+  background: rgba(var(--notif-panel-rgb, 56, 189, 248), 0.12);
+  box-shadow: none;
+}
+
+:root[data-theme="light"] .notification-history-title {
+  color: #0f172a;
+}
+
+:root[data-theme="light"] .notif-history-badge {
+  background: rgba(15, 23, 42, 0.065);
+  border-color: rgba(15, 23, 42, 0.11);
+  color: #0f172a;
+}
+
+:root[data-theme="light"] .notification-history-clear {
+  border-color: rgba(15, 23, 42, 0.1);
+  color: rgba(15, 23, 42, 0.65);
+  background: rgba(15, 23, 42, 0.045);
+}
+
+:root[data-theme="light"] .notification-history-clear:hover {
+  color: #dc2626;
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.28);
+  box-shadow: none;
+}
+
+:root[data-theme="light"] .notification-history-close {
+  border-color: rgba(15, 23, 42, 0.1);
+  color: rgba(15, 23, 42, 0.58);
+  background: rgba(15, 23, 42, 0.045);
+}
+
+:root[data-theme="light"] .notification-history-close:hover {
+  color: #0f172a;
+  background: rgba(15, 23, 42, 0.1);
+  border-color: rgba(15, 23, 42, 0.18);
+}
+
+:root[data-theme="light"] .notification-history-list::-webkit-scrollbar-thumb {
+  background: rgba(15, 23, 42, 0.18);
+}
+
+:root[data-theme="light"] .notification-history-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(15, 23, 42, 0.32);
+}
+
+:root[data-theme="light"] .notif-card {
+  border-color: rgba(255, 255, 255, 0.68);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.52) 0%, rgba(255, 255, 255, 0.24) 100%),
+    linear-gradient(90deg, rgba(var(--notif-accent-rgb, 56, 189, 248), 0.12) 0%, transparent 74%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.88),
+    0 2px 8px rgba(15, 23, 42, 0.06),
+    0 0 0 0.5px rgba(15, 23, 42, 0.08);
+}
+
+:root[data-theme="light"] .notif-card:hover {
+  border-color: rgba(255, 255, 255, 0.9);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.72) 0%, rgba(255, 255, 255, 0.42) 100%),
+    linear-gradient(90deg, rgba(var(--notif-accent-rgb, 56, 189, 248), 0.16) 0%, transparent 75%);
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.1), inset 0 1px 0 #ffffff;
+}
+
+:root[data-theme="light"] .notif-card.is-unread::before {
+  background: var(--notif-accent-hex, #0284c7);
+}
+
+:root[data-theme="light"] .notif-card-title {
+  color: #0f172a;
+  text-shadow: none;
+}
+
+:root[data-theme="light"] .notif-card-time {
+  color: rgba(15, 23, 42, 0.5);
+}
+
+:root[data-theme="light"] .notif-card-body {
+  color: rgba(15, 23, 42, 0.72);
+}
+
+:root[data-theme="light"] .notif-card-delete {
+  color: rgba(15, 23, 42, 0.4);
+}
+
+:root[data-theme="light"] .notif-card-delete:hover {
+  color: #dc2626;
+  background: rgba(239, 68, 68, 0.12);
+}
+
+/* Notification Hover Full-Text Preview Portal */
+:root[data-theme="light"] .notif-history-preview-card {
+  border-color: rgba(255, 255, 255, 0.78);
+  background:
+    linear-gradient(135deg, rgba(246, 250, 255, 0.78) 0%, rgba(234, 241, 252, 0.68) 100%),
+    linear-gradient(90deg, rgba(var(--notif-accent-rgb, 56, 189, 248), 0.16) 0%, transparent 75%);
+  backdrop-filter: blur(24px) saturate(185%);
+  -webkit-backdrop-filter: blur(24px) saturate(185%);
+  box-shadow:
+    0 18px 40px rgba(15, 23, 42, 0.2),
+    0 4px 12px rgba(15, 23, 42, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    0 0 0 0.5px rgba(15, 23, 42, 0.12);
+  color: #0f172a;
+}
+
+:root[data-theme="light"] .notif-history-preview-title {
+  color: #0f172a;
+}
+
+:root[data-theme="light"] .notif-history-preview-time {
+  color: rgba(15, 23, 42, 0.52);
+}
+
+:root[data-theme="light"] .notif-history-preview-body {
+  color: rgba(15, 23, 42, 0.84);
+}
+
+/* Notification Empty State */
+:root[data-theme="light"] .notification-empty-icon {
+  border-color: rgba(15, 23, 42, 0.1);
+  color: rgba(15, 23, 42, 0.52);
+  background: rgba(15, 23, 42, 0.045);
+}
+
+:root[data-theme="light"] .notification-empty-title,
+:root[data-theme="light"] .notification-history-empty strong {
+  color: #0f172a;
+}
+
+:root[data-theme="light"] .notification-empty-desc,
+:root[data-theme="light"] .notification-history-empty,
+:root[data-theme="light"] .notification-history-empty > span:last-child {
+  color: rgba(15, 23, 42, 0.54);
+}

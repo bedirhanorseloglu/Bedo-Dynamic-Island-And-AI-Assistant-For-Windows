@@ -3,12 +3,14 @@ import { createRoot } from 'react-dom/client';
 import './styles.css';
 import './typography.css';
 import { initializeTypography } from './typography';
+import { initializeTheme, readStoredTheme } from './theme/theme';
 import { createTranslator } from './i18n';
 
 const App = lazy(() => import('./App'));
 const SettingsApp = lazy(() => import('./SettingsApp'));
 
 initializeTypography();
+initializeTheme();
 
 window.addEventListener('error', (event) => {
   console.error('[CRITICAL WINDOW ERROR]', event.message, event.filename, event.lineno, event.error?.stack);
@@ -36,13 +38,14 @@ class GlobalErrorBoundary extends React.Component {
         catch { return 'en'; }
       })();
       const t = createTranslator(savedLang);
+      const isLight = readStoredTheme() === 'light';
       return (
         <div style={{
           width: '100%',
           height: '100%',
           padding: '16px 20px',
-          background: '#0d0d12',
-          color: '#ff6b6b',
+          background: isLight ? '#f8fafc' : '#0d0d12',
+          color: isLight ? '#dc2626' : '#ff6b6b',
           fontFamily: 'monospace',
           fontSize: '12px',
           overflow: 'auto',
@@ -51,15 +54,15 @@ class GlobalErrorBoundary extends React.Component {
           <strong style={{ fontSize: '14px', display: 'block', marginBottom: '8px' }}>
             {t('errorBoundary.title')}
           </strong>
-          <div style={{ whiteSpace: 'pre-wrap', color: '#ffb4b4', marginBottom: '12px' }}>
+          <div style={{ whiteSpace: 'pre-wrap', color: isLight ? '#7f1d1d' : '#ffb4b4', marginBottom: '12px' }}>
             {String(this.state.error?.stack || this.state.error?.message || this.state.error)}
           </div>
           <button
             onClick={() => window.location.reload()}
             style={{
-              background: '#2b2b36',
+              background: isLight ? '#0f172a' : '#2b2b36',
               color: '#ffffff',
-              border: '1px solid rgba(255,255,255,0.2)',
+              border: isLight ? '1px solid rgba(15,23,42,0.2)' : '1px solid rgba(255,255,255,0.2)',
               borderRadius: '8px',
               padding: '6px 14px',
               cursor: 'pointer'

@@ -504,6 +504,8 @@ export default {
   'settings.general.languageEyebrow': 'DİL',
   'settings.general.languageTitle': 'Dil · Language',
   'settings.general.languageDesc': 'Ada ve ayarlar arayüzünün dili',
+  'settings.general.themeTitle': 'Tema',
+  'settings.general.themeDesc': 'Ada, HUD göstergeleri, bildirimler ve ayarlar için görünüm modu',
   'settings.general.behaviourEyebrow': 'DAVRANIŞ',
   'settings.general.startWithWindows': 'Windows ile Başlat',
   'settings.general.startWithWindowsDesc': 'Bilgisayarda oturum açtığında Bedo otomatik açılsın',

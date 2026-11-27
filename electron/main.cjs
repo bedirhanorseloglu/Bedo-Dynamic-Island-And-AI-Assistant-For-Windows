@@ -25,6 +25,22 @@ const os = require('os');
 const fs = require('fs');
 try { dns.setDefaultResultOrder('ipv4first'); } catch {}
 try { app.commandLine.appendSwitch('disable-ipv6'); } catch {}
+
+function ignoreBrokenPipeError(err) {
+  if (!err || err.code === 'EPIPE' || err.code === 'EOF' || err.code === 'ERR_STREAM_DESTROYED') {
+    return;
+  }
+}
+try { process.stdout?.on?.('error', ignoreBrokenPipeError); } catch {}
+try { process.stderr?.on?.('error', ignoreBrokenPipeError); } catch {}
+process.on('uncaughtException', (err) => {
+  if (err && (err.code === 'EPIPE' || err.code === 'EOF' || err.code === 'ERR_STREAM_DESTROYED')) {
+    return;
+  }
+  try {
+    dialog.showErrorBox('Bedo Main Process Error', String(err?.stack || err?.message || err));
+  } catch {}
+});
 const { DropShareServer } = require('./drop-share-server.cjs');
 const { normalizeLanguage, getLocale, t: trMain } = require('./i18n.cjs');
 const {
@@ -758,6 +774,7 @@ function getDefaultUserName() {
 let userSettings = {
   userName: getDefaultUserName(),
   language: 'Turkish',
+  theme: 'dark',
   onboardingCompleted: false,
   googleConnected: false,
   googleEmail: '',
@@ -2894,6 +2911,8 @@ function startSystemWatcher() {
       { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] }
     );
     systemWatcherProc = proc;
+    try { proc.stdin?.on?.('error', ignoreBrokenPipeError); } catch {}
+    try { proc.stdout?.on?.('error', ignoreBrokenPipeError); } catch {}
     let buffer = '';
     const watcherStartedAt = Date.now();
     proc.stdout.on('data', (chunk) => {
@@ -3826,6 +3845,8 @@ function transcribeWithWarmPythonWorker(wavPath, lang) {
         stdio: ['pipe', 'pipe', 'ignore'],
       });
       speechWorkerBuffer = '';
+      try { speechWorkerProc.stdin?.on?.('error', ignoreBrokenPipeError); } catch {}
+      try { speechWorkerProc.stdout?.on?.('error', ignoreBrokenPipeError); } catch {}
       speechWorkerProc.stdout.setEncoding('utf8');
       speechWorkerProc.stdout.on('data', (chunk) => {
         speechWorkerBuffer += chunk;
@@ -8267,9 +8288,13 @@ ipcMain.handle('bedo-buddy:start', async () => {
   });
   buddyOverlayWindow.setAlwaysOnTop(true, 'screen-saver');
 
+  const isLightBuddy = String(userSettings?.theme || 'dark').toLowerCase() === 'light';
+  const hintBg = isLightBuddy ? 'rgba(252,253,255,0.94)' : 'rgba(12,15,24,0.9)';
+  const hintBorder = isLightBuddy ? 'rgba(15,23,42,0.16)' : 'rgba(255,255,255,0.2)';
+  const hintColor = isLightBuddy ? '#0f172a' : '#fff';
   const html = `<!doctype html><html><head><meta charset="utf-8"><style>
     html,body{margin:0;width:100%;height:100%;overflow:hidden;background:rgba(6,9,18,0.14);cursor:none;user-select:none;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;}
-    .hint{position:fixed;top:18px;left:50%;transform:translateX(-50%);padding:8px 16px;border-radius:999px;background:rgba(12,15,24,0.9);border:1px solid rgba(255,255,255,0.2);color:#fff;font-size:12.5px;font-weight:600;box-shadow:0 8px 20px rgba(0,0,0,0.35);pointer-events:none;}
+    .hint{position:fixed;top:18px;left:50%;transform:translateX(-50%);padding:8px 16px;border-radius:999px;background:${hintBg};border:1px solid ${hintBorder};color:${hintColor};font-size:12.5px;font-weight:600;box-shadow:0 8px 20px rgba(0,0,0,0.25);pointer-events:none;}
     .sel{position:fixed;border:2px solid #38bdf8;background:rgba(56,189,248,0.14);border-radius:10px;display:none;pointer-events:none;box-shadow:0 0 0 1px rgba(56,189,248,0.35);}
     .orb{position:fixed;left:0;top:0;width:42px;height:28px;border-radius:16px 16px 8px 8px;background:rgba(14,18,28,0.92);border:1.5px solid rgba(255,255,255,0.35);display:flex;align-items:center;justify-content:center;gap:6px;will-change:transform;pointer-events:none;box-shadow:0 6px 16px rgba(0,0,0,0.45);}
     .eye{width:5.5px;height:9px;border-radius:50%;background:${eyeHex};box-shadow:0 0 8px ${eyeHex};}

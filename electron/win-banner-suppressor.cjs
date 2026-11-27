@@ -348,6 +348,7 @@ function defaultRegistryAdapter(payload) {
     });
 
     try {
+      child.stdin?.on?.('error', () => {});
       child.stdin.write(JSON.stringify(payload), 'utf8');
       child.stdin.end();
     } catch (err) {

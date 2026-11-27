@@ -504,6 +504,8 @@ export default {
   'settings.general.languageEyebrow': 'LANGUAGE',
   'settings.general.languageTitle': 'Language · Dil',
   'settings.general.languageDesc': 'The language of the island and settings',
+  'settings.general.themeTitle': 'Theme',
+  'settings.general.themeDesc': 'Appearance mode for the island, HUDs, notifications, and settings',
   'settings.general.behaviourEyebrow': 'BEHAVIOUR',
   'settings.general.startWithWindows': 'Start with Windows',
   'settings.general.startWithWindowsDesc': 'Open Bedo automatically when you sign in to your PC',

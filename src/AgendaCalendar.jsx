@@ -184,7 +184,7 @@ export default function AgendaCalendar({ events = [], onAddEvent, onDeleteEvent,
             title={t('agenda.addEvent')}
             aria-label={t('agenda.addEvent')}
           >
-            {isAdding ? <X size={15} color="#fff" /> : <Plus size={16} strokeWidth={2.5} color="#eaf2f9" />}
+            {isAdding ? <X size={15} /> : <Plus size={16} strokeWidth={2.5} />}
           </button>
         </div>
       </div>

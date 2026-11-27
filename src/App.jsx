@@ -3,6 +3,12 @@ import { AnimatePresence, motion } from 'motion/react';
 import RealAppIcon from './RealAppIcon';
 import { shouldPersistNotification, shouldSuppressPowerNotificationToast } from './notification-history-policy.mjs';
 import MusicTabView, { formatMMSS, useIsolatedMediaPosition } from './components/MusicTabView.jsx';
+import { applyThemeToDocument, readStoredTheme } from './theme/theme';
+import {
+  resolveEffectiveClockColor,
+  resolveLightAmbientRgb,
+  resolveShellBgOpacity,
+} from './theme/themeState.mjs';
 import {
   Home,
   Terminal,
@@ -2138,8 +2144,9 @@ export default function App() {
   const [draggingShortcutId, setDraggingShortcutId] = useState(null);
   const shortcutDragRef = useRef({ id: null, startX: 0, startY: 0, moved: false });
   const suppressShortcutClickRef = useRef(false);
-  const [islandSettings, setIslandSettings] = useState({
+  const [islandSettings, setIslandSettings] = useState(() => ({
     language: 'English',
+    theme: readStoredTheme(),
     outfit: 'None',
     bodyColor: 'Night',
     eyeColorName: 'White',
@@ -2167,9 +2174,13 @@ export default function App() {
     gameOptPauseBedoVoice: false,
     gameOptAllowHudAndNotifs: true,
     gameOptDeepHideWindow: false,
-  });
+  }));
   const islandSettingsRef = useRef(islandSettings);
   islandSettingsRef.current = islandSettings;
+
+  useLayoutEffect(() => {
+    applyThemeToDocument(islandSettings.theme);
+  }, [islandSettings.theme]);
 
   useEffect(() => {
     const isGameIdle = Boolean(gameModeActive && islandMode === 'idle');
@@ -2495,14 +2506,16 @@ export default function App() {
     timerRunning,
   ]);
 
-  // When nothing is playing, clock is crisp white (#ffffff) as in media_1794022256939_a2c228a1.jpg;
-  // when a live cover is active, clock adapts to cover color unless user picked a fixed color
-  const effectiveClockColor =
-    userPickedClockColor
-      ? clockColor
-      : musicAccent.isLiveCover && islandSettings.islandMusicColour !== false
-        ? musicAccent.hex
-        : '#ffffff';
+  // In Dark Theme, default clock is crisp white (#ffffff); in Light Theme, deep slate ink (#0f172a).
+  // Live cover colors adapt automatically for contrast unless user picked a fixed color.
+  const effectiveClockColor = resolveEffectiveClockColor({
+    theme: islandSettings.theme,
+    userPickedClockColor,
+    clockColor,
+    isLiveCover: musicAccent.isLiveCover,
+    islandMusicColour: islandSettings.islandMusicColour,
+    musicAccentHex: musicAccent.hex,
+  });
 
   // Compute active lyric index without re-rendering App on every sub-second tick:
   // App only updates when the active lyric line index actually changes.
@@ -4364,9 +4377,12 @@ export default function App() {
           }`}
         style={{
           '--island-scale': islandSettings.islandSize === 'Compact' ? 0.92 : islandSettings.islandSize === 'Large' ? 1.06 : 1,
-          '--island-bg-opacity': Math.max(0.32, 1 - (Math.min(60, Math.max(0, Number(islandSettings.islandSeeThrough ?? 4))) / 100) * 0.95).toFixed(2),
+          '--island-bg-opacity': resolveShellBgOpacity(islandSettings.theme, islandSettings.islandSeeThrough ?? 4).toFixed(2),
           '--music-accent-rgb': musicAccent.rgb,
           '--music-accent-hex': musicAccent.hex,
+          '--island-light-ambient-rgb': resolveLightAmbientRgb(
+            islandSettings.islandMusicColour !== false ? musicAccent.rgb : '110, 142, 185'
+          ),
           '--notif-accent-rgb': notifBrand.rgb,
           '--notif-accent-hex': notifBrand.hex,
           '--notif-accent-secondary-rgb': notifBrand.secondaryRgb || notifBrand.rgb,
@@ -5031,7 +5047,13 @@ export default function App() {
                             width="14"
                             height="8.5"
                             rx="2.4"
-                            stroke={batteryCharging ? '#30D158' : batteryPercent <= 20 ? '#FF453A' : 'rgba(255,255,255,0.68)'}
+                            stroke={
+                              batteryCharging
+                                ? (islandSettings.theme === 'light' ? '#059669' : '#30D158')
+                                : batteryPercent <= 20
+                                  ? (islandSettings.theme === 'light' ? '#dc2626' : '#FF453A')
+                                  : (islandSettings.theme === 'light' ? 'rgba(24, 34, 53, 0.68)' : 'rgba(255,255,255,0.68)')
+                            }
                             strokeWidth="1.35"
                           />
                           <rect
@@ -5040,11 +5062,23 @@ export default function App() {
                             width={Math.max(1.8, (11 * Math.min(100, Math.max(0, batteryPercent))) / 100)}
                             height="5.5"
                             rx="1.2"
-                            fill={batteryCharging ? '#30D158' : batteryPercent <= 20 ? '#FF453A' : 'rgba(255,255,255,0.88)'}
+                            fill={
+                              batteryCharging
+                                ? (islandSettings.theme === 'light' ? '#10b981' : '#30D158')
+                                : batteryPercent <= 20
+                                  ? (islandSettings.theme === 'light' ? '#ef4444' : '#FF453A')
+                                  : (islandSettings.theme === 'light' ? 'rgba(24, 34, 53, 0.86)' : 'rgba(255,255,255,0.88)')
+                            }
                           />
                           <path
                             d="M16.2 3.3V6.7"
-                            stroke={batteryCharging ? '#30D158' : batteryPercent <= 20 ? '#FF453A' : 'rgba(255,255,255,0.68)'}
+                            stroke={
+                              batteryCharging
+                                ? (islandSettings.theme === 'light' ? '#059669' : '#30D158')
+                                : batteryPercent <= 20
+                                  ? (islandSettings.theme === 'light' ? '#dc2626' : '#FF453A')
+                                  : (islandSettings.theme === 'light' ? 'rgba(24, 34, 53, 0.68)' : 'rgba(255,255,255,0.68)')
+                            }
                             strokeWidth="1.4"
                             strokeLinecap="round"
                           />
@@ -5120,7 +5154,7 @@ export default function App() {
                     }}
                   >
                     <div className={`cc-tile-icon-circle ${networkInfo.wifiConnected ? 'connected' : networkInfo.wifiState === 'On' ? 'blue' : 'off'}`}>
-                      <Wifi size={18} strokeWidth={2.4} color="#ffffff" />
+                      <Wifi size={18} strokeWidth={2.4} color="currentColor" />
                     </div>
                     <strong className="cc-tile-title">Wi-Fi</strong>
                     <span className="cc-tile-sub">{radioBusy === 'Wifi' ? t('cc.changing') : networkInfo.wifiConnected ? t('cc.connectedWithName', { name: networkInfo.wifi || 'Wi-Fi' }) : networkInfo.wifiState === 'Off' ? t('cc.wifiOff') : networkInfo.wifiState === 'On' ? t('cc.wifiNotConnected') : t('cc.fetchingStatus')}</span>
@@ -5141,7 +5175,7 @@ export default function App() {
                     }}
                   >
                     <div className={`cc-tile-icon-circle ${networkInfo.bluetoothState === 'On' ? 'blue' : networkInfo.bluetoothState === 'Off' ? 'off' : 'pending'}`}>
-                      <Bluetooth size={18} strokeWidth={2.4} color="#ffffff" />
+                      <Bluetooth size={18} strokeWidth={2.4} color="currentColor" />
                     </div>
                     <strong className="cc-tile-title">Bluetooth</strong>
                     <span className="cc-tile-sub">{radioBusy === 'Bluetooth' ? t('cc.changing') : networkInfo.bluetoothState === 'On' ? t('common.on') : networkInfo.bluetoothState === 'Off' ? t('common.off') : t('cc.fetchingStatus')}</span>
@@ -6463,12 +6497,12 @@ export default function App() {
                                       aria-label="Play or Pause"
                                     >
                                       {currentMedia.isPlaying ? (
-                                        <Pause size={13} fill="#ffffff" color="#ffffff" strokeWidth={2.2} />
+                                        <Pause size={13} fill="currentColor" color="currentColor" strokeWidth={2.2} />
                                       ) : (
                                         <Play
                                           size={13}
-                                          fill="#ffffff"
-                                          color="#ffffff"
+                                          fill="currentColor"
+                                          color="currentColor"
                                           strokeWidth={2.2}
                                           style={{ marginLeft: 1 }}
                                         />
@@ -6503,12 +6537,12 @@ export default function App() {
                                   aria-label={t('home.startOrPauseFocus')}
                                 >
                                   {timerRunning ? (
-                                    <Pause size={14} fill="#ffffff" color="#ffffff" strokeWidth={2.2} />
+                                    <Pause size={14} fill="currentColor" color="currentColor" strokeWidth={2.2} />
                                   ) : (
                                     <Play
                                       size={14}
-                                      fill="#ffffff"
-                                      color="#ffffff"
+                                      fill="currentColor"
+                                      color="currentColor"
                                       strokeWidth={2.2}
                                       style={{ marginLeft: 1 }}
                                     />
@@ -6873,7 +6907,7 @@ export default function App() {
                             <HeroClock
                               timeStr={formatTimerBig(timerSeconds)}
                               fontIndex={clockFontIndex}
-                              color="#ffffff"
+                              color={islandSettings.theme === 'light' ? '#1e293b' : '#ffffff'}
                               size="focus"
                             />
                             <span className="focus-done-at">{t('focus.doneAt', { time: doneAtTimeStr })}</span>

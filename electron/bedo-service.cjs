@@ -158,6 +158,9 @@ class BedoService extends EventEmitter {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     this._proc = proc;
+    try { proc.stdin?.on?.('error', () => {}); } catch {}
+    try { proc.stdout?.on?.('error', () => {}); } catch {}
+    try { proc.stderr?.on?.('error', () => {}); } catch {}
 
     proc.stdout.on('data', (chunk) => this._handleStdoutChunk(chunk));
     proc.stderr.on('data', (chunk) => {

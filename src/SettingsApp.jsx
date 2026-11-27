@@ -61,6 +61,9 @@ import { LanguageProvider, createTranslator, getLocale, languageLabel, normalize
 import { RELEASES } from './releases/releasesData.mjs';
 import { hasUnseenRelease, resolveActiveRelease } from './releases/releaseState.mjs';
 import WhatsNewModal, { WhatsNewPage } from './components/whats-new/WhatsNewModal';
+import { applyThemeToDocument, readStoredTheme } from './theme/theme';
+import { resolveIslandPreviewFill, resolveShellBgOpacity } from './theme/themeState.mjs';
+import ThemeSelector, { SidebarThemeToggleButton } from './components/theme/ThemeSelector';
 
 function ProviderSymbol({ provider, size = 16 }) {
   if (provider === 'claude') {
@@ -118,6 +121,7 @@ function ProviderSymbol({ provider, size = 16 }) {
 
 const DEFAULT_SETTINGS = {
   userName: '',
+  theme: readStoredTheme(),
   onboardingCompleted: false,
   googleEmail: '',
   googleConnected: false,
@@ -1048,8 +1052,12 @@ export default function SettingsApp() {
     ...(aiHistory.codexJobs || []),
   ].sort((a, b) => String(b.time || '').localeCompare(String(a.time || ''))).slice(0, 4), [aiHistory]);
 
-  const settingsSeeThrough = Math.min(60, Math.max(0, Number(settings.islandSeeThrough ?? 4)));
-  const settingsBgOpacity = Math.max(0.32, 1 - (settingsSeeThrough / 100) * 0.95).toFixed(2);
+  const settingsSeeThrough = Math.min(80, Math.max(0, Number(settings.islandSeeThrough ?? 4)));
+  const settingsBgOpacity = resolveShellBgOpacity(settings.theme, settingsSeeThrough).toFixed(2);
+
+  useEffect(() => {
+    applyThemeToDocument(settings.theme);
+  }, [settings.theme]);
 
   return (
     <LanguageProvider language={settings.language}>
@@ -1179,14 +1187,11 @@ export default function SettingsApp() {
             <strong>Bedo</strong>
             <span>{t('settings.tasksDone', { count: aiHistory.jobsToday || 2 })}</span>
           </div>
-          <button
-            type="button"
-            className="sidebar-theme-btn"
-            onClick={(e) => e.stopPropagation()}
-            title={t('settings.theme')}
-          >
-            <Sun size={15} />
-          </button>
+          <SidebarThemeToggleButton
+            theme={settings.theme}
+            langCode={langCode}
+            onToggle={(nextTheme) => updateSetting({ theme: nextTheme })}
+          />
         </div>
       </aside>
 
@@ -4088,6 +4093,41 @@ export default function SettingsApp() {
 
                 <div className="settings-row">
                   <div className="row-text-col">
+                    <strong>{t('settings.general.themeTitle')}</strong>
+                    <span>{t('settings.general.themeDesc')}</span>
+                  </div>
+                  <ThemeSelector
+                    theme={settings.theme}
+                    langCode={langCode}
+                    onChange={(nextTheme) => updateSetting({ theme: nextTheme })}
+                  />
+                </div>
+
+                <div className="settings-row">
+                  <div className="row-text-col">
+                    <strong>{langCode === 'tr' ? 'Liquid Glass Saydamlığı' : 'Liquid Glass Translucency'}</strong>
+                    <span>
+                      {langCode === 'tr'
+                        ? 'Dinamik Ada ve Ayarlar cam yüzeylerinin arka plan geçirgenliğini ayarlar'
+                        : 'Adjusts background see-through translucency across the Island and Settings'}
+                    </span>
+                  </div>
+                  <div className="slider-with-val">
+                    <input
+                      type="range"
+                      min="0"
+                      max="80"
+                      value={settings.islandSeeThrough ?? 4}
+                      onChange={(e) =>
+                        updateSetting({ islandSeeThrough: parseInt(e.target.value, 10) })
+                      }
+                    />
+                    <span>{settings.islandSeeThrough ?? 4}%</span>
+                  </div>
+                </div>
+
+                <div className="settings-row">
+                  <div className="row-text-col">
                     <strong>{t('settings.general.startWithWindows')}</strong>
                     <span>{t('settings.general.startWithWindowsDesc')}</span>
                   </div>
@@ -4626,7 +4666,7 @@ export default function SettingsApp() {
             '24-hour · 18:30': langCode === 'tr' ? '24 saat · 18:30' : '24-hour · 18:30',
           };
           const restingOptions = ['Nothing', 'Time', 'Battery', 'Wi-Fi', 'Bluetooth'];
-          const previewOpacity = Math.max(0.32, 1 - (Math.min(60, Math.max(0, Number(settings.islandSeeThrough ?? 4))) / 100) * 0.95);
+          const previewOpacity = resolveShellBgOpacity(settings.theme, settings.islandSeeThrough ?? 4);
           const previewScale = settings.islandSize === 'Compact' ? 0.92 : settings.islandSize === 'Large' ? 1.06 : 1;
           const isFloating = settings.islandStyle === 'Floating';
           const renderPreviewSlot = (val) => {
@@ -4668,7 +4708,7 @@ export default function SettingsApp() {
                 <div
                   className={`island-lg-preview-pill ${isFloating ? 'is-floating' : 'is-attached'}`}
                   style={{
-                    background: `rgba(10, 13, 20, ${previewOpacity.toFixed(2)})`,
+                    background: resolveIslandPreviewFill(settings.theme, previewOpacity),
                     transform: `scale(${previewScale})`,
                   }}
                 >
@@ -4689,6 +4729,18 @@ export default function SettingsApp() {
 
             <span className="section-eyebrow">{langCode === 'tr' ? 'GÖRÜNÜM' : 'LOOK'}</span>
             <div className="settings-card ai-lg-card">
+              <div className="settings-row">
+                <div className="row-text-col">
+                  <strong>{t('settings.general.themeTitle')}</strong>
+                  <span>{t('settings.general.themeDesc')}</span>
+                </div>
+                <ThemeSelector
+                  theme={settings.theme}
+                  langCode={langCode}
+                  onChange={(nextTheme) => updateSetting({ theme: nextTheme })}
+                />
+              </div>
+
               <div className="settings-row">
                 <div className="row-text-col">
                   <strong>{langCode === 'tr' ? 'Boyut' : 'Size'}</strong>
@@ -4740,7 +4792,7 @@ export default function SettingsApp() {
                   <input
                     type="range"
                     min="0"
-                    max="60"
+                    max="80"
                     value={settings.islandSeeThrough ?? 4}
                     onChange={(e) =>
                       updateSetting({ islandSeeThrough: parseInt(e.target.value, 10) })
@@ -5667,6 +5719,14 @@ export default function SettingsApp() {
                         </button>
                       ))}
                     </div>
+                  </div>
+                  <div className="bedo-welcome-field">
+                    <label>{t('settings.general.themeTitle')}</label>
+                    <ThemeSelector
+                      theme={settings.theme}
+                      langCode={langCode}
+                      onChange={(nextTheme) => updateSetting({ theme: nextTheme })}
+                    />
                   </div>
                   <div className="bedo-welcome-field">
                     <label>{langCode === 'tr' ? 'Adınız' : 'Your Name'}</label>

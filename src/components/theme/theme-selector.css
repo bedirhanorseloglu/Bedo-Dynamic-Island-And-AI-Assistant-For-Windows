@@ -1,0 +1,105 @@
+.bedo-theme-segmented {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.bedo-theme-seg-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 12px 0 8px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.16s ease, color 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.bedo-theme-seg-btn:hover:not(.is-active) {
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.94);
+}
+
+.bedo-theme-seg-btn.is-active {
+  background: #ffffff;
+  color: #090d16;
+  border-color: rgba(255, 255, 255, 0.95);
+  font-weight: 700;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.24);
+}
+
+.bedo-theme-swatch {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.bedo-theme-swatch.is-dark {
+  background: #0f172a;
+  color: #e2e8f0;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.bedo-theme-swatch.is-light {
+  background: linear-gradient(145deg, #ffffff 0%, #e2e8f0 100%);
+  color: #d97706;
+  border: 1px solid rgba(15, 23, 42, 0.14);
+}
+
+.sidebar-theme-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  justify-content: center;
+  transition: background 0.16s ease, color 0.16s ease, transform 0.14s ease;
+}
+
+.sidebar-theme-btn:hover {
+  background: rgba(255, 255, 255, 0.09);
+  color: #ffffff;
+  transform: scale(1.05);
+}
+
+:root[data-theme="light"] .bedo-theme-segmented {
+  background: rgba(15, 23, 42, 0.055);
+  border-color: rgba(255, 255, 255, 0.65);
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.06), 0 0 0 0.5px rgba(15, 23, 42, 0.08);
+}
+
+:root[data-theme="light"] .bedo-theme-seg-btn {
+  color: rgba(15, 23, 42, 0.64);
+}
+
+:root[data-theme="light"] .bedo-theme-seg-btn:hover:not(.is-active) {
+  background: rgba(255, 255, 255, 0.48);
+  color: #0f172a;
+}
+
+:root[data-theme="light"] .bedo-theme-seg-btn.is-active {
+  background: rgba(255, 255, 255, 0.88);
+  color: #0f172a;
+  border-color: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.1), inset 0 1px 0 #ffffff;
+}
+
+:root[data-theme="light"] .sidebar-theme-btn {
+  color: rgba(15, 23, 42, 0.62);
+}
+
+:root[data-theme="light"] .sidebar-theme-btn:hover {
+  background: rgba(15, 23, 42, 0.08);
+  color: #0f172a;
+}
