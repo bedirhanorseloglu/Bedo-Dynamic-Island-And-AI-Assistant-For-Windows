@@ -5,6 +5,8 @@ Windows ortamina uyarlanmis calisma akisi
 macOS surumunden tam ozellik paritesiyle portlanmistir.
 """
 
+from __future__ import annotations
+
 import asyncio
 from collections import deque
 import datetime
@@ -16,13 +18,15 @@ import os
 import time
 import re
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pyaudio  # type: ignore[reportMissingModuleSource]
 from google import genai  # type: ignore[reportMissingImports]
 from google.genai import types  # type: ignore[reportMissingImports]
 
 from app_config import get_app_config_value
-from ui import JarvisUI
+if TYPE_CHECKING:
+    from ui import JarvisUI
 from memory.memory_manager import (
     load_memory,
     update_memory,
@@ -31,28 +35,7 @@ from memory.memory_manager import (
     search_memory,
     remember_conversation_turn,
 )
-from actions.open_app import open_app
-from actions.sys_info  import sys_info
-from actions.calendar import get_calendar_events, add_calendar_event, delete_calendar_event
-from actions.reminders import get_reminders, add_reminder
-from actions.browser   import browser_control
-from actions.shell     import shell_run
-from actions.whatsapp  import send_whatsapp_message, save_whatsapp_contact
-from actions.media     import play_media
-from actions.weather   import get_weather_summary
-from actions.screen_vision import analyze_screen
-from actions.youtube_stats import get_youtube_channel_report
-from actions.system_control import system_control
-from actions.ui_control import ui_control
-from actions.file_ops import find_and_open, create_folder
-from actions.island import handle_island_control
-from actions.rag import web_search_answer, local_rag_query
 from audio_clean import PitchPreservingTimeScaler, RealTimeSpeechDenoiser
-
-try:
-    from wakeup_listener import WakeGestureListener
-except Exception:  # pyaudio yoksa veya mikrofon erisimi yoksa uygulama yine acilsin
-    WakeGestureListener = None
 
 # ── Paths ───────────────────────────────────────────────────────────────────
 BASE_DIR        = Path(__file__).resolve().parent
@@ -508,23 +491,27 @@ class JarvisLive:
                 )
 
             elif name == "open_app":
+                from actions.open_app import open_app
                 r = await loop.run_in_executor(
                     None, lambda: open_app(args.get("app_name", "")))
                 result = r or f"{args.get('app_name')} açıldı."
 
             elif name == "sys_info":
+                from actions.sys_info import sys_info
                 self._focus_ui_section_for_tool(name, args)
                 r = await loop.run_in_executor(
                     None, lambda: sys_info(args.get("query", "all")))
                 result = r or "Bilgi alındı."
 
             elif name == "get_weather":
+                from actions.weather import get_weather_summary
                 self._focus_ui_section_for_tool(name, args)
                 r = await loop.run_in_executor(
                     None, lambda: get_weather_summary(args.get("location") or None))
                 result = r or "Hava durumu bilgisi alindi."
 
             elif name == "get_calendar_events":
+                from actions.calendar import get_calendar_events
                 r = await loop.run_in_executor(
                     None,
                     lambda: get_calendar_events(
@@ -535,6 +522,7 @@ class JarvisLive:
                 result = r or "Takvim bilgisi alindi."
 
             elif name == "add_calendar_event":
+                from actions.calendar import add_calendar_event
                 r = await loop.run_in_executor(
                     None,
                     lambda: add_calendar_event(
@@ -550,6 +538,7 @@ class JarvisLive:
                 result = r or "Takvim etkinligi eklendi."
 
             elif name == "delete_calendar_event":
+                from actions.calendar import delete_calendar_event
                 r = await loop.run_in_executor(
                     None,
                     lambda: delete_calendar_event(
@@ -562,6 +551,7 @@ class JarvisLive:
                 result = r or "Takvim etkinligi silindi."
 
             elif name == "get_reminders":
+                from actions.reminders import get_reminders
                 r = await loop.run_in_executor(
                     None,
                     lambda: get_reminders(
@@ -573,6 +563,7 @@ class JarvisLive:
                 result = r or "Animsatici bilgisi alindi."
 
             elif name == "add_reminder":
+                from actions.reminders import add_reminder
                 r = await loop.run_in_executor(
                     None,
                     lambda: add_reminder(
@@ -587,6 +578,7 @@ class JarvisLive:
                 result = r or "Animsatici eklendi."
 
             elif name == "browser_control":
+                from actions.browser import browser_control
                 r = await loop.run_in_executor(
                     None, lambda: browser_control(
                         args.get("action"),
@@ -596,6 +588,7 @@ class JarvisLive:
                 result = r or "Tamam."
 
             elif name == "shell_run":
+                from actions.shell import shell_run
                 r = await loop.run_in_executor(
                     None, lambda: shell_run(args.get("command", "")))
                 result = r or "Komut çalıştırıldı."
@@ -620,6 +613,7 @@ class JarvisLive:
                     result = "Webcam akışı durduruldu."
 
             elif name == "play_media":
+                from actions.media import play_media
                 r = await loop.run_in_executor(
                     None,
                     lambda: play_media(
@@ -631,6 +625,7 @@ class JarvisLive:
                 result = r or "Medya oynatma başlatıldı."
 
             elif name == "get_youtube_channel_report":
+                from actions.youtube_stats import get_youtube_channel_report
                 r = await loop.run_in_executor(
                     None,
                     lambda: get_youtube_channel_report(
@@ -642,6 +637,7 @@ class JarvisLive:
                 result = r or "YouTube kanal raporu alindi."
 
             elif name == "analyze_screen":
+                from actions.screen_vision import analyze_screen
                 r = await loop.run_in_executor(
                     None,
                     lambda: analyze_screen(
@@ -652,6 +648,7 @@ class JarvisLive:
                 result = r or "Ekran analizi tamamlandi."
 
             elif name == "send_whatsapp_message":
+                from actions.whatsapp import send_whatsapp_message
                 r = await loop.run_in_executor(
                     None,
                     lambda: send_whatsapp_message(
@@ -665,6 +662,7 @@ class JarvisLive:
                 result = r or "WhatsApp işlemi tamamlandı."
 
             elif name == "save_whatsapp_contact":
+                from actions.whatsapp import save_whatsapp_contact
                 r = await loop.run_in_executor(
                     None,
                     lambda: save_whatsapp_contact(
@@ -676,6 +674,7 @@ class JarvisLive:
                 result = r or "WhatsApp kişisi kaydedildi."
 
             elif name == "system_control":
+                from actions.system_control import system_control
                 r = await loop.run_in_executor(
                     None,
                     lambda: system_control(
@@ -686,6 +685,7 @@ class JarvisLive:
                 result = r or "Sistem kontrol işlemi tamamlandı."
 
             elif name == "ui_control":
+                from actions.ui_control import ui_control
                 r = await loop.run_in_executor(
                     None,
                     lambda: ui_control(
@@ -698,6 +698,7 @@ class JarvisLive:
                 result = r or "UI kontrol işlemi tamamlandı."
 
             elif name == "find_and_open":
+                from actions.file_ops import find_and_open
                 r = await loop.run_in_executor(
                     None,
                     lambda: find_and_open(
@@ -709,6 +710,7 @@ class JarvisLive:
                 result = r or "Arama tamamlandı."
 
             elif name == "create_folder":
+                from actions.file_ops import create_folder
                 r = await loop.run_in_executor(
                     None,
                     lambda: create_folder(
@@ -719,6 +721,7 @@ class JarvisLive:
                 result = r or "Klasör oluşturuldu."
 
             elif name == "island_control":
+                from actions.island import handle_island_control
                 r = await loop.run_in_executor(
                     None,
                     lambda: handle_island_control(
@@ -730,6 +733,7 @@ class JarvisLive:
                 result = r or "Ada kontrol işlemi tamamlandı."
 
             elif name == "web_search_answer":
+                from actions.rag import web_search_answer
                 r = await loop.run_in_executor(
                     None,
                     lambda: web_search_answer(
@@ -741,6 +745,7 @@ class JarvisLive:
                 result = r or "Canlı arama sonucu alınamadı."
 
             elif name == "local_rag_query":
+                from actions.rag import local_rag_query
                 r = await loop.run_in_executor(
                     None,
                     lambda: local_rag_query(
@@ -1209,6 +1214,8 @@ class JarvisLive:
 
 
 def main():
+    from ui import JarvisUI
+
     if os.environ.get("TERM_PROGRAM") == "vscode":
         print("[JARVIS] VS Code icinden baslatildi.")
 
@@ -1224,12 +1231,10 @@ def main():
 
     threading.Thread(target=runner, daemon=True).start()
 
-    # Çift alkış ile uyandırma (Windows bonus): pencereyi öne getirir. Çevresel
-    # ses veya JARVIS'in kendi sesi mikrofona girince yanlış tetiklenip pencereyi
-    # sürekli öne çıkarabildiği için varsayılan KAPALI. İstersen True yap.
     ENABLE_CLAP_WAKE = False
-    if ENABLE_CLAP_WAKE and WakeGestureListener is not None:
+    if ENABLE_CLAP_WAKE:
         try:
+            from wakeup_listener import WakeGestureListener
             wake_listener = WakeGestureListener(on_wake=ui.wake_up)
             wake_listener.start()
         except Exception as exc:

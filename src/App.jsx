@@ -1449,10 +1449,24 @@ export default function App() {
     if (!api?.bedoStart) return;
 
     (api.getSettings ? api.getSettings() : Promise.resolve(null)).then((saved) => {
-      if (saved?.bedoAutoStart === false) return;
+      const syncInitialStatus = () => {
+        api.bedoStatus?.().then((st) => {
+          if (st) setBedoStatus(st);
+        }).catch(() => {});
+      };
+      if (saved?.bedoAutoStart === false) {
+        syncInitialStatus();
+        return;
+      }
+      // Only pre-spawn Python in sleep mode when "Hey Bedo" wake-word is enabled AND a Gemini key exists;
+      // otherwise stay at 0 MB RAM and lazy-start on first voice/UI trigger.
+      if (saved?.bedoEnableWake === false || !String(saved?.geminiApiKey || '').trim()) {
+        syncInitialStatus();
+        return;
+      }
       api.bedoStart({
         startPaused: true,
-        enableWake: saved?.bedoEnableWake !== false,
+        enableWake: true,
         enableClap: false,
       }).then((res) => {
         if (res?.status) setBedoStatus(res.status);
@@ -4068,7 +4082,8 @@ export default function App() {
       setRoboReply(null);
       setRoboLoading(true);
       const isOsDesktopCommand = /\b(aç\b|kapat\b|sesi\b|ses\s+seviye|parlaklık|alarm|hatırlat|zamanlayıcı|ekran\s+görüntüsü|kamerayı|open\s+|launch\s+|close\s+|volume|brightness)/i.test(q);
-      const shouldUseLiveVoiceEngine = bedoStatus.running && (!bedoStatus.paused || isOsDesktopCommand);
+      const canLazyStartLiveEngine = Boolean(bedoStatus.available && islandSettings.geminiApiKey?.trim());
+      const shouldUseLiveVoiceEngine = (bedoStatus.running || canLazyStartLiveEngine) && (!bedoStatus.paused || isOsDesktopCommand);
       if (shouldUseLiveVoiceEngine) {
         if (bedoStatus.paused) {
           await window.twocode?.bedoSetPaused?.(false);

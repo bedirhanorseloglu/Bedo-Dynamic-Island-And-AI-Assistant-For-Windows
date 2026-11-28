@@ -51,22 +51,50 @@ try:
 except Exception:
     WhisperModel = None
 
+import importlib.util
+
 try:
     from audio_clean import RealTimeSpeechDenoiser
 except Exception:
     RealTimeSpeechDenoiser = None
 
-try:
-    from vosk import KaldiRecognizer, Model, SetLogLevel  # type: ignore[reportMissingImports]
-except Exception:
-    KaldiRecognizer = None
-    Model = None
-    SetLogLevel = None
+# Vosk ve WakeGestureListener başlangıçta boşuna RAM (~35 MB libvosk.dll) tüketmemesi için
+# yalnızca ihtiyaç duyulduğunda (Whisper yoksa veya çift alkış açıksa) lazy-import edilir.
+VOSK_AVAILABLE = importlib.util.find_spec("vosk") is not None
+KaldiRecognizer = None
+Model = None
+SetLogLevel = None
+WakeGestureListener = None
 
-try:
-    from wakeup_listener import WakeGestureListener
-except Exception:
-    WakeGestureListener = None
+
+def _ensure_vosk_imported() -> bool:
+    global KaldiRecognizer, Model, SetLogLevel
+    if Model is not None and KaldiRecognizer is not None:
+        return True
+    try:
+        from vosk import (  # type: ignore[reportMissingImports]
+            KaldiRecognizer as _KR,
+            Model as _M,
+            SetLogLevel as _SLL,
+        )
+        KaldiRecognizer = _KR
+        Model = _M
+        SetLogLevel = _SLL
+        return True
+    except Exception:
+        return False
+
+
+def _ensure_clap_imported():
+    global WakeGestureListener
+    if WakeGestureListener is not None:
+        return WakeGestureListener
+    try:
+        from wakeup_listener import WakeGestureListener as _WGL
+        WakeGestureListener = _WGL
+    except Exception:
+        WakeGestureListener = None
+    return WakeGestureListener
 
 
 DEFAULT_MODEL_NAME = "vosk-model-small-tr-0.3"
@@ -223,7 +251,7 @@ class WakeWordListener:
         return raw
 
     def _load_model(self):
-        if Model is None:
+        if not _ensure_vosk_imported() or Model is None:
             raise RuntimeError("vosk paketi yüklü değil.")
         if SetLogLevel is not None:
             SetLogLevel(-1)
@@ -239,7 +267,7 @@ class WakeWordListener:
                 "tiny",
                 device="cpu",
                 compute_type="int8",
-                cpu_threads=2,
+                cpu_threads=1,
                 num_workers=1,
                 local_files_only=False,
             )
@@ -545,7 +573,7 @@ class WakeManager:
     def start(self) -> dict[str, bool]:
         status = {"voice": False, "clap": False}
         has_whisper = WhisperModel is not None and webrtcvad is not None and np is not None
-        if self.enable_voice and (has_whisper or Model is not None):
+        if self.enable_voice and (has_whisper or VOSK_AVAILABLE or _ensure_vosk_imported()):
             model_dir = self.models_dir if has_whisper else ensure_vosk_model(self.models_dir)
             self._voice = WakeWordListener(
                 model_path=model_dir,
@@ -554,8 +582,9 @@ class WakeManager:
             self._voice.start()
             status["voice"] = True
 
-        if self.enable_clap and WakeGestureListener is not None:
-            self._clap = WakeGestureListener(
+        clap_cls = _ensure_clap_imported() if self.enable_clap else None
+        if self.enable_clap and clap_cls is not None:
+            self._clap = clap_cls(
                 on_wake=lambda: self._on_wake("clap", ""),
             )
             self._clap.start()

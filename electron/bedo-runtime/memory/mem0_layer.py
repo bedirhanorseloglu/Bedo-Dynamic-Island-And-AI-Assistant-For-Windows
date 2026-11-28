@@ -21,15 +21,14 @@ from typing import Any
 
 from app_config import get_app_config_value
 
+import importlib.util
+
 os.environ.setdefault("MEM0_TELEMETRY", "false")
 
-try:
-    from mem0 import Memory as _Mem0Memory  # type: ignore[reportMissingImports]
-
-    MEM0_SDK_AVAILABLE = True
-except Exception:
-    _Mem0Memory = None
-    MEM0_SDK_AVAILABLE = False
+# Mem0 ve ağır bağımlılıkları (qdrant_client, grpc, sqlalchemy ~65 MB) modül import anında değil,
+# ilk gerçek semantik hafıza erişiminde (_get_client) tembel (lazy) olarak yüklenir.
+_Mem0Memory: Any = None
+MEM0_SDK_AVAILABLE = importlib.util.find_spec("mem0") is not None
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 MEMORY_DIR = BASE_DIR / "memory"
@@ -264,9 +263,9 @@ def _build_mem0_config(keys: dict[str, str], discover: bool = True) -> tuple[str
 
 def _get_client() -> Any:
     """Mem0 istemcisini güvenli, lazy ve thread-safe şekilde başlatır."""
-    global _MEM0_CLIENT, _MEM0_PROVIDER, _INIT_FAILED_UNTIL
+    global _MEM0_CLIENT, _MEM0_PROVIDER, _INIT_FAILED_UNTIL, _Mem0Memory, MEM0_SDK_AVAILABLE
 
-    if not MEM0_SDK_AVAILABLE or _Mem0Memory is None:
+    if not MEM0_SDK_AVAILABLE:
         return None
     if os.environ.get("BEDO_DISABLE_MEM0", "").strip().lower() in {"1", "true", "yes"}:
         return None
@@ -276,6 +275,13 @@ def _get_client() -> Any:
             return _MEM0_CLIENT
         if time.monotonic() < _INIT_FAILED_UNTIL:
             return None
+        if _Mem0Memory is None:
+            try:
+                from mem0 import Memory as _ImportedMem0Memory  # type: ignore[reportMissingImports]
+                _Mem0Memory = _ImportedMem0Memory
+            except Exception:
+                MEM0_SDK_AVAILABLE = False
+                return None
 
         keys = _resolve_api_keys()
         provider, cfg = _build_mem0_config(keys)

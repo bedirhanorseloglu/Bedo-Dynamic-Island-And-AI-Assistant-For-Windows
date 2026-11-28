@@ -381,6 +381,26 @@ function upsertLiveBedoChatTurn(role, rawText, { isNewTurn = false, source = 'vo
   broadcastBedoChatHistory(bedoChatHistoryCache);
 }
 
+function hasConfiguredGeminiKey() {
+  return Boolean(String(userSettings.geminiApiKey || process.env.GEMINI_API_KEY || '').trim());
+}
+
+function buildDefaultBedoStartOptions({ startPaused = true } = {}) {
+  return {
+    apiKey: userSettings.geminiApiKey || process.env.GEMINI_API_KEY || '',
+    openaiApiKey: userSettings.codexApiKey || process.env.OPENAI_API_KEY || '',
+    anthropicApiKey: userSettings.claudeApiKey || process.env.ANTHROPIC_API_KEY || '',
+    voice: userSettings.bedoVoice || 'Charon',
+    speakerVolume: Number.isFinite(Number(userSettings.bedoSpeakerVolume))
+      ? Number(userSettings.bedoSpeakerVolume)
+      : 1,
+    speakerMuted: Boolean(userSettings.bedoSpeakerMuted),
+    startPaused: Boolean(startPaused),
+    enableWake: userSettings.bedoEnableWake !== false,
+    enableClap: false,
+  };
+}
+
 function getBedoService() {
   if (bedoService) return bedoService;
   bedoService = new BedoService();
@@ -1100,39 +1120,41 @@ function saveSettingsToDisk(nextSettings, opts = {}) {
   }
   if (
     Object.prototype.hasOwnProperty.call(nextSettings || {}, 'geminiApiKey') &&
-    String(userSettings.geminiApiKey || '').trim()
+    String(userSettings.geminiApiKey || '').trim() &&
+    userSettings.bedoEnableWake !== false
   ) {
     try {
       const svc = getBedoService();
       if (!svc.getStatus().running) {
-        svc.start({
-          apiKey: userSettings.geminiApiKey,
-          openaiApiKey: userSettings.codexApiKey || process.env.OPENAI_API_KEY || '',
-          anthropicApiKey: userSettings.claudeApiKey || process.env.ANTHROPIC_API_KEY || '',
-          voice: userSettings.bedoVoice || 'Charon',
-          startPaused: true,
-          enableWake: userSettings.bedoEnableWake !== false,
-          enableClap: false,
-        });
+        svc.start(buildDefaultBedoStartOptions({ startPaused: true }));
       }
     } catch {}
   }
   if (
-    (Object.prototype.hasOwnProperty.call(nextSettings || {}, 'bedoVoice') ||
-      Object.prototype.hasOwnProperty.call(nextSettings || {}, 'bedoEnableWake')) &&
-    bedoService &&
-    bedoService.getStatus().running
+    Object.prototype.hasOwnProperty.call(nextSettings || {}, 'bedoVoice') ||
+    Object.prototype.hasOwnProperty.call(nextSettings || {}, 'bedoEnableWake')
   ) {
-    const wasPaused = bedoService.getStatus().paused;
-    bedoService.stop().then(() => {
-      bedoService.start({
-        apiKey: userSettings.geminiApiKey || process.env.GEMINI_API_KEY || '',
-        voice: userSettings.bedoVoice || 'Charon',
-        startPaused: wasPaused,
-        enableWake: userSettings.bedoEnableWake !== false,
-        enableClap: false,
-      });
-    }).catch(() => {});
+    const svc = bedoService;
+    if (svc && svc.getStatus().running) {
+      const wasPaused = svc.getStatus().paused;
+      svc.stop().then(() => {
+        // If sleeping and wake-word was disabled, keep Python stopped (0 MB RAM until triggered).
+        if (wasPaused && userSettings.bedoEnableWake === false) {
+          return;
+        }
+        if (hasConfiguredGeminiKey()) {
+          svc.start(buildDefaultBedoStartOptions({ startPaused: wasPaused }));
+        }
+      }).catch(() => {});
+    } else if (
+      Object.prototype.hasOwnProperty.call(nextSettings || {}, 'bedoEnableWake') &&
+      userSettings.bedoEnableWake !== false &&
+      hasConfiguredGeminiKey()
+    ) {
+      try {
+        getBedoService().start(buildDefaultBedoStartOptions({ startPaused: true }));
+      } catch {}
+    }
   }
   try {
     writeFileAtomicSync(
@@ -3328,20 +3350,13 @@ app.whenReady().then(() => {
       if (
         status?.state === 'ready' &&
         userSettings.bedoAutoStart !== false &&
-        String(userSettings.geminiApiKey || '').trim()
+        userSettings.bedoEnableWake !== false &&
+        hasConfiguredGeminiKey()
       ) {
         try {
           const svc = getBedoService();
           if (!svc.getStatus().running) {
-            svc.start({
-              apiKey: userSettings.geminiApiKey,
-              openaiApiKey: userSettings.codexApiKey || process.env.OPENAI_API_KEY || '',
-              anthropicApiKey: userSettings.claudeApiKey || process.env.ANTHROPIC_API_KEY || '',
-              voice: userSettings.bedoVoice || 'Charon',
-              startPaused: true,
-              enableWake: userSettings.bedoEnableWake !== false,
-              enableClap: false,
-            });
+            svc.start(buildDefaultBedoStartOptions({ startPaused: true }));
           }
         } catch {}
       }
@@ -8085,10 +8100,14 @@ ipcMain.handle('bedo:status', async () => {
 
 ipcMain.handle('bedo:send-text', async (_event, text) => {
   const cleanText = String(text || '').trim();
-  if (cleanText) {
-    upsertLiveBedoChatTurn('user', cleanText, { isNewTurn: true, source: 'text', provider: 'Bedo' });
+  if (!cleanText) return { ok: false };
+  upsertLiveBedoChatTurn('user', cleanText, { isNewTurn: true, source: 'text', provider: 'Bedo' });
+  const svc = getBedoService();
+  if (!svc.getStatus().running && hasConfiguredGeminiKey()) {
+    const started = svc.start(buildDefaultBedoStartOptions({ startPaused: false }));
+    if (!started.ok) return { ok: false };
   }
-  const ok = getBedoService().sendText(text);
+  const ok = svc.sendText(cleanText);
   return { ok };
 });
 
@@ -8176,12 +8195,28 @@ ipcMain.handle('bedo:set-system-mic-muted', async (_event, muted) => {
 });
 
 ipcMain.handle('bedo:set-paused', async (_event, paused) => {
-  const ok = getBedoService().setPaused(Boolean(paused));
+  const targetPaused = Boolean(paused);
+  const svc = getBedoService();
+  if (!targetPaused && !svc.getStatus().running) {
+    if (!hasConfiguredGeminiKey()) return { ok: false };
+    const started = svc.start(buildDefaultBedoStartOptions({ startPaused: false }));
+    return { ok: Boolean(started.ok), status: svc.getStatus() };
+  }
+  if (targetPaused && userSettings.bedoEnableWake === false && svc.getStatus().running) {
+    await svc.stop();
+    return { ok: true, status: svc.getStatus() };
+  }
+  const ok = svc.setPaused(targetPaused);
   return { ok };
 });
 
 ipcMain.handle('bedo:set-webcam', async (_event, active) => {
-  const ok = getBedoService().setWebcam(Boolean(active));
+  const targetActive = Boolean(active);
+  const svc = getBedoService();
+  if (targetActive && !svc.getStatus().running && hasConfiguredGeminiKey()) {
+    svc.start(buildDefaultBedoStartOptions({ startPaused: false }));
+  }
+  const ok = svc.setWebcam(targetActive);
   return { ok };
 });
 

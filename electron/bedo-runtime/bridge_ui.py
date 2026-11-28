@@ -265,11 +265,12 @@ class BridgeUI:
             if key:
                 os.environ["BEDO_GEMINI_API_KEY"] = key
                 self._api_key_ready.set()
-                try:
-                    from actions.rag import clear_rag_caches
-                    clear_rag_caches()
-                except Exception:
-                    pass
+                if "actions.rag" in sys.modules:
+                    try:
+                        from actions.rag import clear_rag_caches
+                        clear_rag_caches()
+                    except Exception:
+                        pass
                 self.emit("api_key_updated", ok=True)
             return True
 
@@ -284,11 +285,12 @@ class BridgeUI:
                 os.environ["BEDO_OPENAI_API_KEY"] = o
             if a:
                 os.environ["BEDO_ANTHROPIC_API_KEY"] = a
-            try:
-                from actions.rag import clear_rag_caches
-                clear_rag_caches()
-            except Exception:
-                pass
+            if "actions.rag" in sys.modules:
+                try:
+                    from actions.rag import clear_rag_caches
+                    clear_rag_caches()
+                except Exception:
+                    pass
             self.emit("api_key_updated", ok=True)
             return True
 

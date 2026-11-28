@@ -62,6 +62,7 @@ class BedoService extends EventEmitter {
     this._stopping = false;
     this._systemMicMuted = false;
     this._lastStartOpts = null;
+    this._pendingCommands = [];
     this._restartCount = 0;
     this._restartTimer = null;
     this._state = {
@@ -71,7 +72,7 @@ class BedoService extends EventEmitter {
       muted: false,
       speakerVolume: 1,
       speakerMuted: false,
-      paused: false,
+      paused: true,
       webcamActive: false,
       wakeEnabled: true,
       lastError: null,
@@ -137,6 +138,7 @@ class BedoService extends EventEmitter {
 
     this._stopping = false;
     this._lastStartOpts = { ...opts };
+    this._pendingCommands = [];
     if (this._restartTimer) {
       clearTimeout(this._restartTimer);
       this._restartTimer = null;
@@ -180,8 +182,10 @@ class BedoService extends EventEmitter {
     proc.on('exit', (code, signal) => {
       const wasStopping = this._stopping;
       this._proc = null;
+      this._pendingCommands = [];
       this._state.running = false;
       this._state.ready = false;
+      this._state.paused = true;
       this._state.webcamActive = false;
       if (!wasStopping && code !== 0 && code !== null) {
         this._state.lastError = `Bedo süreci beklenmedik şekilde kapandı (kod: ${code})`;
@@ -228,7 +232,13 @@ class BedoService extends EventEmitter {
         this._state.paused = Boolean(msg.paused);
         this._state.wakeEnabled = msg.wake_enabled !== false;
         if (this._systemMicMuted) {
-          this.sendCommand({ cmd: 'set_system_mic_muted', muted: true });
+          this._writeImmediate({ cmd: 'set_system_mic_muted', muted: true });
+        }
+        if (this._pendingCommands.length > 0) {
+          const queued = this._pendingCommands.splice(0, this._pendingCommands.length);
+          for (const item of queued) {
+            this._writeImmediate(item);
+          }
         }
         this.emit('status', this.getStatus());
         break;
@@ -261,7 +271,7 @@ class BedoService extends EventEmitter {
     this.emit('event', msg);
   }
 
-  sendCommand(payload) {
+  _writeImmediate(payload) {
     if (!this._proc || !this._proc.stdin || this._proc.stdin.destroyed) {
       return false;
     }
@@ -271,6 +281,17 @@ class BedoService extends EventEmitter {
     } catch {
       return false;
     }
+  }
+
+  sendCommand(payload) {
+    if (!this._proc || !this._proc.stdin || this._proc.stdin.destroyed) {
+      return false;
+    }
+    if (!this._state.ready && payload && payload.cmd !== 'shutdown') {
+      this._pendingCommands.push(payload);
+      return true;
+    }
+    return this._writeImmediate(payload);
   }
 
   sendText(text) {
