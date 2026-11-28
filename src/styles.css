@@ -4091,6 +4091,7 @@ select {
   align-items: center;
   gap: 2.5px;
   height: 14px;
+  contain: layout paint;
 }
 
 .soundwave span {
@@ -4098,8 +4099,11 @@ select {
   width: 2.6px;
   border-radius: 99px;
   background: var(--music-accent-hex, #8fa8c6);
-  height: 7px;
-  transition: height 0.2s ease, background 0.3s ease;
+  height: 13px;
+  transform: scaleY(0.54);
+  transform-origin: center;
+  will-change: transform, opacity;
+  transition: transform 0.2s ease, background 0.3s ease;
 }
 
 .soundwave.playing span:nth-child(1) {
@@ -4119,7 +4123,7 @@ select {
 }
 
 .soundwave.paused span {
-  height: 4px !important;
+  transform: scaleY(0.31) !important;
   opacity: 0.55;
 }
 
@@ -4127,12 +4131,12 @@ select {
 
   0%,
   100% {
-    height: 4px;
+    transform: scaleY(0.31);
     opacity: 0.75;
   }
 
   50% {
-    height: 13px;
+    transform: scaleY(1);
     opacity: 1;
   }
 }
@@ -4622,13 +4626,11 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
 
   0%,
   100% {
-    opacity: 0.84;
-    filter: brightness(0.96);
+    opacity: 0.82;
   }
 
   50% {
     opacity: 1;
-    filter: brightness(1.08);
   }
 }
 
@@ -4636,11 +4638,11 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
 
   0%,
   100% {
-    filter: brightness(0.92);
+    opacity: 0.85;
   }
 
   50% {
-    filter: brightness(1.3);
+    opacity: 1;
   }
 }
 
@@ -4648,11 +4650,11 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
 
   0%,
   100% {
-    filter: brightness(0.9);
+    opacity: 0.84;
   }
 
   50% {
-    filter: brightness(1.2);
+    opacity: 1;
   }
 }
 
@@ -4660,11 +4662,11 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
 
   0%,
   100% {
-    filter: brightness(0.88);
+    opacity: 0.76;
   }
 
   50% {
-    filter: brightness(1.35);
+    opacity: 1;
   }
 }
 
@@ -4672,12 +4674,24 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
 
   0%,
   100% {
-    filter: brightness(0.92);
+    opacity: 0.86;
   }
 
   50% {
-    filter: brightness(1.2);
+    opacity: 1;
   }
+}
+
+/* On 240Hz displays, continuous infinite animations in the collapsed resting pill force
+   240 GPU/Renderer frames per second all day. Keep crisp static status glows + natural 4.5s
+   blinking + one-shot reactions in resting idle so the window drops to 0 FPS between blinks,
+   while preserving full 240Hz animations on hover/expand and reactions. */
+body .layer-idle .robo-eyes-wrap:not([class*="reaction-"]):not(.poke-boop):not(.poke-dance):not(.dizzy):not(.is-low-battery) .robo-eye,
+body .layer-idle .robo-eyes-wrap:not([class*="reaction-"]) .robo-prop-unread,
+body .layer-idle .robo-eyes-wrap:not([class*="reaction-"]) .robo-prop-agenda,
+body .layer-idle .robo-eyes-wrap:not([class*="reaction-"]) .robo-prop-sleep,
+body .layer-idle .robo-eyes-wrap:not([class*="reaction-"]) .robo-prop-focus-visor::after {
+  animation: none !important;
 }
 
 @keyframes roboChargeFillIn {
@@ -6992,10 +7006,13 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
 .music-header-eq i {
   display: block;
   width: 2px;
-  height: 3px;
+  height: 11px;
   border-radius: 999px;
   background: rgba(var(--music-accent-rgb, 255, 255, 255), 0.9);
-  transition: height 0.2s ease;
+  transform: scaleY(0.27);
+  transform-origin: center;
+  will-change: transform, opacity;
+  transition: transform 0.2s ease;
 }
 
 .music-header-eq.is-playing i {
@@ -7019,11 +7036,11 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
 
 @keyframes musicHeaderEqBar {
   0% {
-    height: 3px;
+    transform: scaleY(0.27);
     opacity: 0.45;
   }
   100% {
-    height: 11px;
+    transform: scaleY(1);
     opacity: 1;
   }
 }
@@ -12377,11 +12394,11 @@ body .robo-eyes-wrap.is-charging.reaction-notification .robo-heart-eye.right {
 
   0%,
   100% {
-    filter: brightness(0.92);
+    opacity: 0.88;
   }
 
   50% {
-    filter: brightness(1.22);
+    opacity: 1;
   }
 }
 
@@ -17891,11 +17908,11 @@ body .robo-eyes-wrap.happy .robo-eye.right {
 @keyframes roboHappyJoy {
   0%, 100% {
     transform: translateY(0) scale(1, 1);
-    filter: brightness(1);
+    opacity: 0.92;
   }
   32% {
     transform: translateY(-2.4px) scale(1.12, 0.92);
-    filter: brightness(1.22);
+    opacity: 1;
   }
   58% {
     transform: translateY(0.5px) scale(0.96, 1.06);

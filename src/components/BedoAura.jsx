@@ -41,6 +41,8 @@ export default function BedoAura({ mode = 'listening', active = true }) {
 
     let rafId = 0;
     let phase = 0;
+    let lastDrawTime = 0;
+    const FRAME_INTERVAL_MS = 1000 / 60;
     const current = { ...MODE_CONFIG[modeRef.current] || MODE_CONFIG.listening };
 
     const resize = () => {
@@ -58,9 +60,17 @@ export default function BedoAura({ mode = 'listening', active = true }) {
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(resize) : null;
     if (ro) ro.observe(canvas);
 
-    const draw = () => {
+    const draw = (now = performance.now()) => {
+      rafId = requestAnimationFrame(draw);
+      const elapsed = lastDrawTime ? now - lastDrawTime : FRAME_INTERVAL_MS;
+      if (lastDrawTime && elapsed < FRAME_INTERVAL_MS * 0.88) {
+        return;
+      }
+      const dtScale = Math.min(2.5, Math.max(0.5, elapsed / FRAME_INTERVAL_MS));
+      lastDrawTime = now;
+
       const target = MODE_CONFIG[modeRef.current] || MODE_CONFIG.listening;
-      const lerp = 0.08;
+      const lerp = 1 - Math.pow(1 - 0.08, dtScale);
       current.r += (target.r - current.r) * lerp;
       current.g += (target.g - current.g) * lerp;
       current.b += (target.b - current.b) * lerp;
@@ -71,7 +81,7 @@ export default function BedoAura({ mode = 'listening', active = true }) {
       current.glow += (target.glow - current.glow) * lerp;
       current.orbit += (target.orbit - current.orbit) * lerp;
 
-      phase += current.speed;
+      phase += current.speed * dtScale;
 
       const w = canvas.width;
       const h = canvas.height;
@@ -123,8 +133,6 @@ export default function BedoAura({ mode = 'listening', active = true }) {
         ctx.fillRect(0, 0, w, h);
       }
       ctx.globalCompositeOperation = 'source-over';
-
-      rafId = requestAnimationFrame(draw);
     };
 
     rafId = requestAnimationFrame(draw);

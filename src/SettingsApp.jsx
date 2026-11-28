@@ -531,7 +531,20 @@ export default function SettingsApp() {
   const voicePreviewCacheRef = useRef(new Map());
 
   useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 1000);
+    const tick = () => {
+      setNow((prev) => {
+        const d = new Date();
+        if (
+          d.getMinutes() === prev.getMinutes() &&
+          d.getHours() === prev.getHours() &&
+          d.getDate() === prev.getDate()
+        ) {
+          return prev;
+        }
+        return d;
+      });
+    };
+    const t = setInterval(tick, 10000);
     return () => clearInterval(t);
   }, []);
 

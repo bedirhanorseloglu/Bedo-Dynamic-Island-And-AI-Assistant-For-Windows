@@ -3,8 +3,14 @@ param([string]$PipeName = 'twocode-ghelper-bridge')
 $ErrorActionPreference = 'Stop'
 
 $logFile = Join-Path $PSScriptRoot 'bridge-runtime.log'
+$script:lastDisconnectLogged = $false
 function Log-Bridge($msg) {
-    "$(Get-Date -Format 'HH:mm:ss.fff') $msg" | Out-File $logFile -Append
+    try {
+        if ((Test-Path -LiteralPath $logFile) -and (Get-Item -LiteralPath $logFile).Length -gt 262144) {
+            Set-Content -LiteralPath $logFile -Value '' -ErrorAction SilentlyContinue
+        }
+        "$(Get-Date -Format 'HH:mm:ss.fff') $msg" | Out-File $logFile -Append
+    } catch {}
 }
 
 Log-Bridge "Bridge host started. PipeName=$PipeName PID=$PID"
@@ -21,8 +27,10 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 
 [Guid("5CDF2C82-841E-4546-9722-0CF74078229A"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
 interface IAudioEndpointVolume {
@@ -34,6 +42,8 @@ interface IAudioEndpointVolume {
 [Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
 interface IMMDevice {
     int Activate(ref Guid id, int clsCtx, int activationParams, out IAudioEndpointVolume aev);
+    int OpenPropertyStore(int stgmAccess, out IntPtr ppProperties);
+    int GetId([MarshalAs(UnmanagedType.LPWStr)] out string ppstrId);
 }
 
 [Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
@@ -69,6 +79,9 @@ public static class GHelperOsdBridge {
   [DllImport("user32.dll")] static extern bool PeekMessage(out MSG msg, IntPtr hwnd, uint filterMin, uint filterMax, uint remove);
   [DllImport("user32.dll")] static extern bool TranslateMessage(ref MSG msg);
   [DllImport("user32.dll")] static extern IntPtr DispatchMessage(ref MSG msg);
+  [DllImport("kernel32.dll", SetLastError = true)] static extern IntPtr OpenProcess(uint dwDesiredAccess, bool bInheritHandle, uint dwProcessId);
+  [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)] static extern bool QueryFullProcessImageName(IntPtr hProcess, uint dwFlags, StringBuilder lpExeName, ref uint lpdwSize);
+  [DllImport("kernel32.dll", SetLastError = true)] static extern bool CloseHandle(IntPtr hObject);
 
   const uint EVENT_OBJECT_CREATE = 0x8000;
   const uint EVENT_OBJECT_SHOW = 0x8002;
@@ -82,6 +95,7 @@ public static class GHelperOsdBridge {
   public static bool HookReady;
   public static volatile bool TwoCodeActive = false;
 
+  static readonly AutoResetEvent messageSignal = new AutoResetEvent(false);
   static WinEventDelegate winEventCallback;
   static IntPtr winEventHook = IntPtr.Zero;
   static readonly ConcurrentDictionary<uint, bool> processCache = new ConcurrentDictionary<uint, bool>();
@@ -89,24 +103,63 @@ public static class GHelperOsdBridge {
   static bool lastMicState = false;
   static bool micInitialized = false;
 
+  static IMMDeviceEnumerator sharedEnumerator;
+  static IAudioEndpointVolume cachedMicEndpoint;
+  static string cachedMicDeviceId;
+  static long lastMicDeviceCheckMs;
+
   static long Now() { return DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(); }
 
-  public static bool IsMicMuted() {
-    try {
-        var enumerator = new MMDeviceEnumeratorComObject() as IMMDeviceEnumerator;
-        IMMDevice dev = null;
-        enumerator.GetDefaultAudioEndpoint(1, 2, out dev);
-        if (dev == null) return false;
-        Guid epvId = typeof(IAudioEndpointVolume).GUID;
-        IAudioEndpointVolume aev;
-        dev.Activate(ref epvId, 23, 0, out aev);
-        if (aev == null) return false;
-        bool muted;
-        aev.GetMute(out muted);
-        return muted;
-    } catch {
-        return false;
+  static void InvalidateMicEndpoint() {
+    if (cachedMicEndpoint != null) {
+      try { Marshal.ReleaseComObject(cachedMicEndpoint); } catch {}
+      cachedMicEndpoint = null;
     }
+    cachedMicDeviceId = null;
+    lastMicDeviceCheckMs = 0;
+  }
+
+  public static bool IsMicMuted() {
+    for (int attempt = 0; attempt < 2; attempt++) {
+      IMMDevice dev = null;
+      try {
+        long now = Now();
+        if (cachedMicEndpoint == null || attempt > 0 || (now - lastMicDeviceCheckMs) > 3000) {
+          lastMicDeviceCheckMs = now;
+          if (sharedEnumerator == null) {
+            sharedEnumerator = new MMDeviceEnumeratorComObject() as IMMDeviceEnumerator;
+          }
+          if (sharedEnumerator == null) return false;
+          sharedEnumerator.GetDefaultAudioEndpoint(1, 2, out dev);
+          if (dev == null) sharedEnumerator.GetDefaultAudioEndpoint(1, 1, out dev);
+          if (dev == null) { InvalidateMicEndpoint(); return false; }
+          string devId = null;
+          try { dev.GetId(out devId); } catch {}
+          if (cachedMicEndpoint == null || devId == null || devId != cachedMicDeviceId) {
+            InvalidateMicEndpoint();
+            Guid epvId = typeof(IAudioEndpointVolume).GUID;
+            dev.Activate(ref epvId, 23, 0, out cachedMicEndpoint);
+            if (cachedMicEndpoint == null) return false;
+            cachedMicDeviceId = devId;
+          }
+        }
+        bool muted;
+        if (cachedMicEndpoint.GetMute(out muted) < 0) {
+          InvalidateMicEndpoint();
+          continue;
+        }
+        return muted;
+      } catch {
+        InvalidateMicEndpoint();
+        if (sharedEnumerator != null) {
+          try { Marshal.ReleaseComObject(sharedEnumerator); } catch {}
+          sharedEnumerator = null;
+        }
+      } finally {
+        if (dev != null) try { Marshal.ReleaseComObject(dev); } catch {}
+      }
+    }
+    return false;
   }
 
   static bool IsGHelperProcess(uint processId) {
@@ -114,12 +167,19 @@ public static class GHelperOsdBridge {
     bool cached;
     if (processCache.TryGetValue(processId, out cached)) return cached;
     bool isGHelper = false;
-    try {
-      using (Process process = Process.GetProcessById((int)processId)) {
-        string name = process.ProcessName;
-        isGHelper = string.Equals(name, "GHelper", StringComparison.OrdinalIgnoreCase) || string.Equals(name, "G-Helper", StringComparison.OrdinalIgnoreCase);
+    IntPtr hProc = OpenProcess(0x1000, false, processId);
+    if (hProc != IntPtr.Zero) {
+      try {
+        StringBuilder sb = new StringBuilder(512);
+        uint size = (uint)sb.Capacity;
+        if (QueryFullProcessImageName(hProc, 0, sb, ref size)) {
+          string name = Path.GetFileNameWithoutExtension(sb.ToString());
+          isGHelper = string.Equals(name, "GHelper", StringComparison.OrdinalIgnoreCase) || string.Equals(name, "G-Helper", StringComparison.OrdinalIgnoreCase);
+        }
+      } catch {} finally {
+        CloseHandle(hProc);
       }
-    } catch {}
+    }
     if (processCache.Count > 512) processCache.Clear();
     processCache[processId] = isGHelper;
     return isGHelper;
@@ -193,6 +253,7 @@ public static class GHelperOsdBridge {
         string msg = string.Format("{{\"type\":\"osd-trigger\",\"width\":{0},\"height\":{1},\"micMuted\":{2},\"micToggled\":{3},\"at\":{4}}}",
             width, height, currentMic.ToString().ToLowerInvariant(), micToggled.ToString().ToLowerInvariant(), now);
         Messages.Enqueue(msg);
+        try { messageSignal.Set(); } catch {}
       }
     } catch {}
   }
@@ -206,8 +267,7 @@ public static class GHelperOsdBridge {
     HookReady = winEventHook != IntPtr.Zero;
   }
 
-  public static void Pump(int milliseconds) {
-    MsgWaitForMultipleObjects(0, null, false, (uint)milliseconds, 0x04FF);
+  private static void DrainWinMessages() {
     MSG msg;
     while (PeekMessage(out msg, IntPtr.Zero, 0, 0, 1)) {
       TranslateMessage(ref msg);
@@ -215,8 +275,38 @@ public static class GHelperOsdBridge {
     }
   }
 
+  public static void Pump(int milliseconds) {
+    if (!Messages.IsEmpty) {
+      DrainWinMessages();
+      return;
+    }
+    long deadline = Now() + Math.Max(0, milliseconds);
+    IntPtr[] handles = new IntPtr[] { messageSignal.SafeWaitHandle.DangerousGetHandle() };
+    while (true) {
+      DrainWinMessages();
+      if (!Messages.IsEmpty) return;
+      long remaining = deadline - Now();
+      if (remaining <= 0) return;
+      uint res = MsgWaitForMultipleObjects(1, handles, false, (uint)Math.Min(remaining, 4000), 0x04FF);
+      if (res == 0) {
+        // messageSignal fired: an OSD message was enqueued
+        DrainWinMessages();
+        return;
+      }
+      if (res == 258) {
+        // WAIT_TIMEOUT
+        return;
+      }
+    }
+  }
+
   public static void Stop() {
     if (winEventHook != IntPtr.Zero) { UnhookWinEvent(winEventHook); winEventHook = IntPtr.Zero; }
+    InvalidateMicEndpoint();
+    if (sharedEnumerator != null) {
+      try { Marshal.ReleaseComObject(sharedEnumerator); } catch {}
+      sharedEnumerator = null;
+    }
   }
 }
 '@
@@ -239,6 +329,7 @@ try {
       $writer = New-Object System.IO.StreamWriter($pipe, (New-Object System.Text.UTF8Encoding($false)))
       $writer.AutoFlush = $true
       [GHelperOsdBridge]::TwoCodeActive = $true
+      $script:lastDisconnectLogged = $false
       Log-Bridge "Connected to pipe $PipeName"
       try {
         $writer.WriteLine(('{{"type":"hello","hook":{0},"pid":{1}}}' -f ([GHelperOsdBridge]::HookReady.ToString().ToLowerInvariant()), $PID))
@@ -247,7 +338,8 @@ try {
       $lastPing = [DateTimeOffset]::UtcNow
       $message = $null
       while ($pipe.IsConnected) {
-        [GHelperOsdBridge]::Pump(30)
+        # Block inside native C# MsgWaitForMultipleObjects up to 4000ms; returns in 0ms on OSD signal!
+        [GHelperOsdBridge]::Pump(4000)
         while ([GHelperOsdBridge]::Messages.TryDequeue([ref]$message)) {
           try {
             $writer.WriteLine($message)
@@ -264,17 +356,21 @@ try {
           }
         }
       }
-      Log-Bridge "Pipe disconnected; retrying."
+      if (-not $script:lastDisconnectLogged) {
+        $script:lastDisconnectLogged = $true
+        Log-Bridge "Pipe disconnected; retrying."
+      }
     } catch {
-      Log-Bridge "Pipe unavailable; retrying: $($_.Exception.Message)"
+      if (-not $script:lastDisconnectLogged) {
+        $script:lastDisconnectLogged = $true
+        Log-Bridge "Pipe unavailable; waiting for TwoCode..."
+      }
     } finally {
       [GHelperOsdBridge]::TwoCodeActive = $false
       if ($writer) { try { $writer.Dispose() } catch {} }
       if ($pipe) { try { $pipe.Dispose() } catch {} }
     }
-    for ($i = 0; $i -lt 5; $i++) {
-      [GHelperOsdBridge]::Pump(100)
-    }
+    [GHelperOsdBridge]::Pump(1500)
   }
 } catch {
   Log-Bridge "Fatal bridge exception: $($_.Exception.ToString())"

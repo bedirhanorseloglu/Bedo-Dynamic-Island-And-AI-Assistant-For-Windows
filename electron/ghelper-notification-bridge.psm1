@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
@@ -6,17 +6,48 @@ Add-Type -AssemblyName System.Windows.Forms
 
 Add-Type -TypeDefinition @'
 using System;
+using System.Collections.Concurrent;
+using System.IO;
 using System.Runtime.InteropServices;
+using System.Text;
 public static class GHelperWindowHook {
   public delegate void WinEventDelegate(IntPtr hook, uint eventType, IntPtr hwnd, int objectId, int childId, uint threadId, uint time);
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
   [DllImport("user32.dll", SetLastError=true)] public static extern IntPtr SetWinEventHook(uint eventMin, uint eventMax, IntPtr module, WinEventDelegate callback, uint processId, uint threadId, uint flags);
   [DllImport("user32.dll")] public static extern bool UnhookWinEvent(IntPtr hook);
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
-  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr hwnd, System.Text.StringBuilder text, int count);
-  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr hwnd, System.Text.StringBuilder text, int count);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr hwnd, StringBuilder text, int count);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr hwnd, StringBuilder text, int count);
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hwnd, out RECT rect);
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hwnd, int command);
+  [DllImport("kernel32.dll", SetLastError=true)] static extern IntPtr OpenProcess(uint dwDesiredAccess, bool bInheritHandle, uint dwProcessId);
+  [DllImport("kernel32.dll", SetLastError=true, CharSet=CharSet.Unicode)] static extern bool QueryFullProcessImageName(IntPtr hProcess, uint dwFlags, StringBuilder lpExeName, ref uint lpdwSize);
+  [DllImport("kernel32.dll", SetLastError=true)] static extern bool CloseHandle(IntPtr hObject);
+
+  static readonly ConcurrentDictionary<uint, bool> ghelperPidCache = new ConcurrentDictionary<uint, bool>();
+
+  public static bool IsGHelperProcess(uint processId) {
+    if (processId == 0) return false;
+    bool cached;
+    if (ghelperPidCache.TryGetValue(processId, out cached)) return cached;
+    bool isGHelper = false;
+    IntPtr hProc = OpenProcess(0x1000, false, processId);
+    if (hProc != IntPtr.Zero) {
+      try {
+        StringBuilder sb = new StringBuilder(512);
+        uint size = (uint)sb.Capacity;
+        if (QueryFullProcessImageName(hProc, 0, sb, ref size)) {
+          string name = Path.GetFileNameWithoutExtension(sb.ToString());
+          isGHelper = string.Equals(name, "GHelper", StringComparison.OrdinalIgnoreCase) || string.Equals(name, "G-Helper", StringComparison.OrdinalIgnoreCase);
+        }
+      } catch {} finally {
+        CloseHandle(hProc);
+      }
+    }
+    if (ghelperPidCache.Count > 512) ghelperPidCache.Clear();
+    ghelperPidCache[processId] = isGHelper;
+    return isGHelper;
+  }
 }
 '@
 
@@ -139,8 +170,7 @@ function Try-HideGHelperToast($hwnd, $ownerPid) {
       if ([Math]::Abs($centerX - ($monitorBounds.Left + $monitorBounds.Width / 2)) -gt ($monitorBounds.Width * 0.16)) { return }
       if ($bottomOffset -lt 150 -or $bottomOffset -gt 500) { return }
     }
-    $owner = [System.Diagnostics.Process]::GetProcessById([int]$ownerPid)
-    if ($owner.ProcessName -notin @('GHelper', 'G-Helper')) { return }
+    if (-not [GHelperWindowHook]::IsGHelperProcess([uint32]$ownerPid)) { return }
     $toastText = Get-GHelperToastText $hwnd $caption.ToString()
     if (-not [string]::IsNullOrWhiteSpace($toastText)) {
       Write-Notification $ownerPid $toastText ''
@@ -151,14 +181,29 @@ function Try-HideGHelperToast($hwnd, $ownerPid) {
   } catch {}
 }
 
+function Test-GHelperInstalled {
+  $candidates = @(
+    (Join-Path $env:APPDATA 'GHelper\config.json'),
+    (Join-Path $env:PROGRAMDATA 'GHelper\config.json'),
+    (Join-Path $env:LOCALAPPDATA 'Programs\GHelper\GHelper.exe'),
+    'C:\Program Files\GHelper\GHelper.exe'
+  )
+  foreach ($p in $candidates) {
+    if ($p -and (Test-Path -LiteralPath $p)) { return $true }
+  }
+  return [bool](Get-Process -Name 'GHelper', 'G-Helper' -ErrorAction SilentlyContinue)
+}
+
 function Start-GHelperNotificationBridge {
   try {
+  if (-not (Test-GHelperInstalled)) {
+    return $false
+  }
   $script:uiaHandler = [System.Windows.Automation.AutomationEventHandler]{
     param($sender, $eventArgs)
     try {
       $processId = [int]$sender.Current.ProcessId
-      $proc = [System.Diagnostics.Process]::GetProcessById($processId)
-      if ($proc.ProcessName -notin @('GHelper', 'G-Helper')) { return }
+      if (-not [GHelperWindowHook]::IsGHelperProcess([uint32]$processId)) { return }
       $notification = [System.Windows.Automation.NotificationEventArgs]$eventArgs
       Write-Notification $processId $notification.DisplayString $notification.ActivityId
     } catch {}

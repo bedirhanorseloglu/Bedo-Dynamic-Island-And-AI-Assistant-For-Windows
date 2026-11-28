@@ -57,6 +57,7 @@ const { ensurePythonRuntimeBackground, getAvailablePythonExe, getPythonBootstrap
 const { isKickStream, fetchKickStreamerCover } = require('./kick-cover.cjs');
 const { queryWindowsBatteryEta } = require('./battery-eta.cjs');
 const { createWindowsBannerSuppressor } = require('./win-banner-suppressor.cjs');
+const { syncWindowsStartup } = require('./startup-policy.cjs');
 const perfMonitor = createPerfMonitor();
 let bedoService = null;
 let windowsBannerSuppressor = null;
@@ -386,7 +387,7 @@ function getBedoService() {
   bedoService.on('event', (msg) => {
     if (msg?.type === 'wake' && mainWindow && !mainWindow.isDestroyed()) {
       try {
-        if (!mainWindow.isVisible()) mainWindow.show();
+        if (!mainWindow.isVisible()) mainWindow.showInactive();
         mainWindow.setAlwaysOnTop(true, 'screen-saver');
       } catch {}
     }
@@ -442,7 +443,7 @@ app.commandLine.appendSwitch('media-cache-size', '10485760');
 app.commandLine.appendSwitch('enable-features', 'TrimOnMemoryPressure');
 app.commandLine.appendSwitch(
   'disable-features',
-  'SpareRendererForSitePerProcess,CalculateNativeWinOcclusion,InterestFeedContentSuggestions,AutofillServerCommunication,CertificateTransparencyComponentUpdater,MetricsReporting,OptimizationHints,MediaRouter'
+  'SpareRendererForSitePerProcess,InterestFeedContentSuggestions,AutofillServerCommunication,CertificateTransparencyComponentUpdater,MetricsReporting,OptimizationHints,MediaRouter'
 );
 
 // Handle Squirrel.Windows install / update / uninstall lifecycle events cleanly
@@ -494,7 +495,7 @@ if (!gotSingleInstanceLock) {
 } else {
   app.on('second-instance', () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.show();
+      mainWindow.showInactive();
       mainWindow.webContents.send('notch-hover-change', true);
     }
     if (settingsWindow && !settingsWindow.isDestroyed()) {
@@ -506,19 +507,12 @@ if (!gotSingleInstanceLock) {
   });
 }
 
-function trimWorkingSetAndGC({ trimWorkingSet = false } = {}) {
+function trimWorkingSetAndGC() {
   try {
     if (global.gc) {
       global.gc();
     }
   } catch {}
-  if (trimWorkingSet) {
-    try {
-      if (process.platform === 'win32' && typeof process.trimWorkingSet === 'function') {
-        process.trimWorkingSet();
-      }
-    } catch {}
-  }
 }
 
 const CANVAS_WIDTH = 780;
@@ -1162,18 +1156,7 @@ function saveSettingsToDisk(nextSettings, opts = {}) {
 }
 
 function applyStartWithWindows(enabled) {
-  try {
-    const options = { openAtLogin: Boolean(enabled), enabled: Boolean(enabled) };
-    if (process.platform === 'win32') {
-      options.path = process.execPath;
-      options.args = app.isPackaged ? [] : [`"${app.getAppPath()}"`];
-    }
-    app.setLoginItemSettings(options);
-    return true;
-  } catch (error) {
-    console.warn('Could not update Windows startup setting:', error?.message || error);
-    return false;
-  }
+  return syncWindowsStartup({ app, enabled });
 }
 
 // Real local AI history state (Codex, Claude Code, Gemini CLI & Antigravity)
@@ -2174,7 +2157,7 @@ function createTray() {
   tray.setToolTip('Bedo');
   tray.on('click', () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.show();
+      mainWindow.showInactive();
       mainWindow.webContents.send('notch-hover-change', true);
     }
   });
@@ -2195,7 +2178,7 @@ function buildTrayContextMenu() {
       accelerator: 'Alt+CommandOrControl+T',
       click: () => {
         if (!mainWindow || mainWindow.isDestroyed()) return;
-        mainWindow.show();
+        mainWindow.showInactive();
         mainWindow.webContents.send('notch-hover-change', true);
       },
     },
@@ -2320,7 +2303,9 @@ function updateWindowMouseIgnore(shouldIgnore) {
   isIgnoringMouse = shouldIgnore;
   try {
     if (shouldIgnore) {
-      mainWindow.setIgnoreMouseEvents(true, { forward: true });
+      // Do NOT pass `{ forward: true }`: startCursorHoverWatcher already handles notch hit-testing,
+      // whereas `{ forward: true }` runs Electron's internal 100Hz Win32 cursor-forwarding timer into Chromium!
+      mainWindow.setIgnoreMouseEvents(true);
     } else {
       mainWindow.setIgnoreMouseEvents(false);
     }
@@ -2369,9 +2354,17 @@ function animateWindowShapeToMode(modeOrExpanded, customBodyWidth, customHeight,
 function startCursorHoverWatcher() {
   let cachedBounds = null;
   let hoverTimer = null;
+  let lastPtX = -99999;
+  let lastPtY = -99999;
+  let lastCheckedMode = '';
+  let lastShapeWidth = -1;
+  let lastShapeHeight = -1;
+  let lastDelay = 50;
 
   const invalidateBounds = () => {
     cachedBounds = null;
+    lastPtX = -99999;
+    lastPtY = -99999;
   };
   screen.on('display-metrics-changed', invalidateBounds);
   screen.on('display-added', invalidateBounds);
@@ -2382,7 +2375,7 @@ function startCursorHoverWatcher() {
   }
 
   const tick = () => {
-    let nextDelay = 40;
+    let nextDelay = 50;
     try {
       if (isSystemLockedOrSuspended || !mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible()) {
         nextDelay = 300;
@@ -2397,8 +2390,24 @@ function startCursorHoverWatcher() {
         return;
       }
 
-      if (!cachedBounds) cachedBounds = mainWindow.getBounds();
       const pt = screen.getCursorScreenPoint();
+      if (
+        pt.x === lastPtX &&
+        pt.y === lastPtY &&
+        currentModeKey === lastCheckedMode &&
+        currentShape.bodyWidth === lastShapeWidth &&
+        currentShape.height === lastShapeHeight
+      ) {
+        nextDelay = lastDelay;
+        return;
+      }
+      lastPtX = pt.x;
+      lastPtY = pt.y;
+      lastCheckedMode = currentModeKey;
+      lastShapeWidth = currentShape.bodyWidth;
+      lastShapeHeight = currentShape.height;
+
+      if (!cachedBounds) cachedBounds = mainWindow.getBounds();
       const relX = pt.x - cachedBounds.x;
       const relY = pt.y - cachedBounds.y;
 
@@ -2426,12 +2435,13 @@ function startCursorHoverWatcher() {
       const inTopBand = relY >= -20 && relY <= 220;
       nextDelay =
         nearNotch || isHoveringNotch
-          ? 20
+          ? 16
           : currentModeKey === 'expanded'
           ? 28
           : inTopBand
-          ? 32
-          : 50;
+          ? 28
+          : 75;
+      lastDelay = nextDelay;
 
       if (userSettings.islandOpenMode === 'On click' && currentModeKey !== 'expanded') return;
 
@@ -2459,6 +2469,29 @@ function startCursorHoverWatcher() {
   hoverTimer = setTimeout(tick, 16);
 }
 
+function getMainWindowHwndString() {
+  if (process.platform !== 'win32' || !mainWindow || mainWindow.isDestroyed()) return '0';
+  try {
+    const buf = mainWindow.getNativeWindowHandle();
+    if (!buf || buf.length < 4) return '0';
+    return buf.length >= 8 ? buf.readBigInt64LE(0).toString() : String(buf.readInt32LE(0));
+  } catch {
+    return '0';
+  }
+}
+
+function requestOverlayFramelessEnforcement() {
+  if (process.platform !== 'win32') return;
+  try {
+    if (systemWatcherProc && systemWatcherProc.stdin && !systemWatcherProc.stdin.destroyed) {
+      const hwndStr = getMainWindowHwndString();
+      if (hwndStr !== '0') {
+        systemWatcherProc.stdin.write(`overlay-hwnd:${hwndStr}\n`);
+      }
+    }
+  } catch {}
+}
+
 function createWindow() {
   const primaryDisplay = screen.getPrimaryDisplay();
   const { width: screenWidth } = primaryDisplay.bounds;
@@ -2469,6 +2502,7 @@ function createWindow() {
     height: CANVAS_HEIGHT,
     x,
     y: 0,
+    title: '',
     show: false,
     frame: false,
     icon: getAppWindowIcon(),
@@ -2495,15 +2529,39 @@ function createWindow() {
   });
 
   mainWindow.setSkipTaskbar(true);
+  mainWindow.on('page-title-updated', (event) => {
+    event.preventDefault();
+  });
   bindExternalLinkInterceptor(mainWindow);
+
+  if (process.platform === 'win32' && typeof mainWindow.hookWindowMessage === 'function') {
+    let framelessDebounce = null;
+    const scheduleFramelessCheck = () => {
+      if (framelessDebounce) return;
+      framelessDebounce = setTimeout(() => {
+        framelessDebounce = null;
+        requestOverlayFramelessEnforcement();
+      }, 16);
+    };
+    // Guard against Chromium/Win32 re-applying WS_CAPTION or painting non-client toolwindow frame
+    const WM_STYLECHANGED = 0x007d;
+    const WM_NCPAINT = 0x0085;
+    const WM_NCACTIVATE = 0x0086;
+    try {
+      mainWindow.hookWindowMessage(WM_STYLECHANGED, scheduleFramelessCheck);
+      mainWindow.hookWindowMessage(WM_NCPAINT, scheduleFramelessCheck);
+      mainWindow.hookWindowMessage(WM_NCACTIVATE, scheduleFramelessCheck);
+    } catch {}
+  }
 
   isIgnoringMouse = true;
   try {
-    mainWindow.setIgnoreMouseEvents(true, { forward: true });
+    mainWindow.setIgnoreMouseEvents(true);
   } catch {}
 
   mainWindow.setAlwaysOnTop(true, 'screen-saver');
   mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  requestOverlayFramelessEnforcement();
 
   const ensureIslandOnTop = () => {
     if (!mainWindow || mainWindow.isDestroyed() || gameModeActive) return;
@@ -2520,6 +2578,7 @@ function createWindow() {
   const revealIsland = () => {
     if (!mainWindow || mainWindow.isDestroyed()) return;
     mainWindow.setSkipTaskbar(true);
+    requestOverlayFramelessEnforcement();
     if (!mainWindow.isVisible()) {
       mainWindow.showInactive();
       mainWindow.moveTop();
@@ -2563,7 +2622,7 @@ function registerGlobalShortcuts() {
     globalShortcut.register('CommandOrControl+Alt+T', () => {
       if (gameModeActive) return;
       if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.show();
+        mainWindow.showInactive();
         mainWindow.webContents.send('notch-hover-change', true);
       }
     });
@@ -2905,9 +2964,18 @@ function startSystemWatcher() {
   }
   try {
     const watcherScript = resolveScriptPath('win-system-watcher.ps1');
+    const overlayHwndStr = getMainWindowHwndString();
     const proc = spawn(
       'powershell.exe',
-      ['-WindowStyle', 'Hidden', '-NoProfile', '-STA', '-ExecutionPolicy', 'Bypass', '-File', watcherScript, '-ElectronPid', String(process.pid)],
+      [
+        '-WindowStyle', 'Hidden',
+        '-NoProfile',
+        '-STA',
+        '-ExecutionPolicy', 'Bypass',
+        '-File', watcherScript,
+        '-ElectronPid', String(process.pid),
+        '-OverlayHwnd', overlayHwndStr,
+      ],
       { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] }
     );
     systemWatcherProc = proc;
@@ -4305,7 +4373,7 @@ function runPowerShellJsonScript(scriptName, namedParams = {}, timeoutMs = 6000)
 
 ipcMain.handle('open-notification-target', async (_event, target = {}) => {
   try {
-    if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isFocused()) {
       mainWindow.blur();
     }
     if (typeof target.url === 'string' && target.url) {
@@ -4407,13 +4475,13 @@ ipcMain.handle('focus-media-source', async (_event, media = {}) => {
     });
 
     if (result && result.ok) {
-      if (!result.alreadyActive && mainWindow && !mainWindow.isDestroyed()) {
+      if (!result.alreadyActive && mainWindow && !mainWindow.isDestroyed() && mainWindow.isFocused()) {
         mainWindow.blur();
       }
       return { ok: true, alreadyActive: Boolean(result.alreadyActive) };
     }
 
-    if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isFocused()) {
       mainWindow.blur();
     }
 

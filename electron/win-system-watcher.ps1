@@ -1,4 +1,7 @@
-param([int]$ElectronPid = 0)
+param(
+    [int]$ElectronPid = 0,
+    [long]$OverlayHwnd = 0
+)
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'SilentlyContinue'
@@ -49,31 +52,66 @@ interface IMMDeviceEnumerator {
 class MMDeviceEnumeratorComObject { }
 
 public class WinAudioHelper {
-    private static IAudioEndpointVolume endpoint;
-    private static string cachedDeviceId;
-    private static long lastDeviceCheckTicks;
+    private static IMMDeviceEnumerator sharedEnumerator;
+    private static IAudioEndpointVolume renderEndpoint;
+    private static string cachedRenderDeviceId;
+    private static long lastRenderDeviceCheckTicks;
 
-    public static void InvalidateAudioEndpoint() {
-        if (endpoint != null) {
-            try { Marshal.ReleaseComObject(endpoint); } catch {}
-            endpoint = null;
+    private static IAudioEndpointVolume captureEndpoint;
+    private static string cachedCaptureDeviceId;
+    private static long lastCaptureDeviceCheckTicks;
+
+    private const long DEVICE_RECHECK_INTERVAL_TICKS = 30000000L; // 3 seconds
+
+    private static IMMDeviceEnumerator GetEnumerator() {
+        if (sharedEnumerator == null) {
+            sharedEnumerator = new MMDeviceEnumeratorComObject() as IMMDeviceEnumerator;
         }
-        cachedDeviceId = null;
-        lastDeviceCheckTicks = 0;
+        return sharedEnumerator;
     }
 
-    private static bool EnsureEndpoint(bool forceCheck) {
+    private static void ReleaseEnumerator() {
+        if (sharedEnumerator != null) {
+            try { Marshal.ReleaseComObject(sharedEnumerator); } catch {}
+            sharedEnumerator = null;
+        }
+    }
+
+    public static void InvalidateRenderEndpoint() {
+        if (renderEndpoint != null) {
+            try { Marshal.ReleaseComObject(renderEndpoint); } catch {}
+            renderEndpoint = null;
+        }
+        cachedRenderDeviceId = null;
+        lastRenderDeviceCheckTicks = 0;
+    }
+
+    public static void InvalidateCaptureEndpoint() {
+        if (captureEndpoint != null) {
+            try { Marshal.ReleaseComObject(captureEndpoint); } catch {}
+            captureEndpoint = null;
+        }
+        cachedCaptureDeviceId = null;
+        lastCaptureDeviceCheckTicks = 0;
+    }
+
+    public static void InvalidateAudioEndpoint() {
+        InvalidateRenderEndpoint();
+        InvalidateCaptureEndpoint();
+        ReleaseEnumerator();
+    }
+
+    private static bool EnsureRenderEndpoint(bool forceCheck) {
         long nowTicks = DateTime.UtcNow.Ticks;
-        if (endpoint != null && !forceCheck && (nowTicks - lastDeviceCheckTicks) < 10000000L) {
+        if (renderEndpoint != null && !forceCheck && (nowTicks - lastRenderDeviceCheckTicks) < DEVICE_RECHECK_INTERVAL_TICKS) {
             return true;
         }
-        lastDeviceCheckTicks = nowTicks;
-        IMMDeviceEnumerator enumerator = null;
+        lastRenderDeviceCheckTicks = nowTicks;
         IMMDevice dev = null;
         try {
-            enumerator = new MMDeviceEnumeratorComObject() as IMMDeviceEnumerator;
+            var enumerator = GetEnumerator();
             if (enumerator == null) {
-                InvalidateAudioEndpoint();
+                InvalidateRenderEndpoint();
                 return false;
             }
             enumerator.GetDefaultAudioEndpoint(0, 1, out dev);
@@ -81,26 +119,70 @@ public class WinAudioHelper {
                 enumerator.GetDefaultAudioEndpoint(0, 0, out dev);
             }
             if (dev == null) {
-                InvalidateAudioEndpoint();
+                InvalidateRenderEndpoint();
                 return false;
             }
             string devId = null;
             try { dev.GetId(out devId); } catch {}
-            if (endpoint != null && devId != null && devId == cachedDeviceId) {
+            if (renderEndpoint != null && devId != null && devId == cachedRenderDeviceId) {
                 return true;
             }
-            InvalidateAudioEndpoint();
+            InvalidateRenderEndpoint();
             Guid epvId = typeof(IAudioEndpointVolume).GUID;
-            dev.Activate(ref epvId, 23, 0, out endpoint);
-            if (endpoint == null) return false;
-            cachedDeviceId = devId;
+            dev.Activate(ref epvId, 23, 0, out renderEndpoint);
+            if (renderEndpoint == null) return false;
+            cachedRenderDeviceId = devId;
             return true;
         } catch {
-            InvalidateAudioEndpoint();
+            InvalidateRenderEndpoint();
+            ReleaseEnumerator();
             return false;
         } finally {
             if (dev != null) try { Marshal.ReleaseComObject(dev); } catch {}
-            if (enumerator != null) try { Marshal.ReleaseComObject(enumerator); } catch {}
+        }
+    }
+
+    private static bool EnsureCaptureEndpoint(bool forceCheck) {
+        long nowTicks = DateTime.UtcNow.Ticks;
+        if (captureEndpoint != null && !forceCheck && (nowTicks - lastCaptureDeviceCheckTicks) < DEVICE_RECHECK_INTERVAL_TICKS) {
+            return true;
+        }
+        lastCaptureDeviceCheckTicks = nowTicks;
+        IMMDevice dev = null;
+        try {
+            var enumerator = GetEnumerator();
+            if (enumerator == null) {
+                InvalidateCaptureEndpoint();
+                return false;
+            }
+            enumerator.GetDefaultAudioEndpoint(1, 1, out dev);
+            if (dev == null) {
+                enumerator.GetDefaultAudioEndpoint(1, 0, out dev);
+            }
+            if (dev == null) {
+                enumerator.GetDefaultAudioEndpoint(1, 2, out dev);
+            }
+            if (dev == null) {
+                InvalidateCaptureEndpoint();
+                return false;
+            }
+            string devId = null;
+            try { dev.GetId(out devId); } catch {}
+            if (captureEndpoint != null && devId != null && devId == cachedCaptureDeviceId) {
+                return true;
+            }
+            InvalidateCaptureEndpoint();
+            Guid epvId = typeof(IAudioEndpointVolume).GUID;
+            dev.Activate(ref epvId, 23, 0, out captureEndpoint);
+            if (captureEndpoint == null) return false;
+            cachedCaptureDeviceId = devId;
+            return true;
+        } catch {
+            InvalidateCaptureEndpoint();
+            ReleaseEnumerator();
+            return false;
+        } finally {
+            if (dev != null) try { Marshal.ReleaseComObject(dev); } catch {}
         }
     }
 
@@ -108,17 +190,17 @@ public class WinAudioHelper {
         muted = false;
         for (int attempt = 0; attempt < 2; attempt++) {
             try {
-                if (!EnsureEndpoint(attempt > 0)) return -1;
+                if (!EnsureRenderEndpoint(attempt > 0)) return -1;
                 float v = 0;
-                int hrVol = endpoint.GetMasterVolumeLevelScalar(out v);
-                int hrMute = endpoint.GetMute(out muted);
+                int hrVol = renderEndpoint.GetMasterVolumeLevelScalar(out v);
+                int hrMute = renderEndpoint.GetMute(out muted);
                 if (hrVol < 0 || hrMute < 0) {
-                    InvalidateAudioEndpoint();
+                    InvalidateRenderEndpoint();
                     continue;
                 }
                 return (int)Math.Round(v * 100);
             } catch {
-                InvalidateAudioEndpoint();
+                InvalidateRenderEndpoint();
             }
         }
         return -1;
@@ -126,45 +208,48 @@ public class WinAudioHelper {
 
     public static int GetMicMuted(out bool muted) {
         muted = false;
-        IMMDeviceEnumerator enumerator = null;
-        IMMDevice dev = null;
-        IAudioEndpointVolume ep = null;
-        try {
-            enumerator = new MMDeviceEnumeratorComObject() as IMMDeviceEnumerator;
-            if (enumerator == null) return -1;
-            enumerator.GetDefaultAudioEndpoint(1, 1, out dev);
-            if (dev == null) return -1;
-            Guid epvId = typeof(IAudioEndpointVolume).GUID;
-            dev.Activate(ref epvId, 23, 0, out ep);
-            if (ep == null) return -1;
-            ep.GetMute(out muted);
-            return 0;
-        } catch {
-            return -1;
-        } finally {
-            if (ep != null) try { Marshal.ReleaseComObject(ep); } catch {}
-            if (dev != null) try { Marshal.ReleaseComObject(dev); } catch {}
-            if (enumerator != null) try { Marshal.ReleaseComObject(enumerator); } catch {}
+        for (int attempt = 0; attempt < 2; attempt++) {
+            try {
+                if (!EnsureCaptureEndpoint(attempt > 0)) return -1;
+                int hrMute = captureEndpoint.GetMute(out muted);
+                if (hrMute < 0) {
+                    InvalidateCaptureEndpoint();
+                    continue;
+                }
+                return 0;
+            } catch {
+                InvalidateCaptureEndpoint();
+            }
         }
+        return -1;
     }
 
     public static bool SetMicMuted(bool mute) {
         try {
-            var enumerator = new MMDeviceEnumeratorComObject() as IMMDeviceEnumerator;
+            var enumerator = GetEnumerator();
+            if (enumerator == null) return false;
+            Guid epvId = typeof(IAudioEndpointVolume).GUID;
+            bool anySucceeded = false;
             for (int role = 0; role < 3; role++) {
                 IMMDevice dev = null;
-                enumerator.GetDefaultAudioEndpoint(1, role, out dev);
-                if (dev != null) {
-                    Guid epvId = typeof(IAudioEndpointVolume).GUID;
-                    IAudioEndpointVolume ep = null;
-                    dev.Activate(ref epvId, 23, 0, out ep);
-                    if (ep != null) {
-                        ep.SetMute(mute, Guid.Empty);
+                IAudioEndpointVolume ep = null;
+                try {
+                    enumerator.GetDefaultAudioEndpoint(1, role, out dev);
+                    if (dev != null) {
+                        dev.Activate(ref epvId, 23, 0, out ep);
+                        if (ep != null && ep.SetMute(mute, Guid.Empty) >= 0) {
+                            anySucceeded = true;
+                        }
                     }
+                } finally {
+                    if (ep != null) try { Marshal.ReleaseComObject(ep); } catch {}
+                    if (dev != null) try { Marshal.ReleaseComObject(dev); } catch {}
                 }
             }
-            return true;
+            return anySucceeded;
         } catch {
+            InvalidateCaptureEndpoint();
+            ReleaseEnumerator();
             return false;
         }
     }
@@ -173,16 +258,16 @@ public class WinAudioHelper {
         int clamped = Math.Max(0, Math.Min(100, percent));
         for (int attempt = 0; attempt < 2; attempt++) {
             try {
-                if (!EnsureEndpoint(attempt > 0)) return false;
-                int hr1 = endpoint.SetMasterVolumeLevelScalar(clamped / 100.0f, Guid.Empty);
-                int hr2 = endpoint.SetMute(clamped <= 0, Guid.Empty);
+                if (!EnsureRenderEndpoint(attempt > 0)) return false;
+                int hr1 = renderEndpoint.SetMasterVolumeLevelScalar(clamped / 100.0f, Guid.Empty);
+                int hr2 = renderEndpoint.SetMute(clamped <= 0, Guid.Empty);
                 if (hr1 < 0 || hr2 < 0) {
-                    InvalidateAudioEndpoint();
+                    InvalidateRenderEndpoint();
                     continue;
                 }
                 return true;
             } catch {
-                InvalidateAudioEndpoint();
+                InvalidateRenderEndpoint();
             }
         }
         return false;
@@ -192,15 +277,15 @@ public class WinAudioHelper {
         for (int attempt = 0; attempt < 2; attempt++) {
             try {
                 bool muted = false;
-                if (GetVolume(out muted) < 0 || endpoint == null) return false;
-                int hr = endpoint.SetMute(!muted, Guid.Empty);
+                if (GetVolume(out muted) < 0 || renderEndpoint == null) return false;
+                int hr = renderEndpoint.SetMute(!muted, Guid.Empty);
                 if (hr < 0) {
-                    InvalidateAudioEndpoint();
+                    InvalidateRenderEndpoint();
                     continue;
                 }
                 return true;
             } catch {
-                InvalidateAudioEndpoint();
+                InvalidateRenderEndpoint();
             }
         }
         return false;
@@ -219,24 +304,111 @@ public static class WinWindowHelper {
     }
     [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll", SetLastError = true)] static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern bool SetWindowText(IntPtr hWnd, string lpString);
+    [DllImport("user32.dll")] static extern bool IsWindow(IntPtr hWnd);
     [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr hWnd);
+    [DllImport("user32.dll")] static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+    [DllImport("user32.dll")] static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+    [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
     [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
     [DllImport("user32.dll")] static extern IntPtr MonitorFromWindow(IntPtr hWnd, uint flags);
     [DllImport("user32.dll", CharSet = CharSet.Auto)] static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO info);
-    [DllImport("kernel32.dll")] static extern IntPtr GetCurrentProcess();
     [DllImport("kernel32.dll", SetLastError = true)] static extern IntPtr OpenProcess(uint dwDesiredAccess, bool bInheritHandle, uint dwProcessId);
     [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)] static extern bool QueryFullProcessImageName(IntPtr hProcess, uint dwFlags, StringBuilder lpExeName, ref uint lpdwSize);
+    [DllImport("kernel32.dll", SetLastError = true)] static extern uint WaitForSingleObject(IntPtr hHandle, uint dwMilliseconds);
     [DllImport("kernel32.dll", SetLastError = true)] static extern bool CloseHandle(IntPtr hObject);
     [DllImport("shell32.dll")] static extern int SHQueryUserNotificationState(out int pquns);
-    [DllImport("psapi.dll")] static extern bool EmptyWorkingSet(IntPtr hProcess);
 
     const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+    const uint SYNCHRONIZE = 0x00100000;
+    const uint WAIT_OBJECT_0 = 0x00000000;
     const int QUNS_RUNNING_D3D_FULL_SCREEN = 3;
+    const int GWL_STYLE = -16;
+    const int WS_POPUP = unchecked((int)0x80000000);
+    const int UNWANTED_OVERLAY_STYLE_BITS =
+        0x00C00000 | // WS_CAPTION (WS_BORDER | WS_DLGFRAME)
+        0x00080000 | // WS_SYSMENU
+        0x00040000 | // WS_THICKFRAME
+        0x00020000 | // WS_MINIMIZEBOX
+        0x00010000;  // WS_MAXIMIZEBOX
+    const uint SWP_NOSIZE = 0x0001;
+    const uint SWP_NOMOVE = 0x0002;
+    const uint SWP_NOZORDER = 0x0004;
+    const uint SWP_NOACTIVATE = 0x0010;
+    const uint SWP_FRAMECHANGED = 0x0020;
+
+    static IntPtr watchedParentHandle = IntPtr.Zero;
+    static int watchedParentPid = 0;
+    static bool overlayTitleCleared = false;
+    static long lastOverlayHwnd = 0;
+
+    public static bool EnforceFramelessOverlay(long hwndValue, bool forceFrameRefresh) {
+        if (hwndValue == 0) return false;
+        IntPtr hwnd = new IntPtr(hwndValue);
+        if (!IsWindow(hwnd)) return false;
+        try {
+            if (lastOverlayHwnd != hwndValue) {
+                lastOverlayHwnd = hwndValue;
+                overlayTitleCleared = false;
+            }
+            if (!overlayTitleCleared || forceFrameRefresh) {
+                SetWindowText(hwnd, "");
+                overlayTitleCleared = true;
+            }
+            int style = GetWindowLong(hwnd, GWL_STYLE);
+            bool hasUnwantedBits = (style & UNWANTED_OVERLAY_STYLE_BITS) != 0;
+            bool missingPopup = (style & WS_POPUP) == 0;
+            if (hasUnwantedBits || missingPopup || forceFrameRefresh) {
+                int cleanStyle = (style & ~UNWANTED_OVERLAY_STYLE_BITS) | WS_POPUP;
+                if (cleanStyle != style) {
+                    SetWindowLong(hwnd, GWL_STYLE, cleanStyle);
+                }
+                SetWindowPos(
+                    hwnd,
+                    IntPtr.Zero,
+                    0, 0, 0, 0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED
+                );
+                return true;
+            }
+        } catch {}
+        return false;
+    }
 
     static uint cachedPid = 0;
+    static string cachedProcName = "";
     static bool cachedIsGame = false;
     static bool cachedIsExcluded = false;
     static bool cachedPathDenied = false;
+
+    public static bool IsParentProcessAlive(int parentPid) {
+        if (parentPid <= 0) return true;
+        if (watchedParentPid != parentPid) {
+            if (watchedParentHandle != IntPtr.Zero) {
+                try { CloseHandle(watchedParentHandle); } catch {}
+                watchedParentHandle = IntPtr.Zero;
+            }
+            watchedParentPid = parentPid;
+            watchedParentHandle = OpenProcess(SYNCHRONIZE, false, (uint)parentPid);
+        }
+        if (watchedParentHandle == IntPtr.Zero) {
+            // If SYNCHRONIZE handle could not be opened, try QueryLimitedInformation once
+            IntPtr hCheck = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, (uint)parentPid);
+            if (hCheck == IntPtr.Zero) {
+                return Marshal.GetLastWin32Error() == 5; // Access denied means still alive
+            }
+            CloseHandle(hCheck);
+            return true;
+        }
+        uint waitRes = WaitForSingleObject(watchedParentHandle, 0);
+        if (waitRes == WAIT_OBJECT_0) {
+            try { CloseHandle(watchedParentHandle); } catch {}
+            watchedParentHandle = IntPtr.Zero;
+            return false;
+        }
+        return true;
+    }
 
     static string GetProcessImagePath(uint processId, out bool accessDenied) {
         accessDenied = false;
@@ -281,56 +453,43 @@ public static class WinWindowHelper {
         "\\ea games\\", "\\origin games\\", "\\games\\"
     };
 
-    static void ClassifyProcess(uint processId, out bool isGame, out bool isExcluded, out bool pathDenied) {
+    static void ClassifyProcess(uint processId, out string procBaseName, out bool isGame, out bool isExcluded, out bool pathDenied) {
         if (processId == cachedPid && processId != 0) {
+            procBaseName = cachedProcName;
             isGame = cachedIsGame;
             isExcluded = cachedIsExcluded;
             pathDenied = cachedPathDenied;
             return;
         }
+        procBaseName = "";
         isGame = false;
         isExcluded = false;
         pathDenied = false;
         try {
-            string processName = "";
-            try {
-                using (Process process = Process.GetProcessById((int)processId)) {
-                    processName = (process.ProcessName ?? "").ToLowerInvariant();
+            string executablePath = GetProcessImagePath(processId, out pathDenied);
+            if (!string.IsNullOrEmpty(executablePath)) {
+                string normalizedPath = executablePath.Replace('/', '\\').ToLowerInvariant();
+                procBaseName = Path.GetFileNameWithoutExtension(executablePath) ?? "";
+                string fileBase = procBaseName.ToLowerInvariant();
+                foreach (string excluded in NonGameProcesses) {
+                    if (fileBase == excluded) {
+                        isExcluded = true;
+                        break;
+                    }
                 }
-            } catch {}
-
-            foreach (string excluded in NonGameProcesses) {
-                if (processName == excluded) {
-                    isExcluded = true;
-                    break;
-                }
-            }
-
-            if (!isExcluded) {
-                string executablePath = GetProcessImagePath(processId, out pathDenied);
-                if (!string.IsNullOrEmpty(executablePath)) {
-                    string normalizedPath = executablePath.Replace('/', '\\').ToLowerInvariant();
-                    string fileBase = Path.GetFileNameWithoutExtension(executablePath).ToLowerInvariant();
-                    foreach (string excluded in NonGameProcesses) {
-                        if (fileBase == excluded) {
+                if (!isExcluded) {
+                    foreach (string marker in NonGamePathMarkers) {
+                        if (normalizedPath.Contains(marker)) {
                             isExcluded = true;
                             break;
                         }
                     }
-                    if (!isExcluded) {
-                        foreach (string marker in NonGamePathMarkers) {
-                            if (normalizedPath.Contains(marker)) {
-                                isExcluded = true;
-                                break;
-                            }
-                        }
-                    }
-                    if (!isExcluded) {
-                        foreach (string marker in GameInstallMarkers) {
-                            if (normalizedPath.Contains(marker)) {
-                                isGame = true;
-                                break;
-                            }
+                }
+                if (!isExcluded) {
+                    foreach (string marker in GameInstallMarkers) {
+                        if (normalizedPath.Contains(marker)) {
+                            isGame = true;
+                            break;
                         }
                     }
                 }
@@ -338,16 +497,10 @@ public static class WinWindowHelper {
         } catch {}
 
         cachedPid = processId;
+        cachedProcName = procBaseName;
         cachedIsGame = isGame;
         cachedIsExcluded = isExcluded;
         cachedPathDenied = pathDenied;
-    }
-
-    public static void TrimMemory() {
-        try {
-            GC.Collect(GC.MaxGeneration, GCCollectionMode.Optimized, false);
-            EmptyWorkingSet(GetCurrentProcess());
-        } catch {}
     }
 
     public static void GetForegroundAppContext(int excludedPid, out string appName, out string category) {
@@ -359,49 +512,48 @@ public static class WinWindowHelper {
             uint processId;
             GetWindowThreadProcessId(hwnd, out processId);
             if (processId == 0 || processId == (uint)excludedPid) return;
-            using (Process process = Process.GetProcessById((int)processId)) {
-                string proc = (process.ProcessName ?? "").Trim();
-                string low = proc.ToLowerInvariant();
-                string title = "";
-                try { title = (process.MainWindowTitle ?? "").ToLowerInvariant(); } catch {}
-                appName = proc;
 
-                if (low == "zoom" || low == "teams" || low == "ms-teams" || low == "discord" || low == "skype" || low == "webex" || low == "slack") {
+            string proc;
+            bool isGame, isExcluded, pathDenied;
+            ClassifyProcess(processId, out proc, out isGame, out isExcluded, out pathDenied);
+            proc = (proc ?? "").Trim();
+            if (proc.Length == 0) return;
+
+            string low = proc.ToLowerInvariant();
+            appName = proc;
+
+            if (low == "zoom" || low == "teams" || low == "ms-teams" || low == "discord" || low == "skype" || low == "webex" || low == "slack") {
+                category = "meeting";
+                return;
+            }
+            if (low == "code" || low == "cursor" || low == "windsurf" || low == "antigravity" || low == "antigravity ide" ||
+                low == "idea64" || low == "pycharm64" || low == "webstorm64" || low == "devenv" ||
+                low == "windowsterminal" || low == "wt" || low == "pwsh" || low == "powershell" || low == "cmd") {
+                category = "code";
+                return;
+            }
+            if (low == "spotify" || low == "vlc" || low == "mpc-hc64" || low == "potplayer" || low == "applemusic") {
+                category = "media";
+                return;
+            }
+            if (low == "chrome" || low == "msedge" || low == "firefox" || low == "brave" || low == "comet" || low == "arc" || low == "vivaldi") {
+                StringBuilder titleSb = new StringBuilder(256);
+                GetWindowText(hwnd, titleSb, titleSb.Capacity);
+                string title = titleSb.ToString().ToLowerInvariant();
+                if (title.Contains("meet.google.com") || title.Contains("google meet") || title.Contains("zoom") || title.Contains("microsoft teams")) {
                     category = "meeting";
-                    return;
-                }
-                if (low == "code" || low == "cursor" || low == "windsurf" || low == "antigravity" || low == "antigravity ide" ||
-                    low == "idea64" || low == "pycharm64" || low == "webstorm64" || low == "devenv" ||
-                    low == "windowsterminal" || low == "wt" || low == "pwsh" || low == "powershell" || low == "cmd") {
-                    category = "code";
-                    return;
-                }
-                if (low == "spotify" || low == "vlc" || low == "mpc-hc64" || low == "potplayer" || low == "applemusic") {
+                } else if (title.Contains("youtube") || title.Contains("netflix") || title.Contains("twitch") || title.Contains("tv+") || title.Contains("tvplus")) {
                     category = "media";
-                    return;
+                } else {
+                    category = "browser";
                 }
-                if (low == "chrome" || low == "msedge" || low == "firefox" || low == "brave" || low == "comet" || low == "arc" || low == "vivaldi") {
-                    if (title.Contains("meet.google.com") || title.Contains("google meet") || title.Contains("zoom") || title.Contains("microsoft teams")) {
-                        category = "meeting";
-                    } else if (title.Contains("youtube") || title.Contains("netflix") || title.Contains("twitch") || title.Contains("tv+") || title.Contains("tvplus")) {
-                        category = "media";
-                    } else {
-                        category = "browser";
-                    }
-                    return;
-                }
-                if (IsKnownGameProcess(processId)) {
-                    category = "game";
-                    return;
-                }
+                return;
+            }
+            if (isGame && !isExcluded) {
+                category = "game";
+                return;
             }
         } catch {}
-    }
-
-    static bool IsKnownGameProcess(uint processId) {
-        bool isGame, isExcluded, pathDenied;
-        ClassifyProcess(processId, out isGame, out isExcluded, out pathDenied);
-        return isGame && !isExcluded;
     }
 
     static bool IsWindowCoveringMonitor(IntPtr hwnd) {
@@ -427,8 +579,9 @@ public static class WinWindowHelper {
             GetWindowThreadProcessId(hwnd, out processId);
             if (processId == 0 || processId == (uint)excludedPid) return false;
 
+            string proc;
             bool isGame, isExcluded, pathDenied;
-            ClassifyProcess(processId, out isGame, out isExcluded, out pathDenied);
+            ClassifyProcess(processId, out proc, out isGame, out isExcluded, out pathDenied);
             if (isExcluded) return false;
 
             // Fast D3D exclusive fullscreen check (works even with strict kernel anti-cheat)
@@ -613,39 +766,72 @@ try {
     Add-Type -ReferencedAssemblies System.Management -TypeDefinition @'
 using System;
 using System.Management;
+using System.Threading;
 
-public class WinBrightnessHelper {
-    private static ManagementObject cachedObj;
+public static class WinBrightnessHelper {
+    private static ManagementEventWatcher watcher;
+    private static int pendingBrightness = -1;
+    private static bool watcherActive = false;
+
+    public static bool IsEventWatcherActive {
+        get { return watcherActive; }
+    }
 
     public static void Reset() {
-        if (cachedObj != null) {
-            try { cachedObj.Dispose(); } catch {}
-            cachedObj = null;
+        watcherActive = false;
+        Interlocked.Exchange(ref pendingBrightness, -1);
+        if (watcher != null) {
+            try { watcher.Stop(); } catch {}
+            try { watcher.Dispose(); } catch {}
+            watcher = null;
         }
     }
 
-    public static int GetBrightness() {
-        if (cachedObj != null) {
-            try {
-                cachedObj.Get();
-                object val = cachedObj["CurrentBrightness"];
-                if (val != null) return Convert.ToInt32(val);
-            } catch {
-                Reset();
-            }
-        }
+    public static int QueryCurrentBrightnessOnce() {
         try {
             using (var searcher = new ManagementObjectSearcher("root\\wmi", "SELECT CurrentBrightness FROM WmiMonitorBrightness")) {
-                foreach (ManagementObject obj in searcher.Get()) {
-                    cachedObj = obj;
-                    object val = obj["CurrentBrightness"];
-                    if (val != null) return Convert.ToInt32(val);
+                using (var results = searcher.Get()) {
+                    foreach (ManagementObject obj in results) {
+                        using (obj) {
+                            object val = obj["CurrentBrightness"];
+                            if (val != null) return Convert.ToInt32(val);
+                        }
+                    }
                 }
             }
+        } catch {}
+        return -1;
+    }
+
+    public static bool StartEventWatcher() {
+        if (watcherActive && watcher != null) return true;
+        Reset();
+        try {
+            var scope = new ManagementScope("root\\wmi");
+            var query = new WqlEventQuery("SELECT * FROM WmiMonitorBrightnessEvent");
+            watcher = new ManagementEventWatcher(scope, query);
+            watcher.EventArrived += (sender, args) => {
+                try {
+                    object raw = args.NewEvent["Brightness"];
+                    if (raw != null) {
+                        int val = Convert.ToInt32(raw);
+                        if (val >= 0 && val <= 100) {
+                            Interlocked.Exchange(ref pendingBrightness, val);
+                        }
+                    }
+                } catch {}
+            };
+            watcher.Start();
+            watcherActive = true;
+            return true;
         } catch {
             Reset();
+            return false;
         }
-        return -1;
+    }
+
+    public static int ConsumeBrightnessEvent() {
+        return Interlocked.Exchange(ref pendingBrightness, -1);
     }
 }
 '@ -ErrorAction Stop
@@ -661,33 +847,29 @@ $lastBrightness = -1
 $seenNotifIds = @{}
 $watcherStartedAt = [DateTimeOffset]::Now
 $notificationsInitialized = $false
-$initialized = $false
 $lastVolumePoll = [DateTimeOffset]::MinValue
-$lastBrightnessPoll = [DateTimeOffset]::MinValue
-$brightnessUnsupportedUntil = [DateTimeOffset]::MinValue
+$lastMicPoll = [DateTimeOffset]::MinValue
 $lastGameModePoll = [DateTimeOffset]::MinValue
 $lastParentCheck = [DateTimeOffset]::MinValue
-$lastBrightnessJobPoll = [DateTimeOffset]::MinValue
 $lastNotifPoll = [DateTimeOffset]::MinValue
 $gameModeActive = $false
-$lastGcPoll = [DateTimeOffset]::MinValue
+$hasActiveMediaSessions = $false
 $notificationTask = $null
 $notificationListType = [System.Collections.Generic.IReadOnlyList[Windows.UI.Notifications.UserNotification]]
-$brightnessEventSubscription = $null
-function Register-BrightnessEventSubscription {
-    try {
-        if ($null -ne $script:brightnessEventSubscription) {
-            try { Unregister-Event -SourceIdentifier 'TwoCodeBrightness' -Force -ErrorAction SilentlyContinue } catch {}
-            try { Remove-Job -Job $script:brightnessEventSubscription -Force -ErrorAction SilentlyContinue } catch {}
-            $script:brightnessEventSubscription = $null
-        }
-        # WMI brightness events arrive as the display changes; no repeated CIM scans.
-        $script:brightnessEventSubscription = Register-WmiEvent -Namespace 'root\wmi' -Query 'SELECT * FROM WmiMonitorBrightnessEvent' -SourceIdentifier 'TwoCodeBrightness' -ErrorAction Stop
-    } catch {
-        $script:brightnessEventSubscription = $null
+
+try {
+    if ($OverlayHwnd -ne 0) {
+        [void][WinWindowHelper]::EnforceFramelessOverlay($OverlayHwnd, $true)
     }
-}
-Register-BrightnessEventSubscription
+} catch {}
+
+try {
+    $initBri = [WinBrightnessHelper]::QueryCurrentBrightnessOnce()
+    if ($initBri -ge 0) {
+        $lastBrightness = $initBri
+        [void][WinBrightnessHelper]::StartEventWatcher()
+    }
+} catch {}
 
 $stdinStream = $null
 $stdinBuf = New-Object byte[] 256
@@ -730,13 +912,28 @@ while ($true) {
                             $lastMicInit = $true
                             Write-Output ((@{ event = 'mic-mute'; muted = [bool]$targetMicMute }) | ConvertTo-Json -Compress)
                         }
+                    } elseif ($trimmedCmd -match '^overlay-hwnd:(-?\d+)$') {
+                        $OverlayHwnd = [long]$Matches[1]
+                        [void][WinWindowHelper]::EnforceFramelessOverlay($OverlayHwnd, $true)
+                    } elseif ($trimmedCmd -eq 'enforce-frameless') {
+                        if ($OverlayHwnd -ne 0) {
+                            [void][WinWindowHelper]::EnforceFramelessOverlay($OverlayHwnd, $true)
+                        }
                     } elseif ($trimmedCmd -eq 'refresh-watchers') {
                         [WinAudioHelper]::InvalidateAudioEndpoint()
                         [WinBrightnessHelper]::Reset()
-                        $brightnessUnsupportedUntil = [DateTimeOffset]::MinValue
-                        $lastBrightnessPoll = [DateTimeOffset]::MinValue
+                        if ($OverlayHwnd -ne 0) {
+                            [void][WinWindowHelper]::EnforceFramelessOverlay($OverlayHwnd, $true)
+                        }
                         $lastVolumePoll = [DateTimeOffset]::MinValue
-                        Register-BrightnessEventSubscription
+                        $lastMicPoll = [DateTimeOffset]::MinValue
+                        try {
+                            $refreshedBri = [WinBrightnessHelper]::QueryCurrentBrightnessOnce()
+                            if ($refreshedBri -ge 0) {
+                                $lastBrightness = $refreshedBri
+                                [void][WinBrightnessHelper]::StartEventWatcher()
+                            }
+                        } catch {}
                     }
                 }
                 try { $stdinReadTask = $stdinStream.ReadAsync($stdinBuf, 0, $stdinBuf.Length) } catch { $stdinReadTask = $null }
@@ -746,11 +943,10 @@ while ($true) {
         }
     } catch {}
     $now = [DateTimeOffset]::Now
-    # Parent Electron lifecycle guard: check every 2.5s instead of 120ms to avoid Get-Process allocation churn
+    # Zero-allocation Win32 SYNCHRONIZE wait on parent Electron handle
     if ($ElectronPid -gt 0 -and ($now - $lastParentCheck).TotalMilliseconds -ge 2500) {
         $lastParentCheck = $now
-        $parentProc = Get-Process -Id $ElectronPid -ErrorAction SilentlyContinue
-        if ($null -eq $parentProc -or $parentProc.HasExited) {
+        if (-not [WinWindowHelper]::IsParentProcessAlive($ElectronPid)) {
             break
         }
     }
@@ -760,6 +956,9 @@ while ($true) {
         # Check the foreground window at a low rate and report only state transitions.
         if (($now - $lastGameModePoll).TotalMilliseconds -ge 500) {
             $lastGameModePoll = $now
+            if ($OverlayHwnd -ne 0) {
+                [void][WinWindowHelper]::EnforceFramelessOverlay($OverlayHwnd, $false)
+            }
             $isFullscreen = [WinWindowHelper]::IsFullscreenGame($ElectronPid)
             if ($isFullscreen -ne $gameModeActive) {
                 $gameModeActive = $isFullscreen
@@ -775,14 +974,15 @@ while ($true) {
             }
         }
 
-        # Fast in-process SMTC media session/playback detector (zero PowerShell spawn)
-        # Skip during fullscreen game mode (island suppresses media bar during games anyway)
-        if (-not $gameModeActive -and $null -ne $mediaManager -and ($now - $lastMediaPoll).TotalMilliseconds -ge 250) {
+        # Fast in-process SMTC media session/playback detector (adaptive: 300ms when active session, 1000ms when idle)
+        $mediaPollMs = if ($hasActiveMediaSessions) { 300 } else { 1000 }
+        if (-not $gameModeActive -and $null -ne $mediaManager -and ($now - $lastMediaPoll).TotalMilliseconds -ge $mediaPollMs) {
             $lastMediaPoll = $now
             try {
                 $curSess = $null
                 $allSessions = $mediaManager.GetSessions()
-                if ($allSessions -and $allSessions.Count -gt 0) {
+                $hasActiveMediaSessions = [bool]($allSessions -and $allSessions.Count -gt 0)
+                if ($hasActiveMediaSessions) {
                     foreach ($s in $allSessions) {
                         try {
                             $spb = $s.GetPlaybackInfo()
@@ -798,6 +998,7 @@ while ($true) {
                 }
                 $sig = 'none'
                 if ($null -ne $curSess) {
+                    $hasActiveMediaSessions = $true
                     $pb = $curSess.GetPlaybackInfo()
                     $st = [string]$pb.PlaybackStatus
                     if ($st -ne 'Closed' -and $st -ne 'Stopped') {
@@ -812,7 +1013,7 @@ while ($true) {
             } catch {}
         }
 
-        # Reuse the audio endpoint and sample at 10 Hz for responsive HUD updates.
+        # Reuse cached render & capture CoreAudio endpoints (zero audiodg RPC churn).
         if (($now - $lastVolumePoll).TotalMilliseconds -ge 100) {
             $lastVolumePoll = $now
             $muted = $false
@@ -830,6 +1031,10 @@ while ($true) {
                     Write-Output ($evObj | ConvertTo-Json -Compress)
                 }
             }
+        }
+
+        if (($now - $lastMicPoll).TotalMilliseconds -ge 200) {
+            $lastMicPoll = $now
             $micMuted = $false
             if ([WinAudioHelper]::GetMicMuted([ref]$micMuted) -ge 0) {
                 if (-not $lastMicInit -or $micMuted -ne $lastMicMuted) {
@@ -840,54 +1045,18 @@ while ($true) {
             }
         }
 
-        # Sample brightness at 10 Hz on desktop; in game mode rely on event-driven WmiMonitorBrightnessEvent
-        # (or low-rate 600ms fallback) to eliminate continuous WmiPrvSE CPU overhead.
-        $brightnessJobRunning = ($null -ne $brightnessEventSubscription) -and ($brightnessEventSubscription.State -eq 'Running')
-        $skipBrightnessPoll = $gameModeActive -and $brightnessJobRunning -and ($lastBrightness -ge 0)
-        $brightnessPollMs = if ($gameModeActive) { 600 } else { 100 }
-        if ($now -ge $brightnessUnsupportedUntil -and -not $skipBrightnessPoll -and ($lastBrightness -lt 0 -or ($now - $lastBrightnessPoll).TotalMilliseconds -ge $brightnessPollMs)) {
-            $lastBrightnessPoll = $now
-            $bri = -1
-            try { $bri = [WinBrightnessHelper]::GetBrightness() } catch {}
-            if ($bri -lt 0) {
-                $bObj = Get-CimInstance -Namespace root/WMI -ClassName WmiMonitorBrightness -ErrorAction SilentlyContinue | Select-Object -First 1
-                if ($null -ne $bObj -and $null -ne $bObj.CurrentBrightness) {
-                    $bri = [int]$bObj.CurrentBrightness
-                } else {
-                    # External/desktop monitors or sleeping displays may not expose WmiMonitorBrightness; back off 10s instead of disabling forever.
-                    $brightnessUnsupportedUntil = $now.AddSeconds(10)
-                }
+        # Pure event-driven brightness via WmiMonitorBrightnessEvent (zero 100ms WMI polling, zero Receive-Job churn)
+        $eventBri = [WinBrightnessHelper]::ConsumeBrightnessEvent()
+        if ($eventBri -ge 0 -and $eventBri -ne $lastBrightness) {
+            if ($lastBrightness -ge 0) {
+                $bEv = @{ event = 'brightness'; value = $eventBri }
+                Write-Output ($bEv | ConvertTo-Json -Compress)
             }
-            if ($bri -ge 0) {
-                $brightnessUnsupportedUntil = [DateTimeOffset]::MinValue
-                if ($lastBrightness -ge 0 -and $bri -ne $lastBrightness) {
-                    $bEv = @{ event = 'brightness'; value = $bri }
-                    Write-Output ($bEv | ConvertTo-Json -Compress)
-                }
-                $lastBrightness = $bri
-            }
-        }
-        $brightnessJobPollMs = if ($gameModeActive) { 150 } else { 500 }
-        if ($null -ne $brightnessEventSubscription -and ($now - $lastBrightnessJobPoll).TotalMilliseconds -ge $brightnessJobPollMs) {
-            $lastBrightnessJobPoll = $now
-            if ($brightnessEventSubscription.State -ne 'Running') {
-                Register-BrightnessEventSubscription
-            } else {
-                $bEvent = Receive-Job -Job $brightnessEventSubscription -ErrorAction SilentlyContinue | Select-Object -Last 1
-                if ($null -ne $bEvent) {
-                    $bri = -1
-                    try { $bri = [int]$bEvent.SourceEventArgs.NewEvent.Brightness } catch {}
-                    if ($bri -ge 0 -and $bri -ne $lastBrightness) {
-                        $lastBrightness = $bri
-                        $bEv = @{ event = 'brightness'; value = $bri }
-                        Write-Output ($bEv | ConvertTo-Json -Compress)
-                    }
-                }
-            }
+            $lastBrightness = $eventBri
         }
 
-        # Keep the toast query asynchronous and throttled so its wait cannot delay brightness events or churn WinRT allocations.
-        $notifPollMs = if ($gameModeActive) { 550 } else { 350 }
+        # Keep the toast query asynchronous and throttled so its wait cannot delay HUD events or churn WinRT allocations.
+        $notifPollMs = if ($gameModeActive) { 600 } else { 380 }
         if ($notifSupported -and $null -ne $listener) {
             $notifs = $null
             if ($null -eq $notificationTask) {
@@ -977,18 +1146,10 @@ while ($true) {
                 $notificationsInitialized = $true
             }
         }
-
-        $initialized = $true
     } catch {}
-
-    # Periodic garbage collection + working-set trim to keep PowerShell RAM minimal (skip during fullscreen games)
-    if (-not $initialized -or (-not $gameModeActive -and ($now - $lastGcPoll).TotalSeconds -ge 25)) {
-        $lastGcPoll = $now
-        [WinWindowHelper]::TrimMemory()
-    }
 
     if ($ghelperBridgeLoaded) {
         try { Invoke-GHelperNotificationMessagePump } catch {}
     }
-    Start-Sleep -Milliseconds $(if ($gameModeActive) { 150 } else { 120 })
+    Start-Sleep -Milliseconds $(if ($gameModeActive) { 150 } else { 110 })
 }
